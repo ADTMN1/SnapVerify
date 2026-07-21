@@ -1,86 +1,169 @@
-# SnapVerify
+# 🚀 SnapVerify
 
-A full-stack SaaS application for payment verification, built with:
-- **Backend**: NestJS, TypeScript, Prisma ORM, PostgreSQL
-- **Frontend**: Flutter (Android-first), Riverpod for state management
+### Digital Payment Verification & Fraud Prevention System
 
-## Project Structure
+---
 
-```
-SnapVerify/
-├── backend/                # NestJS backend
-│   ├── src/
-│   │   ├── auth/          # Auth module
-│   │   ├── otp/           # OTP module
-│   │   ├── prisma/        # Prisma service and module
-│   │   ├── app.module.ts
-│   │   └── main.ts
-│   ├── prisma/            # Prisma schema
-│   └── package.json
-├── frontend/              # Flutter frontend
-│   └── lib/
-│       ├── core/
-│       ├── data/
-│       ├── domain/
-│       └── presentation/
-└── docs/                  # Documentation
-    ├── api-examples.md
-    ├── auth-flow.md
-    └── database-schema.md
-```
+## 📌 Overview
 
-## Getting Started
+The **Digital Payment Verification & Fraud Prevention System** is a secure mobile and web-based platform designed to help hotels, restaurants, and hospitality businesses prevent fake payment confirmation fraud.
 
-### Backend Setup
+The system enables businesses to:
 
-1. Navigate to backend directory:
-   ```bash
-   cd backend
-   ```
+* Verify customer payments in real time
+* Monitor employee activities
+* Detect suspicious transactions
+* Maintain centralized records for improved transparency and financial control
 
-2. Copy environment variables:
-   ```bash
-   cp .env.example .env
-   ```
+---
 
-3. Update `.env` with your PostgreSQL credentials:
-   ```env
-   DATABASE_URL="postgresql://user:password@localhost:5432/snapverify?schema=public"
-   JWT_ACCESS_SECRET="your-super-secret-key"
-   ```
+# ❗ Problem Statement
 
-4. Run Prisma migrations:
-   ```bash
-   npx prisma migrate dev
-   ```
+Many hospitality businesses rely on manual payment verification using screenshots or customer-provided transaction confirmations. This process is vulnerable to fraud through edited or fake payment screenshots.
 
-5. Start the server:
-   ```bash
-   npm run start:dev
-   ```
+### Common challenges include:
 
-### Frontend Setup
+* Revenue loss from unpaid services
+* Tax payments on uncollected income
+* Weak employee accountability
+* Inefficient manual verification processes
 
-1. Navigate to frontend directory:
-   ```bash
-   cd frontend
-   ```
+---
 
-2. Install dependencies:
-   ```bash
-   flutter pub get
-   ```
+# ✅ Proposed Solution
 
-3. Run the app:
-   ```bash
-   flutter run
-   ```
+This platform provides:
 
-## Features
+* Real-time payment verification
+* Employee activity tracking
+* Centralized administration dashboard
+* Fraud detection and reporting
+* Secure transaction records
 
-- Phone OTP authentication
-- Multi-tenant SaaS architecture
-- JWT-based authentication (access + refresh tokens)
-- Role-based access control (Owner, Manager, Cashier, Waiter)
-- Secure password hashing
-- Rate limiting
+The system ensures that payments are verified before services are completed.
+
+---
+
+# ✨ Key Features
+
+## ⚡ Real-Time Payment Verification
+
+* Instant verification of customer payments
+* Prevention of fake or edited payment confirmations
+* Secure transaction validation
+
+---
+
+## 👨‍💼 Employee Accounts & Activity Tracking
+
+* Individual staff accounts
+* Activity monitoring and logs
+* Verification history tracking
+
+---
+
+## 📊 Admin Dashboard
+
+* Centralized monitoring system
+* Live transaction visibility
+* User and branch management
+
+---
+
+## 🛡 Fraud Detection System
+
+* Suspicious activity alerts
+* Transaction anomaly detection
+* Fraud reporting tools
+
+---
+
+## 🗂 Audit & Transaction Records
+
+* Full transaction history
+* Verification logs
+* Searchable records
+
+---
+
+## 🏢 Multi-Branch Management
+
+* Support for multiple business locations
+* Centralized branch monitoring
+
+---
+
+## 📈 Reporting & Analytics
+
+* Revenue tracking
+* Verification reports
+* Fraud statistics and operational insights
+
+---
+
+# 💼 Business Benefits
+
+* Prevents revenue loss from fake payments
+* Improves financial transparency
+* Reduces manual verification workload
+* Enhances employee accountability
+* Improves operational efficiency
+
+---
+
+# 📱 Mobile Application
+
+### Used by employees to:
+
+* Verify customer payments
+* Access transaction history
+* Track verification activities
+
+---
+
+# 🖥 Admin Dashboard
+
+### Used by administrators to:
+
+* Monitor transactions
+* Manage employees
+* Generate reports
+* Review fraud alerts
+
+---
+
+# ⚙ Backend System
+
+### Responsible for:
+
+* Payment verification logic
+* Data storage and security
+* API services
+* Authentication and authorization
+
+---
+
+# 🛠 Technology Scope
+
+The project includes:
+
+* Mobile Application Development
+* Web Admin Dashboard
+* Backend API Development
+* OCR Integration
+* Authentication & Security
+* Database Management
+* Testing & Deployment
+
+---
+
+# 🔮 Future Improvements
+
+Planned future improvements include:
+
+* POS Integration
+* iOS Application Development
+* AI-Based Fraud Detection
+* Loyalty Systems
+
+---
