@@ -1,0 +1,273 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  CASHIER
+  WAITER
+}
+
+enum VerificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  FAILED
+}
+
+enum PaymentProvider {
+  CBE
+  TELEBIRR
+  DASHEN
+  ABYSSINIA
+  CBEBIRR
+  M_PESA
+}
+
+model PaymentAccount {
+  id                String             @id @default(uuid())
+  organizationId    String
+  branchId          String?
+  provider          PaymentProvider
+  accountNumber     String?
+  suffix            String?
+  accountHolderName String?
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch            Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  verificationLogs  VerificationLog[] @relation("MatchedVerificationLog")
+
+  @@unique([organizationId, provider, branchId])
+  @@map("payment_accounts")
+}
+
+model Branch {
+  id              String               @id @default(uuid())
+  organizationId  String
+  name            String
+  address         String?
+  latitude        Decimal?
+  longitude       Decimal?
+  phone           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentAccounts PaymentAccount[]
+  userAssignments UserBusinessAssignment[]
+  invitations     Invitation[]
+
+  @@map("branches")
+}
+
+model Organization {
+  id               String               @id @default(uuid())
+  name             String
+  type             String
+  phone            String
+  email            String?
+  address          String?
+  city             String?
+  country          String?
+  logoUrl          String?
+  subscriptionPlan String?
+  status           String               @default("active")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  branches         Branch[]
+  payments         Payment[]
+  verificationLogs VerificationLog[]
+  subscriptions    Subscription[]
+  activityLogs     ActivityLog[]
+  paymentAccounts  PaymentAccount[]
+  userAssignments  UserBusinessAssignment[]
+  invitations      Invitation[]
+
+  @@map("organizations")
+}
+
+model User {
+  id               String                @id @default(uuid())
+  fullName         String?
+  phone            String                @unique
+  email            String?
+  passwordHash     String?
+  status           String                @default("active")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  userAssignments  UserBusinessAssignment[]
+  refreshTokens    RefreshToken[]
+  payments         Payment[]
+  verificationLogs VerificationLog[]
+  activityLogs     ActivityLog[]
+
+  @@map("users")
+}
+
+model UserBusinessAssignment {
+  id               String        @id @default(uuid())
+  userId           String
+  organizationId   String
+  branchId         String?
+  role             Role
+  status           String        @default("active")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch           Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  devices          Device[]
+
+  @@unique([userId, organizationId])
+  @@map("user_business_assignments")
+}
+
+model Invitation {
+  id               String        @id @default(uuid())
+  phone            String
+  organizationId   String
+  branchId         String?
+  role             Role
+  status           String        @default("PENDING")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch           Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@map("invitations")
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  phone     String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("otp_codes")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  userId      String
+  token       String   @unique
+  expiresAt   DateTime
+  deviceInfo  String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Device {
+  id                   String               @id @default(uuid())
+  userAssignmentId     String
+  deviceFingerprint    String
+  deviceName           String?
+  isActive             Boolean              @default(true)
+  lastLoginAt          DateTime             @default(now())
+  createdAt            DateTime             @default(now())
+  userAssignment       UserBusinessAssignment @relation(fields: [userAssignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userAssignmentId, deviceFingerprint])
+  @@map("devices")
+}
+
+model Payment {
+  id               String             @id @default(uuid())
+  organizationId   String
+  userId           String?
+  amount           Decimal
+  currency         String             @default("ETB")
+  paymentMethod    String
+  transactionId    String
+  senderName       String?
+  receiverName     String?
+  status           PaymentStatus
+  riskScore        Int?
+  rawData          Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  verificationLogs VerificationLog[]
+
+  @@map("payments")
+}
+
+model VerificationLog {
+  id                    String             @id @default(uuid())
+  organizationId        String?
+  paymentId             String?
+  userId                String?
+  action                String
+  reason                String?
+  riskScore             Int?
+  matchedProvider       PaymentProvider?
+  matchedAccountNumber  String?
+  matchedSuffix         String?
+  matchedBranchId       String?
+  createdAt             DateTime           @default(now())
+  organization          Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  payment               Payment?           @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  user                  User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  matchedPaymentAccount PaymentAccount?    @relation("MatchedVerificationLog", fields: [matchedPaymentAccountId], references: [id], onDelete: SetNull)
+  matchedPaymentAccountId String?
+
+  @@map("verification_logs")
+}
+
+model Subscription {
+  id              String             @id @default(uuid())
+  organizationId  String
+  planName        String
+  status          SubscriptionStatus
+  startDate       DateTime
+  endDate         DateTime?
+  maxUsers        Int?
+  maxDevices      Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model ActivityLog {
+  id              String             @id @default(uuid())
+  organizationId  String
+  userId          String?
+  action          String
+  metadata        Json?
+  ipAddress       String?
+  createdAt       DateTime           @default(now())
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("activity_logs")
+}
