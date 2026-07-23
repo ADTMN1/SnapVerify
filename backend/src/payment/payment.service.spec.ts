@@ -25,9 +25,9 @@ describe('PaymentService - Settlement Account Security', () => {
   const mockConfig = {
     get: jest.fn((key: string) => {
       const config: Record<string, string | boolean> = {
-        'VERIFY_API_KEY': 'test-api-key',
-        'VERIFY_LEUL_ET_BASE_URL': 'https://verify.test.com',
-        'SKIP_PRIMARY_VERIFICATION': false,
+        VERIFY_API_KEY: 'test-api-key',
+        VERIFY_LEUL_ET_BASE_URL: 'https://verify.test.com',
+        SKIP_PRIMARY_VERIFICATION: false,
       };
       return config[key];
     }),
@@ -611,9 +611,11 @@ describe('PaymentService - Settlement Account Security', () => {
   describe('Data Masking in Logs', () => {
     it('should mask sensitive data in logs', () => {
       const serviceWithExposed = service as any;
-      
+
       expect(serviceWithExposed._maskSensitive('12345678')).toBe('12****78');
-      expect(serviceWithExposed._maskSensitive('1000516323381')).toBe('10****81');
+      expect(serviceWithExposed._maskSensitive('1000516323381')).toBe(
+        '10****81',
+      );
       expect(serviceWithExposed._maskSensitive('123')).toBe('****');
       expect(serviceWithExposed._maskSensitive(null)).toBe('null');
       expect(serviceWithExposed._maskSensitive(undefined)).toBe('null');

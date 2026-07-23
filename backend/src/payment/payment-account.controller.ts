@@ -36,7 +36,10 @@ export class PaymentAccountController {
   findAll(@Req() req: any, @Query('branchId') branchId?: string) {
     const { organizationId } = req.user;
     if (branchId) {
-      return this.paymentAccountService.findByOrganizationAndBranch(organizationId, branchId);
+      return this.paymentAccountService.findByOrganizationAndBranch(
+        organizationId,
+        branchId,
+      );
     }
     return this.paymentAccountService.findAll(organizationId);
   }
@@ -49,7 +52,11 @@ export class PaymentAccountController {
     @Query('branchId') branchId?: string,
   ) {
     const { organizationId } = req.user;
-    return this.paymentAccountService.findByProviderAndBranch(organizationId, provider as any, branchId);
+    return this.paymentAccountService.findByProviderAndBranch(
+      organizationId,
+      provider as any,
+      branchId,
+    );
   }
 
   @Put(':provider')
@@ -61,7 +68,12 @@ export class PaymentAccountController {
     @Query('branchId') branchId?: string,
   ) {
     const { organizationId } = req.user;
-    return this.paymentAccountService.update(organizationId, provider as any, branchId, dto);
+    return this.paymentAccountService.update(
+      organizationId,
+      provider as any,
+      branchId,
+      dto,
+    );
   }
 
   @Delete(':provider')
@@ -72,6 +84,10 @@ export class PaymentAccountController {
     @Query('branchId') branchId?: string,
   ) {
     const { organizationId } = req.user;
-    return this.paymentAccountService.remove(organizationId, provider as any, branchId);
+    return this.paymentAccountService.remove(
+      organizationId,
+      provider as any,
+      branchId,
+    );
   }
 }

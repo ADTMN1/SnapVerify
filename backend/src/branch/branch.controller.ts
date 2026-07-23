@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { JwtAuthGuard, JwtPayload } from '../auth/guards/jwt-auth.guard';
@@ -14,13 +24,19 @@ export class BranchController {
 
   @Post()
   @Roles(Role.OWNER)
-  create(@Request() req: { user: JwtPayload }, @Body() createBranchDto: CreateBranchDto) {
+  create(
+    @Request() req: { user: JwtPayload },
+    @Body() createBranchDto: CreateBranchDto,
+  ) {
     return this.branchService.create(req.user.organizationId, createBranchDto);
   }
 
   @Get()
   findAll(@Request() req: { user: JwtPayload; branchFilter?: string }) {
-    return this.branchService.findAll(req.user.organizationId, req.branchFilter);
+    return this.branchService.findAll(
+      req.user.organizationId,
+      req.branchFilter,
+    );
   }
 
   @Get(':id')
@@ -30,8 +46,16 @@ export class BranchController {
 
   @Patch(':id')
   @Roles(Role.OWNER)
-  update(@Request() req: { user: JwtPayload }, @Param('id') id: string, @Body() updateBranchDto: CreateBranchDto) {
-    return this.branchService.update(id, req.user.organizationId, updateBranchDto);
+  update(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+    @Body() updateBranchDto: CreateBranchDto,
+  ) {
+    return this.branchService.update(
+      id,
+      req.user.organizationId,
+      updateBranchDto,
+    );
   }
 
   @Delete(':id')

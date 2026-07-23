@@ -63,14 +63,20 @@ export class AuthService {
     // Find which assignment to use
     let assignment;
     if (organizationId) {
-      assignment = user.userAssignments.find(a => a.organizationId === organizationId);
+      assignment = user.userAssignments.find(
+        (a) => a.organizationId === organizationId,
+      );
       if (!assignment) {
-        throw new BadRequestException('You are not a member of this organization');
+        throw new BadRequestException(
+          'You are not a member of this organization',
+        );
       }
     } else if (user.userAssignments.length === 1) {
       assignment = user.userAssignments[0];
     } else {
-      throw new BadRequestException('Please specify which organization to log in to');
+      throw new BadRequestException(
+        'Please specify which organization to log in to',
+      );
     }
 
     this.logger.log(`Login successful for user id=${user.id}`);
@@ -90,7 +96,7 @@ export class AuthService {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      roles: user.userAssignments.map(a => ({
+      roles: user.userAssignments.map((a) => ({
         businessId: a.organizationId,
         branchId: a.branchId,
         role: a.role,
@@ -147,14 +153,20 @@ export class AuthService {
     // Find which assignment to use
     let assignment;
     if (organizationId) {
-      assignment = user.userAssignments.find(a => a.organizationId === organizationId);
+      assignment = user.userAssignments.find(
+        (a) => a.organizationId === organizationId,
+      );
       if (!assignment) {
-        throw new BadRequestException('You are not a member of this organization');
+        throw new BadRequestException(
+          'You are not a member of this organization',
+        );
       }
     } else if (user.userAssignments.length === 1) {
       assignment = user.userAssignments[0];
     } else {
-      throw new BadRequestException('Please specify which organization to log in to');
+      throw new BadRequestException(
+        'Please specify which organization to log in to',
+      );
     }
 
     const tokens = await this.jwtService.generateTokens(
@@ -173,7 +185,7 @@ export class AuthService {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      roles: user.userAssignments.map(a => ({
+      roles: user.userAssignments.map((a) => ({
         businessId: a.organizationId,
         branchId: a.branchId,
         role: a.role,
@@ -201,7 +213,7 @@ export class AuthService {
       include: { userAssignments: true },
     });
 
-    if (user?.userAssignments.some(a => a.role === Role.OWNER)) {
+    if (user?.userAssignments.some((a) => a.role === Role.OWNER)) {
       throw new BadRequestException(
         'This phone number is already registered with a business',
       );
@@ -292,7 +304,7 @@ export class AuthService {
         updatedAt: user.updatedAt,
       },
       tokens,
-      roles: user.userAssignments.map(a => ({
+      roles: user.userAssignments.map((a) => ({
         businessId: a.organizationId,
         branchId: a.branchId,
         role: a.role,
@@ -384,14 +396,14 @@ export class AuthService {
       }
     }
 
-    let user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { phone },
       include: { userAssignments: true },
     });
 
     if (user) {
       const existingAssignment = user.userAssignments.find(
-        a => a.organizationId === organizationId,
+        (a) => a.organizationId === organizationId,
       );
 
       if (existingAssignment) {
@@ -424,7 +436,7 @@ export class AuthService {
     // If password is provided, create user immediately
     if (password) {
       const passwordHash = await bcrypt.hash(password, this.saltRounds);
-      
+
       const newUser = await this.prisma.user.create({
         data: {
           phone,
@@ -464,12 +476,16 @@ export class AuthService {
       },
     });
 
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId }
+    });
+
     this.logger.log(
       `Invitation created: id=${invitation.id} phone=${phone} role=${role}`,
     );
 
     // Send SMS notification for invitation
-    await this.otpService.sendInvitationSms(phone, role);
+    await this.otpService.sendInvitationSms(phone, role, organization?.name);
 
     return invitation;
   }
@@ -482,7 +498,9 @@ export class AuthService {
     });
 
     if (invitations.length === 0) {
-      throw new BadRequestException('No pending invitations found for this phone number');
+      throw new BadRequestException(
+        'No pending invitations found for this phone number',
+      );
     }
 
     return invitations;
@@ -599,14 +617,18 @@ export class AuthService {
     });
 
     if (!assignment) {
-      throw new BadRequestException('Staff member not found in your organization');
+      throw new BadRequestException(
+        'Staff member not found in your organization',
+      );
     }
 
     if (assignment.role === Role.OWNER) {
       throw new BadRequestException('Cannot remove the organization owner');
     }
 
-    await this.prisma.userBusinessAssignment.delete({ where: { id: staffAssignmentId } });
+    await this.prisma.userBusinessAssignment.delete({
+      where: { id: staffAssignmentId },
+    });
 
     return { message: 'Staff member removed successfully' };
   }

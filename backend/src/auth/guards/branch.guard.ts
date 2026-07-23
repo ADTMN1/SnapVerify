@@ -8,12 +8,12 @@ import { Role } from '@prisma/client';
 
 /**
  * BranchGuard enforces branch-based access control.
- * 
+ *
  * - OWNER: Can access all branches (no restriction)
  * - MANAGER: Can only access their assigned branch
  * - CASHIER: Can only access their assigned branch
  * - WAITER: Can only access their assigned branch
- * 
+ *
  * This guard should be applied AFTER JwtAuthGuard so that req.user is populated.
  * It injects branchFilter into req for use in services.
  */
@@ -46,7 +46,8 @@ export class BranchGuard implements CanActivate {
     request.branchFilter = user.branchId;
 
     // Check if the request is trying to access a different branch
-    const requestedBranchId = request.params?.branchId || request.query?.branchId;
+    const requestedBranchId =
+      request.params?.branchId || request.query?.branchId;
 
     if (requestedBranchId && requestedBranchId !== user.branchId) {
       throw new ForbiddenException(

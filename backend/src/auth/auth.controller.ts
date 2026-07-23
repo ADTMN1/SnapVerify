@@ -133,7 +133,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER, Role.MANAGER)
   @HttpCode(HttpStatus.CREATED)
-  async addStaff(@Request() req: { user: JwtPayload }, @Body() dto: AddStaffDto) {
+  async addStaff(
+    @Request() req: { user: JwtPayload },
+    @Body() dto: AddStaffDto,
+  ) {
     return this.authService.addStaff(
       req.user.organizationId,
       dto.fullName,
@@ -155,7 +158,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
   @HttpCode(HttpStatus.OK)
-  async removeStaff(@Request() req: { user: JwtPayload }, @Param('id') id: string) {
+  async removeStaff(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+  ) {
     return this.authService.removeStaff(id, req.user.organizationId);
   }
 
@@ -168,13 +174,14 @@ export class AuthController {
   @Post('activate-invitation')
   @HttpCode(HttpStatus.OK)
   async activateInvitation(
-    @Body() body: {
+    @Body()
+    body: {
       phone: string;
       otpCode: string;
       fullName: string;
       password: string;
       organizationId: string;
-    }
+    },
   ) {
     return this.authService.activateInvitation(
       body.phone,

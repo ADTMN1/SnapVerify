@@ -66,9 +66,7 @@ export class PaymentAccountService {
       );
       return account;
     } catch (err: any) {
-      this.logger.error(
-        `[create] DB error: ${err?.message ?? String(err)}`,
-      );
+      this.logger.error(`[create] DB error: ${err?.message ?? String(err)}`);
       throw new BadRequestException('Failed to create payment account');
     }
   }
@@ -113,9 +111,7 @@ export class PaymentAccountService {
       },
     });
     if (!account) {
-      throw new NotFoundException(
-        `Payment account for ${provider} not found`,
-      );
+      throw new NotFoundException(`Payment account for ${provider} not found`);
     }
     return account;
   }
@@ -156,9 +152,7 @@ export class PaymentAccountService {
       data: dto,
     });
     if (account.count === 0) {
-      throw new NotFoundException(
-        `Payment account for ${provider} not found`,
-      );
+      throw new NotFoundException(`Payment account for ${provider} not found`);
     }
     // Fetch the updated account
     const updatedAccount = await this.prisma.paymentAccount.findFirst({
@@ -189,9 +183,7 @@ export class PaymentAccountService {
       },
     });
     if (deleted.count === 0) {
-      throw new NotFoundException(
-        `Payment account for ${provider} not found`,
-      );
+      throw new NotFoundException(`Payment account for ${provider} not found`);
     }
     return { message: 'Payment account deleted successfully' };
   }

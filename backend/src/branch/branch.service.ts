@@ -33,7 +33,11 @@ export class BranchService {
     });
   }
 
-  async update(id: string, organizationId: string, updateBranchDto: CreateBranchDto) {
+  async update(
+    id: string,
+    organizationId: string,
+    updateBranchDto: CreateBranchDto,
+  ) {
     return this.prisma.branch.updateMany({
       where: { id, organizationId },
       data: {

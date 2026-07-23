@@ -1,5 +1,13 @@
-node_modules
-# Keep environment variables out of version control
-.env
+# dependencies
+node_modules/
 
-/generated/prisma
+# environment
+.env
+.env.*
+
+# NestJS build
+dist/
+backend/dist/
+
+# logs
+*.log

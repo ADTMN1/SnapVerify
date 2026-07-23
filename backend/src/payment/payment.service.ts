@@ -32,11 +32,18 @@ export class PaymentService {
       'VERIFY_LEUL_ET_BASE_URL',
       'https://verifyapi.leulzenebe.pro',
     );
-    this.skipPrimaryVerification = this.config.get<boolean>('SKIP_PRIMARY_VERIFICATION', false);
+    this.skipPrimaryVerification = this.config.get<boolean>(
+      'SKIP_PRIMARY_VERIFICATION',
+      false,
+    );
     this.logger.log(`=== PaymentService ready ===`);
     this.logger.log(`  baseUrl: ${this.baseUrl}`);
-    this.logger.log(`  apiKey present: ${!!this.apiKey} (len=${this.apiKey.length})`);
-    this.logger.log(`  skipPrimaryVerification: ${this.skipPrimaryVerification}`);
+    this.logger.log(
+      `  apiKey present: ${!!this.apiKey} (len=${this.apiKey.length})`,
+    );
+    this.logger.log(
+      `  skipPrimaryVerification: ${this.skipPrimaryVerification}`,
+    );
   }
 
   // Helper to get provider from raw response or reference type
@@ -53,8 +60,12 @@ export class PaymentService {
 
   // Check if payment destination matches registered account
   private _isPaymentToAccount(raw: any, account: PaymentAccount): boolean {
-    this.logger.log(`[_isPaymentToAccount] Checking account: provider=${account.provider}, suffix=${this._maskSensitive(account.suffix)}, accountNumber=${this._maskSensitive(account.accountNumber)}, accountHolderName=${account.accountHolderName}`);
-    this.logger.log(`[_isPaymentToAccount] Raw API response: ${JSON.stringify(raw)}`);
+    this.logger.log(
+      `[_isPaymentToAccount] Checking account: provider=${account.provider}, suffix=${this._maskSensitive(account.suffix)}, accountNumber=${this._maskSensitive(account.accountNumber)}, accountHolderName=${account.accountHolderName}`,
+    );
+    this.logger.log(
+      `[_isPaymentToAccount] Raw API response: ${JSON.stringify(raw)}`,
+    );
 
     if (!raw?.success) {
       this.logger.log(`[_isPaymentToAccount] Payment not successful`);
@@ -63,18 +74,25 @@ export class PaymentService {
 
     // Check receiver info
     const receiverName = raw?.receiver ?? raw?.receiverName;
-    const accountNumber = raw?.accountNumber ?? raw?.receiverAccountNumber ?? raw?.receiverAccount;
+    const accountNumber =
+      raw?.accountNumber ?? raw?.receiverAccountNumber ?? raw?.receiverAccount;
     const suffixFromApi = raw?.suffix;
 
-    this.logger.log(`[_isPaymentToAccount] Extracted from API: receiverName=${receiverName}, accountNumber=${this._maskSensitive(accountNumber)}, suffixFromApi=${this._maskSensitive(suffixFromApi)}`);
+    this.logger.log(
+      `[_isPaymentToAccount] Extracted from API: receiverName=${receiverName}, accountNumber=${this._maskSensitive(accountNumber)}, suffixFromApi=${this._maskSensitive(suffixFromApi)}`,
+    );
 
     // CHECK 1: Suffix must match exactly if both are present
     if (account.suffix && suffixFromApi) {
       if (account.suffix === suffixFromApi) {
-        this.logger.log(`[_isPaymentToAccount] ✓ Suffix match: ${account.suffix} === ${suffixFromApi}`);
+        this.logger.log(
+          `[_isPaymentToAccount] ✓ Suffix match: ${account.suffix} === ${suffixFromApi}`,
+        );
         return true;
       } else {
-        this.logger.warn(`[_isPaymentToAccount] ✗ Suffix mismatch: expected ${account.suffix}, got ${suffixFromApi}`);
+        this.logger.warn(
+          `[_isPaymentToAccount] ✗ Suffix mismatch: expected ${account.suffix}, got ${suffixFromApi}`,
+        );
         return false;
       }
     }
@@ -85,22 +103,30 @@ export class PaymentService {
       const maskedSuffixMatch = accountNumber.match(/\*+(\d+)$/);
       if (maskedSuffixMatch) {
         const extractedSuffix = maskedSuffixMatch[1];
-        this.logger.log(`[_isPaymentToAccount] Extracted suffix from masked account: ${extractedSuffix}`);
-        
+        this.logger.log(
+          `[_isPaymentToAccount] Extracted suffix from masked account: ${extractedSuffix}`,
+        );
+
         // First try exact match
         if (account.suffix === extractedSuffix) {
-          this.logger.log(`[_isPaymentToAccount] ✓ Masked suffix match: ${account.suffix} === ${extractedSuffix}`);
+          this.logger.log(
+            `[_isPaymentToAccount] ✓ Masked suffix match: ${account.suffix} === ${extractedSuffix}`,
+          );
           return true;
         }
-        
+
         // If no exact match, check if registered suffix ends with the extracted digits
         // (handles cases where API returns partial suffix like "3381" but registered is "16323381")
         if (account.suffix.endsWith(extractedSuffix)) {
-          this.logger.log(`[_isPaymentToAccount] ✓ Partial suffix match: ${account.suffix} ends with ${extractedSuffix}`);
+          this.logger.log(
+            `[_isPaymentToAccount] ✓ Partial suffix match: ${account.suffix} ends with ${extractedSuffix}`,
+          );
           return true;
         }
-        
-        this.logger.warn(`[_isPaymentToAccount] ✗ Masked suffix mismatch: expected ${account.suffix} to match ${extractedSuffix}`);
+
+        this.logger.warn(
+          `[_isPaymentToAccount] ✗ Masked suffix mismatch: expected ${account.suffix} to match ${extractedSuffix}`,
+        );
       }
     }
 
@@ -108,26 +134,38 @@ export class PaymentService {
     if (account.accountNumber && accountNumber) {
       const normalize = (s: string) => s.replace(/\s/g, '').replace(/-/g, '');
       const normalizedAccountNumber = normalize(String(accountNumber));
-      const normalizedRegisteredAccountNumber = normalize(account.accountNumber);
-      
+      const normalizedRegisteredAccountNumber = normalize(
+        account.accountNumber,
+      );
+
       if (normalizedAccountNumber === normalizedRegisteredAccountNumber) {
         this.logger.log(`[_isPaymentToAccount] ✓ Account number match`);
         return true;
       } else {
-        this.logger.warn(`[_isPaymentToAccount] ✗ Account number mismatch: expected ${this._maskSensitive(normalizedRegisteredAccountNumber)}, got ${this._maskSensitive(normalizedAccountNumber)}`);
+        this.logger.warn(
+          `[_isPaymentToAccount] ✗ Account number mismatch: expected ${this._maskSensitive(normalizedRegisteredAccountNumber)}, got ${this._maskSensitive(normalizedAccountNumber)}`,
+        );
       }
     }
 
     // CHECK 4: Check if registered account number ends with the same digits as masked account
-    if (account.accountNumber && accountNumber && typeof accountNumber === 'string') {
-      const normalizedRegistered = account.accountNumber.replace(/\s/g, '').replace(/-/g, '');
+    if (
+      account.accountNumber &&
+      accountNumber &&
+      typeof accountNumber === 'string'
+    ) {
+      const normalizedRegistered = account.accountNumber
+        .replace(/\s/g, '')
+        .replace(/-/g, '');
       const normalizedApi = accountNumber.replace(/\s/g, '').replace(/-/g, '');
-      
+
       // If API returns masked account like "1****3381", check if registered ends with "3381"
       if (normalizedApi.includes('****')) {
         const lastDigits = normalizedApi.replace(/\*+/g, '');
         if (lastDigits && normalizedRegistered.endsWith(lastDigits)) {
-          this.logger.log(`[_isPaymentToAccount] ✓ Account number ends with matching digits: ${this._maskSensitive(normalizedRegistered)} ends with ${lastDigits}`);
+          this.logger.log(
+            `[_isPaymentToAccount] ✓ Account number ends with matching digits: ${this._maskSensitive(normalizedRegistered)} ends with ${lastDigits}`,
+          );
           return true;
         }
       }
@@ -136,19 +174,25 @@ export class PaymentService {
     // CHECK 5: Account holder name must match (case-insensitive, but must contain full name)
     if (account.accountHolderName && receiverName) {
       const normalizedReceiverName = String(receiverName).toLowerCase().trim();
-      const normalizedAccountHolderName = String(account.accountHolderName).toLowerCase().trim();
-      
+      const normalizedAccountHolderName = String(account.accountHolderName)
+        .toLowerCase()
+        .trim();
+
       // Check if the registered name is contained in the receiver name
       if (normalizedReceiverName.includes(normalizedAccountHolderName)) {
         this.logger.log(`[_isPaymentToAccount] ✓ Account holder match`);
         return true;
       } else {
-        this.logger.warn(`[_isPaymentToAccount] ✗ Account holder mismatch: expected "${normalizedAccountHolderName}", got "${normalizedReceiverName}"`);
+        this.logger.warn(
+          `[_isPaymentToAccount] ✗ Account holder mismatch: expected "${normalizedAccountHolderName}", got "${normalizedReceiverName}"`,
+        );
       }
     }
 
     // If none of the checks passed, reject
-    this.logger.warn(`[_isPaymentToAccount] ✗ No match found for any account identifier. Rejecting payment.`);
+    this.logger.warn(
+      `[_isPaymentToAccount] ✗ No match found for any account identifier. Rejecting payment.`,
+    );
     return false;
   }
 
@@ -174,7 +218,9 @@ export class PaymentService {
     });
 
     if (existingPayment) {
-      this.logger.warn(`[verifyByReference] Duplicate transaction detected: ${referenceNumber} already verified for organization ${organizationId}`);
+      this.logger.warn(
+        `[verifyByReference] Duplicate transaction detected: ${referenceNumber} already verified for organization ${organizationId}`,
+      );
       return {
         verified: false,
         status: 'DUPLICATE_TRANSACTION',
@@ -185,7 +231,8 @@ export class PaymentService {
         senderName: existingPayment.senderName,
         receiverName: existingPayment.receiverName,
         riskScore: existingPayment.riskScore,
-        message: 'This payment has already been verified. Each transaction can only be verified once.',
+        message:
+          'This payment has already been verified. Each transaction can only be verified once.',
         raw: null,
       };
     }
@@ -195,39 +242,75 @@ export class PaymentService {
       where: { organizationId, isActive: true },
     });
 
-    this.logger.log(`[verifyByReference] Found ${paymentAccounts.length} registered payment accounts for organization ${organizationId}: ${JSON.stringify(paymentAccounts)}`);
+    this.logger.log(
+      `[verifyByReference] Found ${paymentAccounts.length} registered payment accounts for organization ${organizationId}: ${JSON.stringify(paymentAccounts)}`,
+    );
 
     // If no registered accounts, reject payment immediately
     if (paymentAccounts.length === 0) {
-      this.logger.warn(`[verifyByReference] No registered payment accounts for organization ${organizationId}`);
-      const raw = { success: false, reason: 'No payment accounts configured. Please add your business payment account in settings before verifying payments.' };
-      return this._saveAndReturn(raw, organizationId, userId, {
-        method: 'REFERENCE',
-        transactionId: referenceNumber,
-      }, null);
+      this.logger.warn(
+        `[verifyByReference] No registered payment accounts for organization ${organizationId}`,
+      );
+      const raw = {
+        success: false,
+        reason:
+          'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
+      };
+      return this._saveAndReturn(
+        raw,
+        organizationId,
+        userId,
+        {
+          method: 'REFERENCE',
+          transactionId: referenceNumber,
+        },
+        null,
+      );
     }
 
     if (this.skipPrimaryVerification) {
-      this.logger.warn(`[verifyByReference] SKIP_PRIMARY_VERIFICATION is enabled - this is a security risk in production!`);
+      this.logger.warn(
+        `[verifyByReference] SKIP_PRIMARY_VERIFICATION is enabled - this is a security risk in production!`,
+      );
       // Even when skipping primary verification, we still need to validate the account
       // to prevent payments to wrong accounts from being approved
       if (paymentAccounts.length === 0) {
-        this.logger.warn(`[verifyByReference] No registered payment accounts for organization ${organizationId}`);
-        const raw = { success: false, reason: 'No payment accounts configured. Please add your business payment account in settings before verifying payments.' };
-        return this._saveAndReturn(raw, organizationId, userId, {
-          method: 'REFERENCE',
-          transactionId: referenceNumber,
-        }, null);
+        this.logger.warn(
+          `[verifyByReference] No registered payment accounts for organization ${organizationId}`,
+        );
+        const raw = {
+          success: false,
+          reason:
+            'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
+        };
+        return this._saveAndReturn(
+          raw,
+          organizationId,
+          userId,
+          {
+            method: 'REFERENCE',
+            transactionId: referenceNumber,
+          },
+          null,
+        );
       }
-      
+
       // In skip mode, we'll use the first account but still require account validation
       // This ensures payments aren't approved for wrong accounts even in dev mode
       const raw = { success: true, amount: amount, reference: referenceNumber };
-      this.logger.warn(`[verifyByReference] Skipping Verify.ET API call but still validating account match`);
-      return this._saveAndReturn(raw, organizationId, userId, {
-        method: 'REFERENCE',
-        transactionId: referenceNumber,
-      }, paymentAccounts[0]);
+      this.logger.warn(
+        `[verifyByReference] Skipping Verify.ET API call but still validating account match`,
+      );
+      return this._saveAndReturn(
+        raw,
+        organizationId,
+        userId,
+        {
+          method: 'REFERENCE',
+          transactionId: referenceNumber,
+        },
+        paymentAccounts[0],
+      );
     }
 
     let matchedAccount: PaymentAccount | null = null;
@@ -236,7 +319,9 @@ export class PaymentService {
 
     // First, try to get provider if provided
     if (provider) {
-      const normalizedProvider = provider.toUpperCase().replace('-', '_') as PaymentProvider;
+      const normalizedProvider = provider
+        .toUpperCase()
+        .replace('-', '_') as PaymentProvider;
       if (Object.values(PaymentProvider).includes(normalizedProvider)) {
         detectedProvider = normalizedProvider;
       }
@@ -245,26 +330,42 @@ export class PaymentService {
     // Determine suffix priority: extracted suffix > stored suffix
     // If we have an extracted suffix, use that first
     if (extractedSuffix) {
-      this.logger.log(`[verifyByReference] Using extracted suffix: ${extractedSuffix}`);
+      this.logger.log(
+        `[verifyByReference] Using extracted suffix: ${extractedSuffix}`,
+      );
       // Try to find account with this suffix
-      const accountWithSuffix = paymentAccounts.find(a => a.suffix === extractedSuffix);
+      const accountWithSuffix = paymentAccounts.find(
+        (a) => a.suffix === extractedSuffix,
+      );
       // Try verification with this suffix
       try {
-        raw = await this._verifyWithSuffix(referenceNumber, extractedSuffix, amount);
+        raw = await this._verifyWithSuffix(
+          referenceNumber,
+          extractedSuffix,
+          amount,
+        );
         if (raw?.success && accountWithSuffix) {
           // Verify it's to the correct account
           if (this._isPaymentToAccount(raw, accountWithSuffix)) {
             matchedAccount = accountWithSuffix;
-            this.logger.log(`[verifyByReference] Matched account via extracted suffix: ${accountWithSuffix.id}`);
+            this.logger.log(
+              `[verifyByReference] Matched account via extracted suffix: ${accountWithSuffix.id}`,
+            );
           } else {
-            this.logger.warn(`[verifyByReference] Payment not to registered account`);
+            this.logger.warn(
+              `[verifyByReference] Payment not to registered account`,
+            );
             raw.success = false;
-            raw.reason = 'This payment was sent to a different account. Please ensure the payment was made to your registered business account.';
+            raw.reason =
+              'This payment was sent to a different account. Please ensure the payment was made to your registered business account.';
             matchedAccount = null;
           }
         }
       } catch (e) {
-        this.logger.warn(`[verifyByReference] Verification with extracted suffix failed`, e);
+        this.logger.warn(
+          `[verifyByReference] Verification with extracted suffix failed`,
+          e,
+        );
       }
     }
 
@@ -272,25 +373,46 @@ export class PaymentService {
     if (!raw?.success && paymentAccounts.length > 0) {
       for (const account of paymentAccounts) {
         try {
-          this.logger.log(`[verifyByReference] Trying with account: ${account.provider}, suffix: ${account.suffix}`);
-          const accountRaw = await this._verifyWithSuffix(referenceNumber, account.suffix, amount, account.provider);
-          if (accountRaw?.success && this._isPaymentToAccount(accountRaw, account)) {
+          this.logger.log(
+            `[verifyByReference] Trying with account: ${account.provider}, suffix: ${account.suffix}`,
+          );
+          const accountRaw = await this._verifyWithSuffix(
+            referenceNumber,
+            account.suffix,
+            amount,
+            account.provider,
+          );
+          if (
+            accountRaw?.success &&
+            this._isPaymentToAccount(accountRaw, account)
+          ) {
             raw = accountRaw;
             matchedAccount = account;
             detectedProvider = account.provider;
-            this.logger.log(`[verifyByReference] Matched account: ${account.id}`);
+            this.logger.log(
+              `[verifyByReference] Matched account: ${account.id}`,
+            );
             break;
           }
         } catch (e) {
-          this.logger.warn(`[verifyByReference] Verification with account ${account.id} failed`, e);
+          this.logger.warn(
+            `[verifyByReference] Verification with account ${account.id} failed`,
+            e,
+          );
         }
       }
     }
 
     // If still no raw, fallback
     if (!raw) {
-      this.logger.warn(`[verifyByReference] No verification successful, falling back`);
-      raw = { success: false, reason: 'Unable to verify this payment. Please check the transaction details and try again.' };
+      this.logger.warn(
+        `[verifyByReference] No verification successful, falling back`,
+      );
+      raw = {
+        success: false,
+        reason:
+          'Unable to verify this payment. Please check the transaction details and try again.',
+      };
     }
 
     // If we found a matched account, use that
@@ -299,10 +421,16 @@ export class PaymentService {
       detectedProvider = this._detectProvider(raw);
     }
 
-    return this._saveAndReturn(raw, organizationId, userId, {
-      method: 'REFERENCE',
-      transactionId: referenceNumber,
-    }, matchedAccount);
+    return this._saveAndReturn(
+      raw,
+      organizationId,
+      userId,
+      {
+        method: 'REFERENCE',
+        transactionId: referenceNumber,
+      },
+      matchedAccount,
+    );
   }
 
   // Helper to verify with specific suffix
@@ -317,7 +445,9 @@ export class PaymentService {
     if (suffix) body.suffix = suffix;
     if (amount) body.amount = amount;
 
-    this.logger.log(`[verifyByReference] POST ${url} body=${JSON.stringify(body)}`);
+    this.logger.log(
+      `[verifyByReference] POST ${url} body=${JSON.stringify(body)}`,
+    );
     return this._fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': this.apiKey },
@@ -339,32 +469,66 @@ export class PaymentService {
 
     // If no registered accounts, reject payment immediately
     if (paymentAccounts.length === 0) {
-      this.logger.warn(`[verifyByImage] No registered payment accounts for organization ${organizationId}`);
-      const raw = { success: false, reason: 'No payment accounts configured. Please add your business payment account in settings before verifying payments.' };
-      return this._saveAndReturn(raw, organizationId, userId, {
-        method: 'IMAGE_OCR',
-        transactionId: `OCR-${Date.now()}`,
-      }, null);
+      this.logger.warn(
+        `[verifyByImage] No registered payment accounts for organization ${organizationId}`,
+      );
+      const raw = {
+        success: false,
+        reason:
+          'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
+      };
+      return this._saveAndReturn(
+        raw,
+        organizationId,
+        userId,
+        {
+          method: 'IMAGE_OCR',
+          transactionId: `OCR-${Date.now()}`,
+        },
+        null,
+      );
     }
 
     if (this.skipPrimaryVerification) {
-      this.logger.warn(`[verifyByImage] SKIP_PRIMARY_VERIFICATION is enabled - this is a security risk in production!`);
+      this.logger.warn(
+        `[verifyByImage] SKIP_PRIMARY_VERIFICATION is enabled - this is a security risk in production!`,
+      );
       // Even when skipping primary verification, we still need to validate the account
       if (paymentAccounts.length === 0) {
-        this.logger.warn(`[verifyByImage] No registered payment accounts for organization ${organizationId}`);
-        const raw = { success: false, reason: 'No payment accounts configured. Please add your business payment account in settings before verifying payments.' };
-        return this._saveAndReturn(raw, organizationId, userId, {
+        this.logger.warn(
+          `[verifyByImage] No registered payment accounts for organization ${organizationId}`,
+        );
+        const raw = {
+          success: false,
+          reason:
+            'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
+        };
+        return this._saveAndReturn(
+          raw,
+          organizationId,
+          userId,
+          {
+            method: 'IMAGE_OCR',
+            transactionId: `OCR-${Date.now()}`,
+          },
+          null,
+        );
+      }
+
+      const raw = { success: true, reference: `OCR-${Date.now()}` };
+      this.logger.warn(
+        `[verifyByImage] Skipping Verify.ET API call but still validating account match`,
+      );
+      return this._saveAndReturn(
+        raw,
+        organizationId,
+        userId,
+        {
           method: 'IMAGE_OCR',
           transactionId: `OCR-${Date.now()}`,
-        }, null);
-      }
-      
-      const raw = { success: true, reference: `OCR-${Date.now()}` };
-      this.logger.warn(`[verifyByImage] Skipping Verify.ET API call but still validating account match`);
-      return this._saveAndReturn(raw, organizationId, userId, {
-        method: 'IMAGE_OCR',
-        transactionId: `OCR-${Date.now()}`,
-      }, paymentAccounts[0]);
+        },
+        paymentAccounts[0],
+      );
     }
 
     let raw: any = null;
@@ -374,7 +538,9 @@ export class PaymentService {
       // First, let's call /verify-image to get OCR data first
       const url = `${this.baseUrl}/verify-image?autoVerify=true`;
 
-      this.logger.log(`[verifyByImage] POST ${url} size=${imageBuffer.length}b mime=${mimeType}`);
+      this.logger.log(
+        `[verifyByImage] POST ${url} size=${imageBuffer.length}b mime=${mimeType}`,
+      );
 
       // Step 1: First OCR pass to get provider and details
       const form = new (FormData as any)();
@@ -400,21 +566,34 @@ export class PaymentService {
       if (reference) {
         // Try all payment accounts with this provider or all accounts if no provider
         const accountsToTry = detectedProvider
-          ? paymentAccounts.filter(a => a.provider === detectedProvider)
+          ? paymentAccounts.filter((a) => a.provider === detectedProvider)
           : paymentAccounts;
 
         for (const account of accountsToTry) {
           try {
-            this.logger.log(`[verifyByImage] Trying with account: ${account.id}`);
-            const accountRaw = await this._verifyWithSuffix(reference, account.suffix, amount, account.provider);
-            if (accountRaw?.success && this._isPaymentToAccount(accountRaw, account)) {
+            this.logger.log(
+              `[verifyByImage] Trying with account: ${account.id}`,
+            );
+            const accountRaw = await this._verifyWithSuffix(
+              reference,
+              account.suffix,
+              amount,
+              account.provider,
+            );
+            if (
+              accountRaw?.success &&
+              this._isPaymentToAccount(accountRaw, account)
+            ) {
               raw = accountRaw;
               matchedAccount = account;
               this.logger.log(`[verifyByImage] Matched account: ${account.id}`);
               break;
             }
           } catch (e) {
-            this.logger.warn(`[verifyByImage] Verification with account ${account.id} failed`, e);
+            this.logger.warn(
+              `[verifyByImage] Verification with account ${account.id} failed`,
+              e,
+            );
           }
         }
       }
@@ -423,18 +602,32 @@ export class PaymentService {
       if (raw?.success && !matchedAccount) {
         this.logger.warn(`[verifyByImage] Payment not to registered account`);
         raw.success = false;
-        raw.reason = 'This payment was sent to a different account. Please ensure the payment was made to your registered business account.';
+        raw.reason =
+          'This payment was sent to a different account. Please ensure the payment was made to your registered business account.';
       }
-
     } catch (e: any) {
-      this.logger.warn(`[verifyByImage] OCR verification failed, falling back to local verification. Error: ${e.message}`, e);
-      raw = { success: false, reason: 'Unable to verify this payment. Please check the transaction details and try again.' };
+      this.logger.warn(
+        `[verifyByImage] OCR verification failed, falling back to local verification. Error: ${e.message}`,
+        e,
+      );
+      raw = {
+        success: false,
+        reason:
+          'Unable to verify this payment. Please check the transaction details and try again.',
+      };
     }
 
-    return this._saveAndReturn(raw, organizationId, userId, {
-      method: 'IMAGE_OCR',
-      transactionId: raw?.reference ?? raw?.transactionReference ?? `OCR-${Date.now()}`,
-    }, matchedAccount);
+    return this._saveAndReturn(
+      raw,
+      organizationId,
+      userId,
+      {
+        method: 'IMAGE_OCR',
+        transactionId:
+          raw?.reference ?? raw?.transactionReference ?? `OCR-${Date.now()}`,
+      },
+      matchedAccount,
+    );
   }
 
   // ── HTTP helper with timeout + full logging ────────────────────────────────
@@ -474,7 +667,9 @@ export class PaymentService {
 
     if (httpStatus >= 400) {
       const msg =
-        json?.message ?? json?.error ?? `HTTP ${httpStatus} from verify.leul.et`;
+        json?.message ??
+        json?.error ??
+        `HTTP ${httpStatus} from verify.leul.et`;
       this.logger.error(`[_fetchJson] API error: ${msg}`);
       throw new HttpException(msg, HttpStatus.BAD_GATEWAY);
     }
@@ -506,15 +701,12 @@ export class PaymentService {
       ) || 0;
 
     const senderName =
-      raw?.payer ??          // CBE /verify
-      raw?.senderName ??     // Dashen
-      raw?.payerName ??      // Telebirr
+      raw?.payer ?? // CBE /verify
+      raw?.senderName ?? // Dashen
+      raw?.payerName ?? // Telebirr
       null;
 
-    const receiverName =
-      raw?.receiver ??
-      raw?.receiverName ??
-      null;
+    const receiverName = raw?.receiver ?? raw?.receiverName ?? null;
 
     let payment: any;
     try {
@@ -533,10 +725,14 @@ export class PaymentService {
           rawData: raw,
         },
       });
-      this.logger.log(`[_saveAndReturn] saved payment id=${payment.id} verified=${verified}`);
+      this.logger.log(
+        `[_saveAndReturn] saved payment id=${payment.id} verified=${verified}`,
+      );
     } catch (dbErr: any) {
       this.logger.error(`[_saveAndReturn] DB error: ${dbErr?.message}`);
-      throw new InternalServerErrorException(`Database error: ${dbErr?.message}`);
+      throw new InternalServerErrorException(
+        `Database error: ${dbErr?.message}`,
+      );
     }
 
     try {
@@ -546,7 +742,12 @@ export class PaymentService {
           paymentId: payment.id,
           userId,
           action: verified ? 'VERIFIED' : 'REJECTED',
-          reason: raw?.reason ?? raw?.message ?? (verified ? 'Payment verified successfully' : 'Payment could not be verified'),
+          reason:
+            raw?.reason ??
+            raw?.message ??
+            (verified
+              ? 'Payment verified successfully'
+              : 'Payment could not be verified'),
           riskScore: verified ? 0 : 80,
           matchedProvider: matchedAccount?.provider ?? null,
           matchedAccountNumber: matchedAccount?.accountNumber ?? null,
@@ -556,7 +757,9 @@ export class PaymentService {
         },
       });
     } catch (e: any) {
-      this.logger.warn(`[_saveAndReturn] log save failed (non-fatal): ${e?.message}`);
+      this.logger.warn(
+        `[_saveAndReturn] log save failed (non-fatal): ${e?.message}`,
+      );
     }
 
     return {
@@ -572,7 +775,9 @@ export class PaymentService {
       message:
         raw?.reason ??
         raw?.message ??
-        (verified ? 'Payment verified successfully' : 'Unable to verify payment. Please check the details and try again.'),
+        (verified
+          ? 'Payment verified successfully'
+          : 'Unable to verify payment. Please check the details and try again.'),
       raw,
     };
   }

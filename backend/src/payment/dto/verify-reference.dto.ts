@@ -12,7 +12,7 @@ export class VerifyReferenceDto {
   @IsOptional()
   @IsString()
   provider?: string;
-  
+
   @IsOptional()
   @IsString()
   suffix?: string;

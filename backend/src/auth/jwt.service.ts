@@ -57,8 +57,8 @@ export class JwtService {
       where: { token: refreshToken },
       include: {
         user: {
-          include: { userAssignments: true }
-        }
+          include: { userAssignments: true },
+        },
       },
     });
 
@@ -88,7 +88,7 @@ export class JwtService {
       user: {
         id: token.userId,
       },
-      roles: token.user.userAssignments.map(a => ({
+      roles: token.user.userAssignments.map((a) => ({
         businessId: a.organizationId,
         branchId: a.branchId,
         role: a.role,
