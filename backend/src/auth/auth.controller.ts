@@ -55,11 +55,15 @@ export class AuthController {
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  async verifyOtp(@Body() dto: VerifyOtpDto, @Ip() ipAddress: string) {
+  async verifyOtp(
+    @Body() dto: VerifyOtpDto,
+    @Ip() ipAddress: string,
+  ) {
     return this.authService.verifyOtpAndLogin(
       dto.phone,
       dto.code,
       dto.organizationId,
+      ipAddress,
     );
   }
 
@@ -92,9 +96,18 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60 } })
   async logout(@Body() dto: RefreshTokenDto) {
     await this.jwtService.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };
+  }
+
+  @Post('logout-all')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async logoutAll(@Request() req: { user: JwtPayload }) {
+    await this.jwtService.logoutAll(req.user.sub);
+    return { message: 'All sessions terminated successfully' };
   }
 
   @Post('change-password')
@@ -166,6 +179,7 @@ export class AuthController {
   }
 
   @Get('invitations/:phone')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async getInvitations(@Param('phone') phone: string) {
     return this.authService.getInvitation(phone);
