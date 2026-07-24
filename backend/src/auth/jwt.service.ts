@@ -10,6 +10,12 @@ interface JwtPayload {
   branchId?: string;
 }
 
+const MAX_REFRESH_TOKENS_PER_USER = 10;
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 @Injectable()
 export class JwtService {
   constructor(
@@ -33,12 +39,31 @@ export class JwtService {
     });
 
     const refreshToken = crypto.randomBytes(64).toString('hex');
+    const tokenHash = hashToken(refreshToken);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    // Enforce per-user token cap: delete oldest tokens beyond the limit
+    const existingTokens = await this.prisma.refreshToken.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+
+    if (existingTokens.length >= MAX_REFRESH_TOKENS_PER_USER) {
+      const toDelete = existingTokens
+        .slice(0, existingTokens.length - MAX_REFRESH_TOKENS_PER_USER + 1)
+        .map((t) => t.id);
+      await this.prisma.refreshToken.deleteMany({
+        where: { id: { in: toDelete } },
+      });
+    }
 
     await this.prisma.refreshToken.create({
       data: {
         userId,
-        token: refreshToken,
+        token: tokenHash,
+        organizationId,
+        role,
         expiresAt,
         deviceInfo,
         ipAddress,
@@ -53,8 +78,10 @@ export class JwtService {
     deviceInfo?: string,
     ipAddress?: string,
   ) {
+    const tokenHash = hashToken(refreshToken);
+
     const token = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: tokenHash },
       include: {
         user: {
           include: { userAssignments: true },
@@ -66,19 +93,26 @@ export class JwtService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    if (token.user.userAssignments.length === 0) {
-      throw new UnauthorizedException('No organization assigned to user');
+    // Use the organizationId and role stored on the token record (set at login)
+    const organizationId = token.organizationId;
+    const role = token.role;
+
+    // Verify the assignment still exists (user may have been removed from org)
+    const assignment = token.user.userAssignments.find(
+      (a) => a.organizationId === organizationId,
+    );
+    if (!assignment) {
+      await this.prisma.refreshToken.delete({ where: { id: token.id } });
+      throw new UnauthorizedException('Organization assignment no longer valid');
     }
 
-    // Use the first assignment for simplicity (or we could store userAssignmentId in RefreshToken)
-    const assignment = token.user.userAssignments[0];
-
+    // Rotate: delete old token, issue new one
     await this.prisma.refreshToken.delete({ where: { id: token.id } });
 
     const tokens = await this.generateTokens(
       token.userId,
-      assignment.organizationId,
-      assignment.role,
+      organizationId,
+      role,
       assignment.branchId ?? undefined,
       deviceInfo,
       ipAddress,
@@ -97,8 +131,13 @@ export class JwtService {
   }
 
   async logout(refreshToken: string) {
+    const tokenHash = hashToken(refreshToken);
     await this.prisma.refreshToken.deleteMany({
-      where: { token: refreshToken },
+      where: { token: tokenHash },
     });
+  }
+
+  async logoutAll(userId: string) {
+    await this.prisma.refreshToken.deleteMany({ where: { userId } });
   }
 }

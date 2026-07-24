@@ -462,7 +462,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await _repo.logout(state.tokens!.refreshToken);
       }
     } catch (e) {
-      dev.log('[Auth] logout error (ignored): $e');
+      dev.log('[Auth] logout server revocation failed — token may remain active for up to 7 days: $e');
     } finally {
       state = AuthState.unauthenticated;
     }

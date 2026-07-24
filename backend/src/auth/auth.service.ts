@@ -109,6 +109,7 @@ export class AuthService {
     phone: string,
     code: string,
     organizationId?: string,
+    ipAddress?: string,
   ) {
     // Verify OTP first — throws BadRequestException on failure
     await this.otpService.verifyOtp(phone, code);
@@ -173,6 +174,9 @@ export class AuthService {
       user.id,
       assignment.organizationId,
       assignment.role,
+      undefined,
+      undefined,
+      ipAddress,
     );
     return {
       tokens,
@@ -342,6 +346,9 @@ export class AuthService {
       data: { passwordHash: newPasswordHash },
     });
 
+    // Invalidate all existing sessions so stolen tokens cannot be reused
+    await this.prisma.refreshToken.deleteMany({ where: { userId } });
+
     return { message: 'Password changed successfully' };
   }
 
@@ -362,6 +369,9 @@ export class AuthService {
       where: { id: user.id },
       data: { passwordHash: newPasswordHash },
     });
+
+    // Invalidate all existing sessions so stolen tokens cannot be reused
+    await this.prisma.refreshToken.deleteMany({ where: { userId: user.id } });
 
     return { message: 'Password reset successfully' };
   }
