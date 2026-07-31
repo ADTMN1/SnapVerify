@@ -9,7 +9,13 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    // Strip sslmode from the connection string — we pass ssl config directly
+    // to avoid pg's broken sslmode=require behavior in newer versions
+    const connStr = (process.env.DATABASE_URL ?? '').replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]uselibpqcompat=[^&]*/g, '').replace(/[?&]connect_timeout=[^&]*/g, '');
+    const pool = new Pool({
+      connectionString: connStr,
+      ssl: { rejectUnauthorized: false },
+    });
     const adapter = new PrismaPg(pool);
     super({ adapter });
   }
