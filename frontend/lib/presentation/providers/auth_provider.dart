@@ -31,10 +31,43 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
+enum AuthStatus { initial, loading, authenticated, unauthenticated, error, requiresBusinessSelection }
 
 /// User roles mirrored from the backend enum.
 enum UserRole { owner, manager, cashier, waiter, unknown }
+
+/// Represents a user's membership in a specific organization.
+class UserBusinessMembership {
+  final String organizationId;
+  final String organizationName;
+  final UserRole role;
+  final String? branchId;
+
+  const UserBusinessMembership({
+    required this.organizationId,
+    required this.organizationName,
+    required this.role,
+    this.branchId,
+  });
+
+  factory UserBusinessMembership.fromJson(Map<String, dynamic> json) {
+    return UserBusinessMembership(
+      organizationId: json['organizationId']?.toString() ?? '',
+      organizationName: json['organizationName']?.toString() ?? 'Unknown Organization',
+      role: _parseRole(json['role']?.toString() ?? 'unknown'),
+      branchId: json['branchId']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'organizationId': organizationId,
+      'organizationName': organizationName,
+      'role': role.toString().split('.').last.toUpperCase(),
+      if (branchId != null) 'branchId': branchId,
+    };
+  }
+}
 
 class UserRoleAssignment {
   final String businessId;
@@ -49,9 +82,9 @@ class UserRoleAssignment {
 
   factory UserRoleAssignment.fromJson(Map<String, dynamic> json) {
     return UserRoleAssignment(
-      businessId: json['businessId'] as String,
-      branchId: json['branchId'] as String?,
-      role: _parseRole(json['role'] as String),
+      businessId: json['businessId']?.toString() ?? '',
+      branchId: json['branchId']?.toString(),
+      role: _parseRole(json['role']?.toString() ?? 'unknown'),
     );
   }
 
@@ -88,6 +121,9 @@ extension UserRoleX on UserRole {
 
   /// Branch Management Permissions
   bool get canAddBranch =>
+      this == UserRole.owner;
+
+  bool get canEditBranch =>
       this == UserRole.owner;
 
   bool get canRemoveBranch =>
@@ -146,8 +182,13 @@ UserRole _parseRole(String? raw) {
 }
 
 AuthTokens _tokensFromMap(Map<String, dynamic> data) {
-  final accessToken = data['accessToken'] as String;
-  final refreshToken = data['refreshToken'] as String;
+  final accessToken = data['accessToken']?.toString();
+  final refreshToken = data['refreshToken']?.toString();
+  
+  if (accessToken == null || refreshToken == null) {
+    throw Exception('Missing access or refresh token in response');
+  }
+  
   final role = JwtUtils.extractRole(accessToken) ?? 'CASHIER';
   final orgId = JwtUtils.extractOrganizationId(accessToken) ?? '';
 
@@ -167,6 +208,8 @@ class AuthState {
   final User? user;
   final Organization? organization;
   final List<UserRoleAssignment> roles;
+  final List<UserBusinessMembership> availableOrganizations;
+  final User? pendingUser;
 
   const AuthState({
     required this.status,
@@ -176,6 +219,8 @@ class AuthState {
     this.user,
     this.organization,
     this.roles = const [],
+    this.availableOrganizations = const [],
+    this.pendingUser,
   });
 
   /// Convenience: is the user currently logged in?
@@ -189,6 +234,8 @@ class AuthState {
     User? user,
     Organization? organization,
     List<UserRoleAssignment>? roles,
+    List<UserBusinessMembership>? availableOrganizations,
+    User? pendingUser,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -198,6 +245,8 @@ class AuthState {
       user: user ?? this.user,
       organization: organization ?? this.organization,
       roles: roles ?? this.roles,
+      availableOrganizations: availableOrganizations ?? this.availableOrganizations,
+      pendingUser: pendingUser ?? this.pendingUser,
     );
   }
 
@@ -208,6 +257,8 @@ class AuthState {
     user: null,
     organization: null,
     roles: [],
+    availableOrganizations: [],
+    pendingUser: null,
   );
 }
 
@@ -273,12 +324,31 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return {'user': user, 'organization': organization};
   }
 
-  // ── Send OTP ─────────────────────────────────────────────────────────────
+  // ── Verify OTP without logging in (for multi-step flows like registration) ─
+  //  Uses the server's "check-only" endpoint: invalid OTPs throw, valid OTPs
+  //  remain available for subsequent consumption by createBusiness.
 
-  Future<void> sendOtp(String phone) async {
+  Future<bool> verifyOtpOnly(String phone, String code) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
-      await _repo.sendOtp(phone);
+      await _repo.checkOtp(phone, code);
+      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+      return false;
+    }
+  }
+
+  // ── Send OTP ─────────────────────────────────────────────────────────────
+
+  Future<void> sendOtp(String phone, {String? purpose}) async {
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      await _repo.sendOtp(phone, purpose: purpose);
       // Return to previous state (or unauthenticated) without triggering navigation
       state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
     } catch (e) {
@@ -305,15 +375,38 @@ class AuthNotifier extends StateNotifier<AuthState> {
         organizationId: organizationId,
       );
       dev.log('[Auth] Login data received: $data');
+
+      // Check if multi-business selection is required
+      if (data['requiresBusinessSelection'] == true) {
+        final businesses = (data['businesses'] as List<dynamic>)
+            .map((b) => UserBusinessMembership.fromJson(b as Map<String, dynamic>))
+            .toList();
+        final pendingUser = data['user'] != null 
+            ? User.fromJson(data['user'] as Map<String, dynamic>) 
+            : null;
+        state = state.copyWith(
+          status: AuthStatus.requiresBusinessSelection,
+          availableOrganizations: businesses,
+          pendingUser: pendingUser,
+          errorMessage: null,
+        );
+        return;
+      }
+
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       final user = data['user'] != null 
           ? User.fromJson(data['user'] as Map<String, dynamic>) 
+          : null;
+      final org = data['organization'] != null 
+          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
           : null;
       final rolesList = (data['roles'] as List<dynamic>?) 
           ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
           .toList() ?? [];
       
-      final userAndOrg = await _fetchUserAndOrganization(tokens.accessToken);
+      final userAndOrg = org != null 
+          ? {'organization': org} 
+          : await _fetchUserAndOrganization(tokens.accessToken);
       state = _authenticatedState(
         tokens, 
         user: user, 
@@ -343,20 +436,155 @@ class AuthNotifier extends StateNotifier<AuthState> {
         code,
         organizationId: organizationId,
       );
+
+      // Check if multi-business selection is required
+      if (data['requiresBusinessSelection'] == true) {
+        final businesses = (data['businesses'] as List<dynamic>)
+            .map((b) => UserBusinessMembership.fromJson(b as Map<String, dynamic>))
+            .toList();
+        final pendingUser = data['user'] != null 
+            ? User.fromJson(data['user'] as Map<String, dynamic>) 
+            : null;
+        state = state.copyWith(
+          status: AuthStatus.requiresBusinessSelection,
+          availableOrganizations: businesses,
+          pendingUser: pendingUser,
+          errorMessage: null,
+        );
+        return;
+      }
+
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       final user = data['user'] != null 
           ? User.fromJson(data['user'] as Map<String, dynamic>) 
+          : null;
+      final org = data['organization'] != null 
+          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
           : null;
       final rolesList = (data['roles'] as List<dynamic>?) 
           ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
           .toList() ?? [];
       
-      final userAndOrg = await _fetchUserAndOrganization(tokens.accessToken);
+      final userAndOrg = org != null 
+          ? {'organization': org} 
+          : await _fetchUserAndOrganization(tokens.accessToken);
       state = _authenticatedState(
         tokens, 
         user: user, 
         organization: userAndOrg['organization'],
         roles: rolesList,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+    }
+  }
+
+  // ── Select Business (for multi-org users) ─────────────────────────────────
+
+  Future<void> selectBusiness(String organizationId) async {
+    final pendingUserId = state.pendingUser?.id ?? state.user?.id;
+    if (pendingUserId == null) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'User not authenticated',
+      );
+      return;
+    }
+
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      final data = await _repo.selectBusiness(
+        userId: pendingUserId,
+        organizationId: organizationId,
+      );
+      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
+      final user = data['user'] != null 
+          ? User.fromJson(data['user'] as Map<String, dynamic>) 
+          : state.pendingUser ?? state.user;
+      final org = data['organization'] != null 
+          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
+          : null;
+      final rolesList = (data['roles'] as List<dynamic>?) 
+          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
+          .toList() ?? state.roles;
+
+      // Convert roles to available orgs for in-app switching
+      final availableOrgs = rolesList
+          .map((r) => UserBusinessMembership(
+                organizationId: r.businessId,
+                organizationName: org?.name ?? r.businessId,
+                role: r.role,
+                branchId: r.branchId,
+              ))
+          .toList();
+      // If we have org name in the currently selected one, fill from list if only this org
+      if (availableOrgs.length == 1 && org != null) {
+        availableOrgs[0] = UserBusinessMembership(
+          organizationId: availableOrgs[0].organizationId,
+          organizationName: org.name,
+          role: availableOrgs[0].role,
+          branchId: availableOrgs[0].branchId,
+        );
+      }
+
+      state = _authenticatedState(
+        tokens, 
+        user: user, 
+        organization: org,
+        roles: rolesList,
+      ).copyWith(
+        availableOrganizations: state.availableOrganizations.isNotEmpty 
+            ? state.availableOrganizations 
+            : availableOrgs,
+        pendingUser: null,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+    }
+  }
+
+  // ── In-app: Switch to another existing organization ───────────────────────
+
+  Future<void> switchBusiness(String organizationId) async {
+    final currentUserId = state.user?.id;
+    if (currentUserId == null) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'User not authenticated',
+      );
+      return;
+    }
+
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      final data = await _repo.selectBusiness(
+        userId: currentUserId,
+        organizationId: organizationId,
+      );
+      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
+      final user = data['user'] != null 
+          ? User.fromJson(data['user'] as Map<String, dynamic>) 
+          : state.user;
+      final org = data['organization'] != null 
+          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
+          : null;
+      final rolesList = (data['roles'] as List<dynamic>?) 
+          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
+          .toList() ?? state.roles;
+
+      state = _authenticatedState(
+        tokens, 
+        user: user, 
+        organization: org,
+        roles: rolesList,
+      ).copyWith(
+        availableOrganizations: state.availableOrganizations,
       );
     } catch (e) {
       state = state.copyWith(
@@ -472,7 +700,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   void clearError() {
     if (state.status == AuthStatus.error) {
-      state = AuthState.unauthenticated;
+      state = state.copyWith(
+        status: AuthStatus.initial,
+        errorMessage: null,
+      );
     }
   }
 
@@ -499,6 +730,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String fullName,
     required String password,
     required String organizationId,
+    String? invitationToken,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
@@ -508,6 +740,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         fullName: fullName,
         password: password,
         organizationId: organizationId,
+        invitationToken: invitationToken,
       );
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       final user = data['user'] != null
@@ -547,6 +780,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final msg = e.toString();
     // Strip the "Exception: " prefix Flutter adds
     if (msg.startsWith('Exception: ')) return msg.substring(11);
+    
+    // Convert common technical errors to user-friendly messages
+    if (msg.contains('SocketException') || msg.contains('Connection refused')) {
+      return 'Unable to connect to server. Please check your internet connection.';
+    }
+    if (msg.contains('timeout')) {
+      return 'Request timed out. Please check your network connection.';
+    }
+    if (msg.contains('HTTP 500') || msg.contains('Internal Server Error')) {
+      return 'Server error. Please try again later.';
+    }
+    if (msg.contains('HTTP 401') || msg.contains('Unauthorized')) {
+      return 'Please log in to continue.';
+    }
+    if (msg.contains('HTTP 403') || msg.contains('Forbidden')) {
+      return 'You do not have permission to perform this action.';
+    }
+    if (msg.contains('HTTP 404') || msg.contains('Not Found')) {
+      return 'Resource not found. Please try again.';
+    }
+    
     return msg;
   }
 }

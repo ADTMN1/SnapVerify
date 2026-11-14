@@ -8,41 +8,224 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentStatus, PaymentProvider, PaymentAccount } from '@prisma/client';
-import * as FormData from 'form-data';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fetch = require('node-fetch') as typeof import('node-fetch').default;
+import { Prisma, PaymentStatus, PaymentProvider, PaymentAccount } from '@prisma/client';
+import { normalizeTransactionId } from './reference-normalizer';
+import {
+  computeAccountNumberHash,
+  normalizeAccountNumber,
+  parseAccountHashVersion,
+} from './account-hash';
+import {
+  ProviderError,
+  ProviderErrorType,
+} from './provider-error';
+import {
+  UpstreamVerificationUnavailableError,
+} from './payment-provider-errors';
+import {
+  CheckEtService,
+  NormalizedVerification,
+  CHECK_ET_SUPPORTED_PDF_MIMES,
+  SNAP_TO_CHECK_ET_BANK,
+} from './check-et/check-et.service';
 
-// OCR scrapes CBE/Telebirr in real time — give it plenty of time
-const VERIFY_TIMEOUT_MS = 90_000;
+/**
+ * Stage 1 review fix: identify the UNIQUE constraint that represents the
+ * payment-reference duplicate protection. Prisma P2002 errors carry the
+ * violated constraint in meta.target as either the index name
+ * ("payments_organizationId_normalizedTransactionId_key") or the field list
+ * (["organizationId","normalizedTransactionId"]).
+ */
+const PAYMENT_REFERENCE_INDEX_NAME =
+  'payments_organizationId_normalizedTransactionId_key';
+const PAYMENT_REFERENCE_FIELDS = ['organizationId', 'normalizedTransactionId'];
+
+function isPaymentReferenceDuplicateError(err: any): boolean {
+  const target = err?.meta?.target;
+  if (!target) return false;
+  if (Array.isArray(target)) {
+    return (
+      PAYMENT_REFERENCE_FIELDS.every((f) => target.includes(f)) &&
+      target.length === PAYMENT_REFERENCE_FIELDS.length
+    );
+  }
+  if (typeof target === 'string') {
+    return target === PAYMENT_REFERENCE_INDEX_NAME;
+  }
+  return false;
+}
+
+/**
+ * Stage 1 (provider error handling): extract an operational detail string
+ * from any upstream failure for logging and the fail-closed 503 response.
+ */
+function upstreamErrorDetail(err: unknown): string {
+  if (err instanceof ProviderError) {
+    return `${err.type}: ${err.message}`;
+  }
+  if (err instanceof UpstreamVerificationUnavailableError) {
+    return err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Financial integrity constants (Stage 1).
+ *
+ * ETB is quoted with at most 2 decimal places; amounts with finer precision
+ * are rejected rather than implicitly rounded, because rounding must never
+ * turn an incorrect amount into a valid payment.
+ */
+const SUPPORTED_CURRENCY = 'ETB';
+const MAX_DECIMAL_PLACES = 2;
+
+/** Strict plain-decimal string, e.g. "100", "999.99". Rejects "1,000", "1e3", "+5", "-5". */
+const DECIMAL_STRING_PATTERN = /^\d+(\.\d+)?$/;
+
+type FinancialValidation =
+  | { ok: true; amount: Prisma.Decimal }
+  | { ok: false; reason: string };
+
+/**
+ * Strictly parse and validate an upstream transaction amount.
+ *
+ * The parsed value is used for financial decisions; malformed input must
+ * never be normalized into zero. Returns a Prisma.Decimal (exact decimal)
+ * on success, or a rejection reason on failure.
+ */
+export function parseVerifiedAmount(value: unknown): FinancialValidation {
+  if (value === undefined || value === null) {
+    return { ok: false, reason: 'Transaction amount is missing' };
+  }
+
+  let candidate: unknown = value;
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0) {
+      return { ok: false, reason: 'Transaction amount is missing' };
+    }
+    if (!DECIMAL_STRING_PATTERN.test(trimmed)) {
+      return { ok: false, reason: 'Transaction amount is not a valid number' };
+    }
+    candidate = trimmed;
+  }
+
+  if (typeof candidate !== 'number' && typeof candidate !== 'string') {
+    return { ok: false, reason: 'Transaction amount is not a valid number' };
+  }
+
+  let amount: Prisma.Decimal;
+  try {
+    amount = new Prisma.Decimal(candidate as string | number);
+  } catch {
+    return { ok: false, reason: 'Transaction amount is not a valid number' };
+  }
+
+  if (!amount.isFinite()) {
+    return { ok: false, reason: 'Transaction amount is not a finite number' };
+  }
+
+  if ((amount.decimalPlaces() ?? 0) > MAX_DECIMAL_PLACES) {
+    return {
+      ok: false,
+      reason: `Transaction amount has more than ${MAX_DECIMAL_PLACES} decimal places`,
+    };
+  }
+
+  if (!amount.greaterThan(0)) {
+    return { ok: false, reason: 'Transaction amount must be greater than zero' };
+  }
+
+  return { ok: true, amount };
+}
+
+/**
+ * Validate that the upstream transaction is denominated in ETB.
+ *
+ * SECURITY NOTE (upstream contract dependency): if the upstream response
+ * omits the currency field we CANNOT confirm the transaction is in ETB and
+ * we fail closed. Approving on the assumption that the provider "probably"
+ * settles in ETB would let a foreign-currency transaction through. When the
+ * upstream contract is formally confirmed to always return ETB transactions
+ * without a currency field, this can be relaxed deliberately — with a test.
+ */
+export function validateVerifiedCurrency(
+  rawCurrency: unknown,
+): FinancialValidation {
+  if (rawCurrency === undefined || rawCurrency === null) {
+    return {
+      ok: false,
+      reason: `Transaction currency could not be confirmed as ${SUPPORTED_CURRENCY}`,
+    };
+  }
+  const normalized = String(rawCurrency).trim().toUpperCase();
+  if (normalized !== SUPPORTED_CURRENCY) {
+    return {
+      ok: false,
+      reason: `Transaction currency ${normalized} is not supported (expected ${SUPPORTED_CURRENCY})`,
+    };
+  }
+  return { ok: true, amount: new Prisma.Decimal(0) };
+}
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
+  /** Identity of the ACTIVE verification vendor, recorded on new rows. */
+  private readonly verificationProvider = 'check_et';
   private readonly skipPrimaryVerification: boolean;
+  private readonly isProduction: boolean;
+  private readonly accountHashSecret: string;
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    private checkEt: CheckEtService,
   ) {
-    this.apiKey = this.config.get<string>('VERIFY_API_KEY', '');
-    this.baseUrl = this.config.get<string>(
-      'VERIFY_LEUL_ET_BASE_URL',
-      'https://verifyapi.leulzenebe.pro',
+    const nodeEnv = this.config.get<string>(
+      'NODE_ENV',
+      process.env.NODE_ENV ?? 'development',
     );
-    this.skipPrimaryVerification = this.config.get<boolean>(
+    this.isProduction = nodeEnv === 'production';
+
+    // SKIP_PRIMARY_VERIFICATION bypasses the upstream Check.et API and
+    // would approve fraudulent payments. It is a fraud vector and is rejected
+    // outright in production. Client requests can never influence this value —
+    // it is read once, from server configuration.
+    const configuredSkip = this.config.get<boolean>(
       'SKIP_PRIMARY_VERIFICATION',
       false,
     );
+    if (configuredSkip && this.isProduction) {
+      throw new Error(
+        'FATAL: SKIP_PRIMARY_VERIFICATION=true is not permitted in production. Upstream payment verification must always run. Remove the override or set NODE_ENV to a non-production value.',
+      );
+    }
+    this.skipPrimaryVerification = configuredSkip === true;
+
+    // Stage 1 review fix: dedicated server-side secret for HMAC account
+    // hashing. Required in production; missing secrets fail fast so that
+    // full-number matching cannot silently degrade.
+    const hashSecret = this.config.get<string>('ACCOUNT_HASH_SECRET', '');
+    if (this.isProduction && (!hashSecret || hashSecret.length < 32)) {
+      throw new Error(
+        'FATAL: ACCOUNT_HASH_SECRET is missing or too short (>= 32 chars required). Generate one with: openssl rand -base64 48',
+      );
+    }
+    if (!hashSecret || hashSecret.length < 32) {
+      this.logger.warn(
+        'ACCOUNT_HASH_SECRET missing or short — hashed full-number matching is DISABLED (dev only); legacy plaintext fallback applies.',
+      );
+    }
+    this.accountHashSecret = hashSecret;
+
     this.logger.log(`=== PaymentService ready ===`);
-    this.logger.log(`  baseUrl: ${this.baseUrl}`);
+    this.logger.log(`  verificationProvider: ${this.verificationProvider}`);
     this.logger.log(
-      `  apiKey present: ${!!this.apiKey} (len=${this.apiKey.length})`,
-    );
-    this.logger.log(
-      `  skipPrimaryVerification: ${this.skipPrimaryVerification}`,
+      `  skipPrimaryVerification: ${this.skipPrimaryVerification}` +
+        (this.skipPrimaryVerification
+          ? ' (DEV-ONLY mock mode — upstream API is NOT called)'
+          : ''),
     );
   }
 
@@ -58,13 +241,63 @@ export class PaymentService {
     return null;
   }
 
-  // Check if payment destination matches registered account
+  /**
+   * Normalize an account number for comparison: strip whitespace, dashes and
+   * underscores. Comparisons are structural only — they never widen the
+   * match (e.g. no substring logic on full numbers).
+   */
+  private _normalizeAccountNumber(value: unknown): string | null {
+    return normalizeAccountNumber(value);
+  }
+
+  /**
+   * Stage 1 review fix: keyed HMAC-SHA-256 (versioned) instead of plain
+   * SHA-256, so leaked database rows cannot be brute-forced offline into
+   * account numbers. Legacy hashes without the hmac-v1 version marker are
+   * ignored by matching until the backfill script rewrites them.
+   */
+  private _hashAccountNumber(normalized: string): string | null {
+    try {
+      return computeAccountNumberHash(normalized, this.accountHashSecret);
+    } catch (e) {
+      // Fail closed: without a usable secret, hash comparison must not
+      // silently degrade — matching falls back to the explicit legacy path,
+      // which is logged.
+      this.logger.error(
+        `[_hashAccountNumber] ${(e as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Stage 1 (receiving-account matching).
+   *
+   * Receiving-account data used here comes EXCLUSIVELY from the organization's
+   * registered PaymentAccount rows and the upstream verification response.
+   * No client-supplied account data participates in a match decision.
+   *
+   * Evidence tiers, strongest first:
+   *   1. Full receiving-account number equality (hash compare when the
+   *      accountNumberHash backfill exists; plaintext compare only as legacy
+   *      fallback until backfill runs — logged).
+   *   2. Exact suffix equality between the registered suffix and the
+   *      upstream suffix field. A definitive mismatch is a hard "no".
+   *   3. Masked upstream number (****1234): tail-digits must equal the
+   *      registered suffix, or the registered suffix must end with them.
+   *      This is a HEURISTIC and is logged as such — masked data alone can
+   *      never be more than partial evidence.
+   *   4. Receiver name EXACT equality (case/whitespace-insensitive). The
+   *      previous substring check was removed: names are not unique enough
+   *      for partial matching and shared words caused false approvals.
+   *
+   * If neither tier 1 nor tier 2 evidence exists in the stored account data,
+   * the match can only be heuristic; callers must treat heuristic-only
+   * matches cautiously (this is reported in the Stage 1 review notes).
+   */
   private _isPaymentToAccount(raw: any, account: PaymentAccount): boolean {
     this.logger.log(
       `[_isPaymentToAccount] Checking account: provider=${account.provider}, suffix=${this._maskSensitive(account.suffix)}, accountNumber=${this._maskSensitive(account.accountNumber)}, accountHolderName=${account.accountHolderName}`,
-    );
-    this.logger.log(
-      `[_isPaymentToAccount] Raw API response: ${JSON.stringify(raw)}`,
     );
 
     if (!raw?.success) {
@@ -72,155 +305,193 @@ export class PaymentService {
       return false;
     }
 
-    // Check receiver info
+    // Upstream provider evidence must agree with the registered account.
+    const detectedProvider = this._detectProvider(raw);
+    if (detectedProvider && detectedProvider !== account.provider) {
+      this.logger.warn(
+        `[_isPaymentToAccount] Provider mismatch: upstream=${detectedProvider} registered=${account.provider}`,
+      );
+      return false;
+    }
+
     const receiverName = raw?.receiver ?? raw?.receiverName;
     const accountNumber =
       raw?.accountNumber ?? raw?.receiverAccountNumber ?? raw?.receiverAccount;
     const suffixFromApi = raw?.suffix;
 
-    this.logger.log(
-      `[_isPaymentToAccount] Extracted from API: receiverName=${receiverName}, accountNumber=${this._maskSensitive(accountNumber)}, suffixFromApi=${this._maskSensitive(suffixFromApi)}`,
-    );
-
-    // CHECK 1: Suffix must match exactly if both are present
-    if (account.suffix && suffixFromApi) {
-      if (account.suffix === suffixFromApi) {
-        this.logger.log(
-          `[_isPaymentToAccount] ✓ Suffix match: ${account.suffix} === ${suffixFromApi}`,
-        );
-        return true;
-      } else {
+    // Tier 1: full receiving-account number comparison (HMAC, versioned).
+    const normalizedApiAccount = this._normalizeAccountNumber(accountNumber);
+    if (
+      normalizedApiAccount &&
+      !normalizedApiAccount.includes('*') &&
+      (account.accountNumberHash || account.accountNumber)
+    ) {
+      const apiHash = this._hashAccountNumber(normalizedApiAccount);
+      if (account.accountNumberHash) {
+        if (
+          // Only versioned hmac-v1 hashes participate; legacy/unrecognized
+          // formats fall through to the legacy path until backfilled.
+          parseAccountHashVersion(account.accountNumberHash) === 'hmac-v1' &&
+          apiHash !== null &&
+          apiHash === account.accountNumberHash
+        ) {
+          return true;
+        }
+        if (parseAccountHashVersion(account.accountNumberHash) === 'hmac-v1') {
+          // Full numbers both present (current hash version) and different
+          // => different accounts. Definitive reject.
+          this.logger.warn(
+            `[_isPaymentToAccount] Full account number mismatch (HMAC compare)`,
+          );
+          return false;
+        }
         this.logger.warn(
-          `[_isPaymentToAccount] ✗ Suffix mismatch: expected ${account.suffix}, got ${suffixFromApi}`,
+          `[_isPaymentToAccount] Stored hash is not hmac-v1 (legacy/plain format) — using legacy plaintext compare until backfill runs`,
+        );
+      }
+      // Legacy path: hash missing or legacy format. Compare plaintext once,
+      // log the deprecation — this path disappears after the backfill.
+      const normalizedRegistered = this._normalizeAccountNumber(
+        account.accountNumber,
+      );
+      if (normalizedRegistered && normalizedApiAccount === normalizedRegistered) {
+        return true;
+      }
+      if (normalizedRegistered) {
+        this.logger.warn(
+          `[_isPaymentToAccount] Full account number mismatch (legacy plaintext compare — run hash backfill)`,
         );
         return false;
       }
     }
 
-    // CHECK 2: Extract suffix from masked account number and match
+    // Tier 2: exact suffix comparison.
+    if (account.suffix && suffixFromApi) {
+      if (account.suffix === suffixFromApi) return true;
+      this.logger.warn(`[_isPaymentToAccount] Suffix mismatch`);
+      return false;
+    }
+
+    // Tier 3: masked upstream number (****1234) vs registered suffix.
     if (account.suffix && accountNumber && typeof accountNumber === 'string') {
-      // Handle masked format like "1****3381" - extract last digits
       const maskedSuffixMatch = accountNumber.match(/\*+(\d+)$/);
       if (maskedSuffixMatch) {
         const extractedSuffix = maskedSuffixMatch[1];
-        this.logger.log(
-          `[_isPaymentToAccount] Extracted suffix from masked account: ${extractedSuffix}`,
-        );
-
-        // First try exact match
-        if (account.suffix === extractedSuffix) {
-          this.logger.log(
-            `[_isPaymentToAccount] ✓ Masked suffix match: ${account.suffix} === ${extractedSuffix}`,
-          );
-          return true;
-        }
-
-        // If no exact match, check if registered suffix ends with the extracted digits
-        // (handles cases where API returns partial suffix like "3381" but registered is "16323381")
+        if (account.suffix === extractedSuffix) return true;
         if (account.suffix.endsWith(extractedSuffix)) {
-          this.logger.log(
-            `[_isPaymentToAccount] ✓ Partial suffix match: ${account.suffix} ends with ${extractedSuffix}`,
-          );
-          return true;
-        }
-
-        this.logger.warn(
-          `[_isPaymentToAccount] ✗ Masked suffix mismatch: expected ${account.suffix} to match ${extractedSuffix}`,
-        );
-      }
-    }
-
-    // CHECK 3: Account number must match exactly if both are present
-    if (account.accountNumber && accountNumber) {
-      const normalize = (s: string) => s.replace(/\s/g, '').replace(/-/g, '');
-      const normalizedAccountNumber = normalize(String(accountNumber));
-      const normalizedRegisteredAccountNumber = normalize(
-        account.accountNumber,
-      );
-
-      if (normalizedAccountNumber === normalizedRegisteredAccountNumber) {
-        this.logger.log(`[_isPaymentToAccount] ✓ Account number match`);
-        return true;
-      } else {
-        this.logger.warn(
-          `[_isPaymentToAccount] ✗ Account number mismatch: expected ${this._maskSensitive(normalizedRegisteredAccountNumber)}, got ${this._maskSensitive(normalizedAccountNumber)}`,
-        );
-      }
-    }
-
-    // CHECK 4: Check if registered account number ends with the same digits as masked account
-    if (
-      account.accountNumber &&
-      accountNumber &&
-      typeof accountNumber === 'string'
-    ) {
-      const normalizedRegistered = account.accountNumber
-        .replace(/\s/g, '')
-        .replace(/-/g, '');
-      const normalizedApi = accountNumber.replace(/\s/g, '').replace(/-/g, '');
-
-      // If API returns masked account like "1****3381", check if registered ends with "3381"
-      if (normalizedApi.includes('****')) {
-        const lastDigits = normalizedApi.replace(/\*+/g, '');
-        if (lastDigits && normalizedRegistered.endsWith(lastDigits)) {
-          this.logger.log(
-            `[_isPaymentToAccount] ✓ Account number ends with matching digits: ${this._maskSensitive(normalizedRegistered)} ends with ${lastDigits}`,
+          // Heuristic only: partial digits of a masked number. Logged so that
+          // reliance on this tier is auditable.
+          this.logger.warn(
+            `[_isPaymentToAccount] Matched via masked-number tail heuristic (partial evidence)`,
           );
           return true;
         }
       }
     }
 
-    // CHECK 5: Account holder name must match (case-insensitive, but must contain full name)
+    // Tier 4: receiver name — EXACT equality only (substring removed in
+    // Stage 1; name substrings were a false-approval vector).
     if (account.accountHolderName && receiverName) {
-      const normalizedReceiverName = String(receiverName).toLowerCase().trim();
-      const normalizedAccountHolderName = String(account.accountHolderName)
-        .toLowerCase()
-        .trim();
-
-      // Check if the registered name is contained in the receiver name
-      if (normalizedReceiverName.includes(normalizedAccountHolderName)) {
-        this.logger.log(`[_isPaymentToAccount] ✓ Account holder match`);
-        return true;
-      } else {
+      const canonical = (s: unknown) =>
+        String(s).toLowerCase().trim().replace(/\s+/g, ' ');
+      if (
+        canonical(receiverName).length > 0 &&
+        canonical(receiverName) === canonical(account.accountHolderName)
+      ) {
         this.logger.warn(
-          `[_isPaymentToAccount] ✗ Account holder mismatch: expected "${normalizedAccountHolderName}", got "${normalizedReceiverName}"`,
+          `[_isPaymentToAccount] Matched via exact receiver-name equality (no number evidence available)`,
         );
+        return true;
       }
     }
 
-    // If none of the checks passed, reject
-    this.logger.warn(
-      `[_isPaymentToAccount] ✗ No match found for any account identifier. Rejecting payment.`,
-    );
     return false;
   }
 
-  // Helper to mask sensitive data in logs
   private _maskSensitive(value: string | null | undefined): string {
     if (!value) return 'null';
     if (value.length <= 4) return '****';
     return value.substring(0, 2) + '****' + value.substring(value.length - 2);
   }
 
-  // ── POST /verify — smart router by reference number ───────────────────────
+  /**
+   * Mask any account-number-like field on a (shallow-copied) raw object.
+   * Shared by the client-facing and persistence sanitizers.
+   */
+  private _maskAccountFields(clone: Record<string, unknown>): Record<string, unknown> {
+    for (const key of Object.keys(clone)) {
+      if (
+        /account(number)?$|accountnumber$/i.test(key) ||
+        /receiveraccount|payeraccount/i.test(key)
+      ) {
+        const value = clone[key];
+        if (typeof value === 'string' && value.length > 4) {
+          clone[key] = this._maskSensitive(value);
+        }
+      }
+    }
+    return clone;
+  }
+
+  /**
+   * Client-facing copy of the provider result: full receiving-account
+   * numbers are ALWAYS masked; only the masked evidence is exposed to the
+   * requesting staff member.
+   */
+  private _sanitizeRawForClient(raw: any): any {
+    if (!raw || typeof raw !== 'object') return raw;
+    return this._maskAccountFields({ ...raw });
+  }
+
+  /**
+   * Persistence copy of the provider result for audit (payments.rawData).
+   *
+   * Unmasked bank account numbers are NOT persisted — a database leak would
+   * otherwise expose every payer/receiver account in full. Retained audit
+   * evidence: verification verdict, bank, amount, currency, transaction
+   * date/reference, payer/receiver names, and masked account tails, which is
+   * sufficient to re-attribute a historical verification.
+   *
+   * NOTE: matching (_isPaymentToAccount) always runs on the UNSANITIZED
+   * shape before persistence; only the stored copy is sanitized.
+   * Legacy Veritas rows in rawData are never rewritten.
+   */
+  private _sanitizeRawForPersistence(raw: any): any {
+    if (!raw || typeof raw !== 'object') return raw;
+    return this._maskAccountFields({ ...raw });
+  }
+
   async verifyByReference(
     referenceNumber: string,
     organizationId: string,
     userId: string,
     amount?: number,
     provider?: string,
-    extractedSuffix?: string, // New: suffix extracted from OCR
+    _extractedSuffix?: string,
   ) {
-    // Enhanced duplicate protection: Check if payment already verified
+    // Stage 1: the client-supplied suffix is deliberately ignored. All
+    // receiving-account data used for upstream calls and match decisions is
+    // derived server-side from the organization's registered accounts.
+    void _extractedSuffix;
+
+    const normalizedReference = normalizeTransactionId(referenceNumber);
+
+    // Stage 1 (duplicate protection): check the app-level guard on BOTH the
+    // raw reference (legacy rows) and the normalized reference (the field
+    // protected by the database unique constraint).
     const existingPayment = await this.prisma.payment.findFirst({
-      where: { organizationId, transactionId: referenceNumber },
+      where: {
+        organizationId,
+        OR: [
+          { transactionId: referenceNumber },
+          ...(normalizedReference
+            ? [{ normalizedTransactionId: normalizedReference }]
+            : []),
+        ],
+      },
     });
 
     if (existingPayment) {
-      this.logger.warn(
-        `[verifyByReference] Duplicate transaction detected: ${referenceNumber} already verified for organization ${organizationId}`,
-      );
       return {
         verified: false,
         status: 'DUPLICATE_TRANSACTION',
@@ -237,20 +508,11 @@ export class PaymentService {
       };
     }
 
-    // Get all active payment accounts for the organization
     const paymentAccounts = await this.prisma.paymentAccount.findMany({
       where: { organizationId, isActive: true },
     });
 
-    this.logger.log(
-      `[verifyByReference] Found ${paymentAccounts.length} registered payment accounts for organization ${organizationId}: ${JSON.stringify(paymentAccounts)}`,
-    );
-
-    // If no registered accounts, reject payment immediately
     if (paymentAccounts.length === 0) {
-      this.logger.warn(
-        `[verifyByReference] No registered payment accounts for organization ${organizationId}`,
-      );
       const raw = {
         success: false,
         reason:
@@ -260,218 +522,335 @@ export class PaymentService {
         raw,
         organizationId,
         userId,
-        {
-          method: 'REFERENCE',
-          transactionId: referenceNumber,
-        },
+        { method: 'REFERENCE', transactionId: referenceNumber },
         null,
       );
     }
 
     if (this.skipPrimaryVerification) {
+      // DEV-ONLY mock mode. Constructor rejects this in production.
       this.logger.warn(
-        `[verifyByReference] SKIP_PRIMARY_VERIFICATION is enabled - this is a security risk in production!`,
+        `[verifyByReference] SKIP_PRIMARY_VERIFICATION active (dev-only mock) — upstream API is NOT being called`,
       );
-      // Even when skipping primary verification, we still need to validate the account
-      // to prevent payments to wrong accounts from being approved
-      if (paymentAccounts.length === 0) {
-        this.logger.warn(
-          `[verifyByReference] No registered payment accounts for organization ${organizationId}`,
-        );
-        const raw = {
-          success: false,
-          reason:
-            'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
-        };
-        return this._saveAndReturn(
-          raw,
-          organizationId,
-          userId,
-          {
-            method: 'REFERENCE',
-            transactionId: referenceNumber,
-          },
-          null,
-        );
-      }
-
-      // In skip mode, we'll use the first account but still require account validation
-      // This ensures payments aren't approved for wrong accounts even in dev mode
-      const raw = { success: true, amount: amount, reference: referenceNumber };
-      this.logger.warn(
-        `[verifyByReference] Skipping Verify.ET API call but still validating account match`,
-      );
-      return this._saveAndReturn(
-        raw,
+      return this._mockApproved(
         organizationId,
         userId,
-        {
-          method: 'REFERENCE',
-          transactionId: referenceNumber,
-        },
+        { method: 'REFERENCE', transactionId: referenceNumber },
         paymentAccounts[0],
+        amount,
       );
     }
 
     let matchedAccount: PaymentAccount | null = null;
     let raw: any = null;
-    let detectedProvider: PaymentProvider | null = null;
+    let hadAnyApiSuccess = false;
+    let lastUpstreamError: string | null = null;
+    let validationRejectionCount = 0;
+    let lastValidationMessage: string | null = null;
+    let otherContinuableFailureCount = 0;
 
-    // First, try to get provider if provided
-    if (provider) {
-      const normalizedProvider = provider
-        .toUpperCase()
-        .replace('-', '_') as PaymentProvider;
-      if (Object.values(PaymentProvider).includes(normalizedProvider)) {
-        detectedProvider = normalizedProvider;
-      }
-    }
-
-    // Determine suffix priority: extracted suffix > stored suffix
-    // If we have an extracted suffix, use that first
-    if (extractedSuffix) {
-      this.logger.log(
-        `[verifyByReference] Using extracted suffix: ${extractedSuffix}`,
-      );
-      // Try to find account with this suffix
-      const accountWithSuffix = paymentAccounts.find(
-        (a) => a.suffix === extractedSuffix,
-      );
-      // Try verification with this suffix
+    // SECURITY: the client-supplied suffix is never sent upstream. Receiving-
+    // account evidence comes exclusively from the REGISTERED account rows.
+    for (const account of paymentAccounts) {
       try {
-        raw = await this._verifyWithSuffix(
-          referenceNumber,
-          extractedSuffix,
-          amount,
+        const verification = await this.checkEt.verifyReference(
+          account.provider,
+          normalizedReference ?? referenceNumber,
+          account.accountNumber,
         );
-        if (raw?.success && accountWithSuffix) {
-          // Verify it's to the correct account
-          if (this._isPaymentToAccount(raw, accountWithSuffix)) {
-            matchedAccount = accountWithSuffix;
-            this.logger.log(
-              `[verifyByReference] Matched account via extracted suffix: ${accountWithSuffix.id}`,
-            );
-          } else {
-            this.logger.warn(
-              `[verifyByReference] Payment not to registered account`,
-            );
-            raw.success = false;
-            raw.reason =
-              'This payment was sent to a different account. Please ensure the payment was made to your registered business account.';
-            matchedAccount = null;
-          }
+        hadAnyApiSuccess = true;
+
+        // Check.et's own branch-scoped duplicate detection.
+        if (verification.duplicate) {
+          return {
+            verified: false,
+            status: 'DUPLICATE_TRANSACTION',
+            amount: 0,
+            currency: 'ETB',
+            transactionId: referenceNumber,
+            senderName: null,
+            receiverName: null,
+            riskScore: 80,
+            message:
+              'This payment has already been verified. Each transaction can only be verified once.',
+            raw: null,
+          };
         }
+
+        if (verification.success && this._isPaymentToVerification(verification, account)) {
+          raw = this._toRawShape(verification);
+          matchedAccount = account;
+          break;
+        }
+        if (!raw) raw = this._toRawShape(verification);
       } catch (e) {
-        this.logger.warn(
-          `[verifyByReference] Verification with extracted suffix failed`,
-          e,
-        );
-      }
-    }
-
-    // If no match yet, try all registered accounts
-    if (!raw?.success && paymentAccounts.length > 0) {
-      for (const account of paymentAccounts) {
-        try {
-          this.logger.log(
-            `[verifyByReference] Trying with account: ${account.provider}, suffix: ${account.suffix}`,
-          );
-          const accountRaw = await this._verifyWithSuffix(
-            referenceNumber,
-            account.suffix,
-            amount,
-            account.provider,
-          );
-          if (
-            accountRaw?.success &&
-            this._isPaymentToAccount(accountRaw, account)
-          ) {
-            raw = accountRaw;
-            matchedAccount = account;
-            detectedProvider = account.provider;
-            this.logger.log(
-              `[verifyByReference] Matched account: ${account.id}`,
-            );
-            break;
+        lastUpstreamError = upstreamErrorDetail(e);
+        if (e instanceof ProviderError) {
+          const failClosed = this._handleProviderError(e, 'verifyByReference');
+          if (failClosed) throw failClosed;
+          if (e.type === ProviderErrorType.VALIDATION_ERROR) {
+            validationRejectionCount++;
+            lastValidationMessage = e.message || lastValidationMessage;
+          } else {
+            // TRANSACTION_NOT_FOUND / UNKNOWN: continuable, authoritative negative.
+            otherContinuableFailureCount++;
           }
-        } catch (e) {
-          this.logger.warn(
-            `[verifyByReference] Verification with account ${account.id} failed`,
-            e,
-          );
+        } else {
+          otherContinuableFailureCount++;
         }
       }
     }
 
-    // If still no raw, fallback
-    if (!raw) {
-      this.logger.warn(
-        `[verifyByReference] No verification successful, falling back`,
+    if (!hadAnyApiSuccess) {
+      if (validationRejectionCount > 0 && otherContinuableFailureCount === 0) {
+        // Provider responded authoritatively (business validation rejection),
+        // so this is not an infrastructure/service-unavailable condition.
+        const rejectionRaw = {
+          success: false,
+          reason:
+            lastValidationMessage ||
+            'This payment could not be verified against the registered receiving account.',
+        };
+        return this._saveAndReturn(
+          rejectionRaw,
+          organizationId,
+          userId,
+          { method: 'REFERENCE', transactionId: referenceNumber },
+          null,
+        );
+      }
+      const msg =
+        'Verification service is temporarily unavailable. Please try again in a few minutes.';
+      this.logger.error(
+        `[verifyByReference] ALL upstream calls failed. lastError=${lastUpstreamError} — fail closed`,
       );
+      throw new HttpException(
+        {
+          verified: false,
+          status: 'SERVICE_UNAVAILABLE',
+          message: msg,
+          detail: lastUpstreamError,
+          retryAfterMs: 60_000,
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    // SECURITY: a provider-confirmed transaction that went to a DIFFERENT
+    // receiving account must never be approved. Downgrade to a failed
+    // verification regardless of the provider's success flag.
+    if (raw?.success && !matchedAccount) {
+      raw = {
+        ...raw,
+        success: false,
+        reason:
+          'This payment was sent to a different account. Please ensure the payment was made to your registered business account.',
+      };
+    }
+
+    if (!raw) {
       raw = {
         success: false,
         reason:
           'Unable to verify this payment. Please check the transaction details and try again.',
       };
-    }
-
-    // If we found a matched account, use that
-    // Now detect provider from raw response if not provided
-    if (!detectedProvider) {
-      detectedProvider = this._detectProvider(raw);
     }
 
     return this._saveAndReturn(
       raw,
       organizationId,
       userId,
-      {
-        method: 'REFERENCE',
-        transactionId: referenceNumber,
-      },
+      { method: 'REFERENCE', transactionId: referenceNumber },
       matchedAccount,
     );
   }
 
-  // Helper to verify with specific suffix
-  private async _verifyWithSuffix(
-    referenceNumber: string,
-    suffix: string | null,
-    amount?: number,
-    provider?: PaymentProvider,
-  ): Promise<any> {
-    const url = `${this.baseUrl}/verify`;
-    const body: Record<string, any> = { reference: referenceNumber };
-    if (suffix) body.suffix = suffix;
-    if (amount) body.amount = amount;
+  /**
+   * Resolve Check.et receipt-file verification hints from the merchant's
+   * registered receiving accounts (already scoped to organization and, when
+   * applicable, the caller's branch).
+   *
+   * CBE and BOA require the receiving account_number. We only supply it when
+   * the destination is unambiguous from existing account assignment rules;
+   * otherwise we fail safely before calling the provider.
+   */
+  private _resolveReceiptVerificationParams(
+    paymentAccounts: PaymentAccount[],
+  ): { bankHint?: 'cbe' | 'boa'; accountNumber?: string } {
+    const requiring = paymentAccounts
+      .map((account) => {
+        const bankHint = SNAP_TO_CHECK_ET_BANK[account.provider];
+        if (bankHint !== 'cbe' && bankHint !== 'boa') return null;
+        const normalized = this._normalizeAccountNumber(account.accountNumber);
+        if (!normalized) {
+          return { account, bankHint, accountNumber: null as string | null };
+        }
+        return { account, bankHint, accountNumber: account.accountNumber as string };
+      })
+      .filter(
+        (
+          v,
+        ): v is {
+          account: PaymentAccount;
+          bankHint: 'cbe' | 'boa';
+          accountNumber: string | null;
+        } => v !== null,
+      );
 
-    this.logger.log(
-      `[verifyByReference] POST ${url} body=${JSON.stringify(body)}`,
-    );
-    return this._fetchJson(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': this.apiKey },
-      body: JSON.stringify(body),
-    });
+    if (requiring.length === 0) {
+      return {};
+    }
+
+    const missing = requiring.find((r) => !r.accountNumber);
+    if (missing) {
+      throw new BadRequestException(
+        'The receiving bank account number for this bank is not configured. Please update your payment account settings and try again.',
+      );
+    }
+
+    const unique = new Map<string, { bankHint: 'cbe' | 'boa'; accountNumber: string }>();
+    for (const r of requiring) {
+      const normalized = this._normalizeAccountNumber(r.accountNumber)!;
+      unique.set(`${r.bankHint}:${normalized}`, {
+        bankHint: r.bankHint,
+        accountNumber: r.accountNumber!,
+      });
+    }
+
+    if (unique.size !== 1) {
+      throw new BadRequestException(
+        'Unable to determine which receiving bank account this receipt belongs to. Please ensure the correct payment account is configured for this branch or organization.',
+      );
+    }
+
+    return [...unique.values()][0];
   }
 
-  // ── POST /verify-image?autoVerify=true — OCR ───────────────────────────────
+  /**
+   * Translate a typed CheckEtError into a fail-closed user-facing exception.
+   * Returns null when the error is per-account-continuable (validation and
+   * negative answers do not abort the loop).
+   */
+  private _handleProviderError(e: ProviderError, context: string) {
+    if (e.isRetryable) {
+      this.logger.error(
+        `[${context}] provider failure (${e.type}, HTTP ${e.httpStatus}): ${e.message} — fail closed`,
+      );
+      return new HttpException(
+        {
+          verified: false,
+          status: 'SERVICE_UNAVAILABLE',
+          message:
+            'Verification service is temporarily unavailable. Please try again in a few minutes.',
+          detail: upstreamErrorDetail(e),
+          retryAfterMs: 60_000,
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    switch (e.type) {
+      case ProviderErrorType.QUOTA_EXHAUSTED:
+        this.logger.error(
+          `[${context}] Check.et quota exhausted (HTTP ${e.httpStatus}) — fail closed`,
+        );
+        return new HttpException(
+          {
+            verified: false,
+            status: 'QUOTA_EXHAUSTED',
+            message:
+              'Verification quota exhausted. The payment could not be verified. Please contact your administrator.',
+            detail: e.message,
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      case ProviderErrorType.AUTH_ERROR:
+        this.logger.error(
+          `[${context}] Check.et credentials rejected (HTTP ${e.httpStatus}) — fail closed`,
+        );
+        return new HttpException(
+          {
+            verified: false,
+            status: 'PROVIDER_CONFIG_ERROR',
+            message:
+              'Payment verification is temporarily misconfigured. Please contact your administrator.',
+            detail: e.message,
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      default:
+        // VALIDATION_ERROR / TRANSACTION_NOT_FOUND / UNKNOWN: not fatal for
+        // other registered accounts — continue the account loop.
+        return null;
+    }
+  }
+
+  /** Adapt a NormalizedVerification to the raw-shape used by match/persist. */
+  private _toRawShape(v: NormalizedVerification): any {
+    return {
+      success: v.success,
+      duplicate: v.duplicate,
+      reason: v.message ?? undefined,
+      provider: v.provider ?? undefined,
+      checkEtBank: v.checkEtBank ?? undefined,
+      verificationId: v.verificationId ?? undefined,
+      transactionNumber: v.transactionNumber ?? undefined,
+      transactionReference: v.transactionNumber ?? undefined,
+      amount: v.amount ?? undefined,
+      currency: v.currency ?? undefined,
+      transactionDate: v.transactionDate ?? undefined,
+      payer: v.payer ?? undefined,
+      payerAccountNumber: v.payerAccount ?? undefined,
+      receiver: v.receiver ?? undefined,
+      receiverAccountNumber: v.receiverAccount ?? undefined,
+      accountNumber: v.receiverAccount ?? undefined,
+      verificationMethod: v.verificationMethod ?? undefined,
+      snapverifyVerificationProvider: this.verificationProvider,
+    };
+  }
+
+  /** Match a normalized Check.et answer against a registered account. */
+  private _isPaymentToVerification(
+    v: NormalizedVerification,
+    account: PaymentAccount,
+  ): boolean {
+    return this._isPaymentToAccount(this._toRawShape(v), account);
+  }
+
+  /**
+   * DEV-ONLY synthetic approval path.
+   *
+   * Unreachable in production because the constructor rejects
+   * SKIP_PRIMARY_VERIFICATION when NODE_ENV=production.
+   */
+  /**
+   * Verify by receipt file (PDF) or image + on-device OCR text.
+   *
+   * Check.et workflow (official docs):
+   *  - PDF: parsed server-side, receipt_text not needed.
+   *  - Images (JPG/PNG/WEBP): receipt_text from the client's OCR is REQUIRED.
+   * OCR text is NEVER trusted for approval — only the provider's confirmed
+   * verification result (success) plus receiver-account matching and the
+   * financial gates in _saveAndReturn may mark a payment VERIFIED.
+   */
   async verifyByImage(
     imageBuffer: Buffer,
     mimeType: string,
     organizationId: string,
     userId: string,
+    receiptText?: string,
+    userBranchId?: string | null,
   ) {
-    // Get all active payment accounts
-    const paymentAccounts = await this.prisma.paymentAccount.findMany({
+    let paymentAccounts = await this.prisma.paymentAccount.findMany({
       where: { organizationId, isActive: true },
     });
 
-    // If no registered accounts, reject payment immediately
-    if (paymentAccounts.length === 0) {
-      this.logger.warn(
-        `[verifyByImage] No registered payment accounts for organization ${organizationId}`,
+    if (userBranchId) {
+      paymentAccounts = paymentAccounts.filter(
+        (a) => a.branchId === null || a.branchId === userBranchId,
       );
+    }
+
+    if (paymentAccounts.length === 0) {
       const raw = {
         success: false,
         reason:
@@ -481,140 +860,110 @@ export class PaymentService {
         raw,
         organizationId,
         userId,
-        {
-          method: 'IMAGE_OCR',
-          transactionId: `OCR-${Date.now()}`,
-        },
+        { method: 'IMAGE_OCR', transactionId: `OCR-${Date.now()}` },
         null,
       );
     }
 
     if (this.skipPrimaryVerification) {
+      // DEV-ONLY mock mode. Constructor rejects this in production.
       this.logger.warn(
-        `[verifyByImage] SKIP_PRIMARY_VERIFICATION is enabled - this is a security risk in production!`,
+        `[verifyByImage] SKIP_PRIMARY_VERIFICATION active (dev-only mock) — upstream API is NOT being called`,
       );
-      // Even when skipping primary verification, we still need to validate the account
-      if (paymentAccounts.length === 0) {
-        this.logger.warn(
-          `[verifyByImage] No registered payment accounts for organization ${organizationId}`,
-        );
-        const raw = {
-          success: false,
-          reason:
-            'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
-        };
-        return this._saveAndReturn(
-          raw,
-          organizationId,
-          userId,
-          {
-            method: 'IMAGE_OCR',
-            transactionId: `OCR-${Date.now()}`,
-          },
-          null,
-        );
-      }
-
-      const raw = { success: true, reference: `OCR-${Date.now()}` };
-      this.logger.warn(
-        `[verifyByImage] Skipping Verify.ET API call but still validating account match`,
-      );
-      return this._saveAndReturn(
-        raw,
+      return this._mockApproved(
         organizationId,
         userId,
-        {
-          method: 'IMAGE_OCR',
-          transactionId: `OCR-${Date.now()}`,
-        },
+        { method: 'IMAGE_OCR', transactionId: `OCR-${Date.now()}` },
         paymentAccounts[0],
       );
     }
 
-    let raw: any = null;
+    const normalizedMime = (mimeType || '').toLowerCase();
+    const isPdf = CHECK_ET_SUPPORTED_PDF_MIMES.has(normalizedMime);
+    // Check.et requires OCR text for image receipts; PDFs are parsed
+    // server-side. Validate before spending a provider call.
+    if (!isPdf && (!receiptText || receiptText.trim().length === 0)) {
+      throw new BadRequestException(
+        'Could not read the receipt. Please capture a clearer image that includes the transaction details.',
+      );
+    }
+
+    const { bankHint, accountNumber } =
+      this._resolveReceiptVerificationParams(paymentAccounts);
+
+    let verification: NormalizedVerification | null = null;
+    try {
+      verification = await this.checkEt.verifyReceiptFile({
+        file: imageBuffer,
+        filename: isPdf ? 'receipt.pdf' : 'capture.jpg',
+        contentType: normalizedMime || 'image/jpeg',
+        receiptText: receiptText?.slice(0, 50_000),
+        ...(bankHint ? { bankHint } : {}),
+        ...(accountNumber ? { accountNumber } : {}),
+      });
+    } catch (e: any) {
+      if (e instanceof ProviderError) {
+        const failClosed = this._handleProviderError(e, 'verifyByImage');
+        if (failClosed) throw failClosed;
+        // VALIDATION_ERROR / unknown: unreadable or unsupported receipt.
+        this.logger.warn(
+          `[verifyByImage] receipt rejected by provider (${e.type}): ${e.message}`,
+        );
+        throw new BadRequestException(
+          'The receipt could not be verified. Make sure the full receipt is visible, readable, and in a supported format (PDF, JPG, PNG, WEBP).',
+        );
+      }
+      if (e instanceof UpstreamVerificationUnavailableError) {
+        throw new BadRequestException(
+          'The receipt could not be verified. Supported formats are PDF, JPG, PNG, and WEBP.',
+        );
+      }
+      throw e;
+    }
+
+    // Check.et's own branch-scoped duplicate detection.
+    if (verification.duplicate) {
+      return {
+        verified: false,
+        status: 'DUPLICATE_TRANSACTION',
+        amount: 0,
+        currency: 'ETB',
+        transactionId: verification.transactionNumber ?? `OCR-${Date.now()}`,
+        senderName: null,
+        receiverName: null,
+        riskScore: 80,
+        message:
+          'This payment has already been verified. Each transaction can only be verified once.',
+        raw: null,
+      };
+    }
+
+    let raw: any = this._toRawShape(verification);
     let matchedAccount: PaymentAccount | null = null;
 
-    try {
-      // First, let's call /verify-image to get OCR data first
-      const url = `${this.baseUrl}/verify-image?autoVerify=true`;
+    if (verification.success) {
+      // Provider-confirmed transaction. Approval additionally requires the
+      // receiver evidence to agree with a REGISTERED account.
+      const detectedProvider = verification.provider;
+      const accountsToTry = detectedProvider
+        ? paymentAccounts.filter((a) => a.provider === detectedProvider)
+        : paymentAccounts;
 
-      this.logger.log(
-        `[verifyByImage] POST ${url} size=${imageBuffer.length}b mime=${mimeType}`,
-      );
-
-      // Step 1: First OCR pass to get provider and details
-      const form = new (FormData as any)();
-      form.append('file', imageBuffer, {
-        filename: 'capture.jpg',
-        contentType: mimeType || 'image/jpeg',
-      });
-
-      raw = await this._fetchJson(url, {
-        method: 'POST',
-        headers: { 'x-api-key': this.apiKey, ...form.getHeaders() },
-        body: form,
-      });
-
-      // Step 2: Detect provider and try to match with accounts
-      const detectedProvider = this._detectProvider(raw);
-      const reference = raw?.reference ?? raw?.transactionReference;
-      const amount =
-        parseFloat(
-          raw?.amount ?? raw?.transactionAmount ?? raw?.settledAmount ?? '0',
-        ) || 0;
-
-      if (reference) {
-        // Try all payment accounts with this provider or all accounts if no provider
-        const accountsToTry = detectedProvider
-          ? paymentAccounts.filter((a) => a.provider === detectedProvider)
-          : paymentAccounts;
-
-        for (const account of accountsToTry) {
-          try {
-            this.logger.log(
-              `[verifyByImage] Trying with account: ${account.id}`,
-            );
-            const accountRaw = await this._verifyWithSuffix(
-              reference,
-              account.suffix,
-              amount,
-              account.provider,
-            );
-            if (
-              accountRaw?.success &&
-              this._isPaymentToAccount(accountRaw, account)
-            ) {
-              raw = accountRaw;
-              matchedAccount = account;
-              this.logger.log(`[verifyByImage] Matched account: ${account.id}`);
-              break;
-            }
-          } catch (e) {
-            this.logger.warn(
-              `[verifyByImage] Verification with account ${account.id} failed`,
-              e,
-            );
-          }
+      for (const account of accountsToTry) {
+        if (this._isPaymentToVerification(verification, account)) {
+          matchedAccount = account;
+          break;
         }
       }
 
-      // If no matched account but raw has success, mark it as not to our account
-      if (raw?.success && !matchedAccount) {
-        this.logger.warn(`[verifyByImage] Payment not to registered account`);
-        raw.success = false;
-        raw.reason =
-          'This payment was sent to a different account. Please ensure the payment was made to your registered business account.';
+      if (!matchedAccount) {
+        raw = {
+          ...raw,
+          success: false,
+          reason:
+            'This payment was sent to a different account. Please ensure the payment was made to your registered business account.',
+        };
       }
-    } catch (e: any) {
-      this.logger.warn(
-        `[verifyByImage] OCR verification failed, falling back to local verification. Error: ${e.message}`,
-        e,
-      );
-      raw = {
-        success: false,
-        reason:
-          'Unable to verify this payment. Please check the transaction details and try again.',
-      };
     }
 
     return this._saveAndReturn(
@@ -624,60 +973,12 @@ export class PaymentService {
       {
         method: 'IMAGE_OCR',
         transactionId:
-          raw?.reference ?? raw?.transactionReference ?? `OCR-${Date.now()}`,
+          verification.transactionNumber ?? `OCR-${Date.now()}`,
       },
       matchedAccount,
     );
   }
 
-  // ── HTTP helper with timeout + full logging ────────────────────────────────
-  private async _fetchJson(url: string, options: any): Promise<any> {
-    let rawText: string;
-    let httpStatus: number;
-
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
-
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-
-      httpStatus = res.status;
-      rawText = await res.text();
-    } catch (err: any) {
-      const msg =
-        err?.name === 'AbortError'
-          ? `verify.leul.et timed out after ${VERIFY_TIMEOUT_MS / 1000}s`
-          : `Network error: ${err?.message ?? String(err)}`;
-      this.logger.error(`[_fetchJson] ${url} → ${msg}`, err);
-      throw new InternalServerErrorException(msg);
-    }
-
-    this.logger.log(`[_fetchJson] ${url} → HTTP ${httpStatus}`);
-    this.logger.log(`[_fetchJson] response body: ${rawText.slice(0, 500)}`);
-
-    let json: any;
-    try {
-      json = JSON.parse(rawText);
-    } catch (parseError) {
-      const msg = `Non-JSON response (HTTP ${httpStatus}): ${rawText.slice(0, 300)}`;
-      this.logger.error(`[_fetchJson] ${msg}`, parseError);
-      throw new HttpException(msg, HttpStatus.BAD_GATEWAY);
-    }
-
-    if (httpStatus >= 400) {
-      const msg =
-        json?.message ??
-        json?.error ??
-        `HTTP ${httpStatus} from verify.leul.et`;
-      this.logger.error(`[_fetchJson] API error: ${msg}`);
-      throw new HttpException(msg, HttpStatus.BAD_GATEWAY);
-    }
-
-    return json;
-  }
-
-  // ── Normalize response + persist ──────────────────────────────────────────
   private async _saveAndReturn(
     raw: any,
     organizationId: string,
@@ -685,27 +986,51 @@ export class PaymentService {
     meta: { method: string; transactionId: string },
     matchedAccount: PaymentAccount | null,
   ) {
-    this.logger.log(`[_saveAndReturn] raw=${JSON.stringify(raw)}`);
+    let verified: boolean = raw?.success === true;
 
-    // API returns { success: true, payer, receiver, amount, ... } — flat, NO 'data' wrapper
-    const verified: boolean = raw?.success === true;
+    // FINANCIAL INTEGRITY GATE (Stage 1):
+    // A transaction may only be approved when the upstream response carries a
+    // strictly valid, independently verified amount AND the currency is
+    // confirmed as ETB. Invalid financial data downgrades the verification to
+    // FAILED — it must never persist as a zero-value approved payment.
+    if (verified) {
+      const amountCheck = parseVerifiedAmount(
+        raw?.amount ?? raw?.transactionAmount ?? raw?.settledAmount,
+      );
+      if (!amountCheck.ok) {
+        verified = false;
+        raw = { ...raw, success: false, reason: amountCheck.reason };
+        this.logger.warn(
+          `[_saveAndReturn] Rejected approval — invalid upstream amount: ${amountCheck.reason}`,
+        );
+      } else {
+        const currencyCheck = validateVerifiedCurrency(
+          raw?.currency ?? raw?.transactionCurrency ?? raw?.settledCurrency,
+        );
+        if (!currencyCheck.ok) {
+          verified = false;
+          raw = { ...raw, success: false, reason: currencyCheck.reason };
+          this.logger.warn(
+            `[_saveAndReturn] Rejected approval — ${currencyCheck.reason}`,
+          );
+        }
+      }
+    }
 
     const status: PaymentStatus = verified
       ? PaymentStatus.VERIFIED
       : PaymentStatus.FAILED;
 
-    // Field names differ per provider — handle all variants
-    const amount =
-      parseFloat(
-        raw?.amount ?? raw?.transactionAmount ?? raw?.settledAmount ?? '0',
-      ) || 0;
-
-    const senderName =
-      raw?.payer ?? // CBE /verify
-      raw?.senderName ?? // Dashen
-      raw?.payerName ?? // Telebirr
-      null;
-
+    // Store the independently verified transaction amount. For rejected
+    // transactions the (possibly malformed) amount is stored as 0 — the
+    // zero-value row is always FAILED, never approved.
+    const amountCheckForStorage = parseVerifiedAmount(
+      raw?.amount ?? raw?.transactionAmount ?? raw?.settledAmount,
+    );
+    const amount = amountCheckForStorage.ok
+      ? amountCheckForStorage.amount
+      : new Prisma.Decimal(0);
+    const senderName = raw?.payer ?? raw?.senderName ?? raw?.payerName ?? null;
     const receiverName = raw?.receiver ?? raw?.receiverName ?? null;
 
     let payment: any;
@@ -718,18 +1043,71 @@ export class PaymentService {
           currency: 'ETB',
           paymentMethod: meta.method,
           transactionId: meta.transactionId,
+          // Stage 1: deterministic normalized reference. Null for empty
+          // references — PostgreSQL unique constraints ignore NULLs, so
+          // unparseable references can never spuriously block other rows.
+          normalizedTransactionId: normalizeTransactionId(meta.transactionId),
           senderName,
           receiverName,
           status,
           riskScore: verified ? 0 : 80,
-          rawData: raw,
+          // Sanitized BEFORE persistence: no unmasked bank account numbers
+          // are stored (see _sanitizeRawForPersistence).
+          rawData: this._sanitizeRawForPersistence(raw),
+          // Record the active verification vendor on new rows (NULL for
+          // legacy Veritas-era rows — historical data is never rewritten).
+          verificationProvider: this.verificationProvider,
         },
       });
-      this.logger.log(
-        `[_saveAndReturn] saved payment id=${payment.id} verified=${verified}`,
-      );
     } catch (dbErr: any) {
-      this.logger.error(`[_saveAndReturn] DB error: ${dbErr?.message}`);
+      // Stage 1 review fix: ONLY a unique-constraint violation on the
+      // payment-reference constraint means a concurrent request verified the
+      // same transaction first (DUPLICATE_TRANSACTION outcome). Any OTHER
+      // unique violation — current or future — must follow the normal error
+      // path, never masquerade as a duplicate payment.
+      if (dbErr?.code === 'P2002' && isPaymentReferenceDuplicateError(dbErr)) {
+        this.logger.warn(
+          `[_saveAndReturn] Concurrent duplicate blocked by database constraint (org=${organizationId})`,
+        );
+        const normalized = normalizeTransactionId(meta.transactionId);
+        const winner = await this.prisma.payment.findFirst({
+          where: {
+            organizationId,
+            OR: [
+              { transactionId: meta.transactionId },
+              ...(normalized ? [{ normalizedTransactionId: normalized }] : []),
+            ],
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (winner) {
+          return {
+            verified: false,
+            status: 'DUPLICATE_TRANSACTION',
+            paymentId: winner.id,
+            amount: Number(winner.amount),
+            currency: 'ETB',
+            transactionId: winner.transactionId,
+            senderName: winner.senderName,
+            receiverName: winner.receiverName,
+            riskScore: winner.riskScore,
+            message:
+              'This payment has already been verified. Each transaction can only be verified once.',
+            raw: null,
+          };
+        }
+        // Constraint fired but the winning row is not visible (should not
+        // happen); fail closed rather than double-record.
+        throw new HttpException(
+          {
+            verified: false,
+            status: 'DUPLICATE_TRANSACTION',
+            message:
+              'This payment has already been verified. Each transaction can only be verified once.',
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
       throw new InternalServerErrorException(
         `Database error: ${dbErr?.message}`,
       );
@@ -750,16 +1128,18 @@ export class PaymentService {
               : 'Payment could not be verified'),
           riskScore: verified ? 0 : 80,
           matchedProvider: matchedAccount?.provider ?? null,
-          matchedAccountNumber: matchedAccount?.accountNumber ?? null,
+          // Stage 1 (data minimization): never persist the full account
+          // number in logs.
+          matchedAccountNumber: matchedAccount
+            ? this._maskSensitive(matchedAccount.accountNumber)
+            : null,
           matchedSuffix: matchedAccount?.suffix ?? null,
           matchedBranchId: matchedAccount?.branchId ?? null,
           matchedPaymentAccountId: matchedAccount?.id ?? null,
         },
       });
-    } catch (e: any) {
-      this.logger.warn(
-        `[_saveAndReturn] log save failed (non-fatal): ${e?.message}`,
-      );
+    } catch {
+      // non-fatal
     }
 
     return {
@@ -778,7 +1158,85 @@ export class PaymentService {
         (verified
           ? 'Payment verified successfully'
           : 'Unable to verify payment. Please check the details and try again.'),
-      raw,
+      raw: this._sanitizeRawForClient(raw),
     };
+  }
+
+  /**
+   * DEV-ONLY synthetic approval path.
+   *
+   * Unreachable in production because constructor rejects
+   * SKIP_PRIMARY_VERIFICATION when NODE_ENV=production.
+   */
+  private _mockApproved(
+    organizationId: string,
+    userId: string,
+    meta: { method: string; transactionId: string },
+    matchedAccount: PaymentAccount | null,
+    amount?: number,
+  ) {
+    const raw = {
+      success: true,
+      // The dev-only mock simulates a trusted upstream response; it must carry
+      // the same complete financial evidence required of the real upstream,
+      // otherwise the Stage 1 financial gate would (correctly) reject it.
+      amount: amount ?? 0,
+      currency: SUPPORTED_CURRENCY,
+      reference: meta.transactionId,
+      receiver: matchedAccount?.accountHolderName ?? null,
+      suffix: matchedAccount?.suffix ?? null,
+    };
+    this.logger.warn(
+      `[_mockApproved] DEV-ONLY mock approval for ${meta.method} transactionId=${meta.transactionId}`,
+    );
+    return this._saveAndReturn(
+      raw,
+      organizationId,
+      userId,
+      meta,
+      matchedAccount,
+    );
+  }
+
+  async getVerificationHistory(
+    organizationId: string,
+    userId?: string,
+    role?: string,
+  ) {
+    const where: any = { organizationId };
+    if (role !== 'OWNER' && role !== 'MANAGER' && userId) {
+      where.userId = userId;
+    }
+
+    const payments = await this.prisma.payment.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        user: {
+          select: { id: true, fullName: true, phone: true },
+        },
+      },
+    });
+
+    return payments.map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      currency: p.currency,
+      status: p.status,
+      paymentMethod: p.paymentMethod,
+      transactionId: p.transactionId,
+      senderName: p.senderName,
+      receiverName: p.receiverName,
+      riskScore: p.riskScore,
+      createdAt: p.createdAt,
+      verifiedBy: p.user
+        ? {
+            id: p.user.id,
+            name: p.user.fullName ?? p.user.phone,
+            phone: p.user.phone,
+          }
+        : null,
+    }));
   }
 }

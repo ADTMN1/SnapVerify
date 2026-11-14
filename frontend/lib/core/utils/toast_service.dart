@@ -11,6 +11,7 @@ class ToastService {
       TwColors.brightGreen,
       Colors.black,
       Icons.check_circle_outline,
+      duration: const Duration(seconds: 2),
     );
   }
 
@@ -20,6 +21,17 @@ class ToastService {
       TwColors.red500,
       Colors.white,
       Icons.error_outline,
+      duration: const Duration(seconds: 4),
+    );
+  }
+
+  static void showWarning(String message) {
+    _showToast(
+      message,
+      const Color(0xFFFF9800),
+      Colors.white,
+      Icons.warning_amber_outlined,
+      duration: const Duration(seconds: 3),
     );
   }
 
@@ -29,6 +41,7 @@ class ToastService {
       TwColors.sky500,
       Colors.white,
       Icons.info_outline,
+      duration: const Duration(seconds: 3),
     );
   }
 
@@ -36,13 +49,16 @@ class ToastService {
     String message,
     Color backgroundColor,
     Color textColor,
-    IconData icon,
-  ) {
+    IconData icon, {
+    required Duration duration,
+  }) {
+    scaffoldMessengerKey.currentState?.clearSnackBars();
+    
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(icon, color: textColor),
+            Icon(icon, color: textColor, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -51,7 +67,10 @@ class ToastService {
                   color: textColor,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
+                  height: 1.4,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -59,11 +78,23 @@ class ToastService {
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
         ),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        duration: const Duration(seconds: 3),
+        margin: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          top: 16,
+        ),
+        duration: duration,
+        elevation: 8,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        dismissDirection: DismissDirection.horizontal,
       ),
     );
+  }
+
+  static BuildContext? _findContext() {
+    return scaffoldMessengerKey.currentContext;
   }
 }

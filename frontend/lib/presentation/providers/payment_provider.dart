@@ -71,8 +71,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         msg.contains('Unauthorized');
   }
 
-  /// Verify from captured image bytes
-  Future<void> verifyImage(Uint8List imageBytes) async {
+  /// Verify from captured image bytes. [ocrText] is the on-device OCR text
+  /// of the receipt (required by the provider for image verification; the
+  /// backend rejects image uploads without it).
+  Future<void> verifyImage(Uint8List imageBytes, {String? ocrText}) async {
     var token = _getToken();
     dev.log(
         '[PaymentProvider] verifyImage token=${token != null ? "present" : "MISSING"}');
@@ -97,6 +99,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         result = await ds.verifyByImage(
           accessToken: token,
           imageBytes: imageBytes,
+          ocrText: ocrText,
         );
       } catch (e) {
         // On 401, refresh token once and retry
@@ -107,6 +110,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           result = await ds.verifyByImage(
             accessToken: token,
             imageBytes: imageBytes,
+            ocrText: ocrText,
           );
         } else {
           rethrow;

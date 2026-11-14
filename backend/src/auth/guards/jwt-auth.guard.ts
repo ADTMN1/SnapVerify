@@ -4,8 +4,11 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { Request } from 'express';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 export interface JwtPayload {
   sub: string;
@@ -18,24 +21,31 @@ export interface JwtPayload {
 
 /**
  * Validates the Bearer token in the Authorization header and attaches the
- * decoded payload to req.user as { sub, organizationId, role }.
- *
- * Apply this guard before RolesGuard.
+ * decoded payload to req.user.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private config: ConfigService,
+    private reflector: Reflector,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const authHeader: string = request.headers['authorization'] ?? '';
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: unknown }>();
+    const authHeader = request.headers.authorization ?? '';
 
     if (!authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException(
-        'Missing or invalid Authorization header',
+        'Authentication required. Please log in.',
       );
     }
 
@@ -46,7 +56,6 @@ export class JwtAuthGuard implements CanActivate {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
 
-      // Attach structured user context to the request
       request.user = {
         sub: payload.sub,
         organizationId: payload.organizationId,
@@ -56,7 +65,9 @@ export class JwtAuthGuard implements CanActivate {
 
       return true;
     } catch {
-      throw new UnauthorizedException('Invalid or expired access token');
+      throw new UnauthorizedException(
+        'Your session has expired. Please log in again.',
+      );
     }
   }
 }

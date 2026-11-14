@@ -20,7 +20,11 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── OTP ───────────────────────────────────────────────────────────────────
 
   @override
-  Future<void> sendOtp(String phone) => remoteDatasource.sendOtp(phone);
+  Future<void> sendOtp(String phone, {String? purpose}) => remoteDatasource.sendOtp(phone, purpose: purpose);
+
+  @override
+  Future<void> checkOtp(String phone, String code) =>
+      remoteDatasource.checkOtp(phone, code);
 
   // ── Password Login ─────────────────────────────────────────────────────────
 
@@ -129,8 +133,13 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── Invitation Management ─────────────────────────────────────────────────
 
   @override
-  Future<List<dynamic>> getInvitations(String phone) {
-    return remoteDatasource.getInvitations(phone);
+  Future<List<dynamic>> checkInvitation(String phone, {String? token}) {
+    return remoteDatasource.checkInvitation(phone, token: token);
+  }
+
+  @override
+  Future<List<dynamic>> getInvitations(String phone, String accessToken) {
+    return remoteDatasource.getInvitations(phone, accessToken);
   }
 
   @override
@@ -140,6 +149,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String fullName,
     required String password,
     required String organizationId,
+    String? invitationToken,
   }) async {
     final data = await remoteDatasource.activateInvitation(
       phone: phone,
@@ -147,6 +157,7 @@ class AuthRepositoryImpl implements AuthRepository {
       fullName: fullName,
       password: password,
       organizationId: organizationId,
+      invitationToken: invitationToken,
     );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
@@ -190,6 +201,21 @@ class AuthRepositoryImpl implements AuthRepository {
     return remoteDatasource.removeStaff(accessToken, staffId);
   }
 
+  @override
+  Future<Map<String, dynamic>> updateStaff(String accessToken, String staffId, {
+    required String fullName,
+    required String role,
+    String? branchId,
+  }) {
+    return remoteDatasource.updateStaff(
+      accessToken,
+      staffId,
+      fullName: fullName,
+      role: role,
+      branchId: branchId,
+    );
+  }
+
   // ── Branch Management ─────────────────────────────────────────────────────
 
   @override
@@ -214,6 +240,21 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> removeBranch(String accessToken, String branchId) {
     return remoteDatasource.removeBranch(accessToken, branchId);
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateBranch(String accessToken, String branchId, {
+    required String name,
+    String? phone,
+    required String address,
+  }) {
+    return remoteDatasource.updateBranch(
+      accessToken,
+      branchId,
+      name: name,
+      phone: phone,
+      address: address,
+    );
   }
 
   // ── Token persistence (secure storage) ───────────────────────────────────
@@ -258,11 +299,34 @@ class AuthRepositoryImpl implements AuthRepository {
     ]);
   }
 
+  // ── Select Business ──────────────────────────────────────────────────────
+
+  @override
+  Future<Map<String, dynamic>> selectBusiness({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final data = await remoteDatasource.selectBusiness(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (data['tokens'] != null) {
+      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
+      await saveTokens(tokens);
+    }
+    return data;
+  }
+
   // ── Helper ────────────────────────────────────────────────────────────────
 
   AuthTokens _tokensFromMap(Map<String, dynamic> data) {
-    final accessToken = data['accessToken'] as String;
-    final refreshToken = data['refreshToken'] as String;
+    final accessToken = data['accessToken']?.toString();
+    final refreshToken = data['refreshToken']?.toString();
+    
+    if (accessToken == null || refreshToken == null) {
+      throw Exception('Missing access or refresh token in response');
+    }
+    
     final role = JwtUtils.extractRole(accessToken) ?? 'CASHIER';
     final orgId = JwtUtils.extractOrganizationId(accessToken) ?? '';
 

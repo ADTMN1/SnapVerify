@@ -32,19 +32,19 @@ class Organization {
   // Factory to create from JSON
   factory Organization.fromJson(Map<String, dynamic> json) {
     return Organization(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      type: json['type'] as String,
-      phone: json['phone'] as String,
-      email: json['email'] as String?,
-      address: json['address'] as String?,
-      city: json['city'] as String?,
-      country: json['country'] as String?,
-      logoUrl: json['logoUrl'] as String?,
-      subscriptionPlan: json['subscriptionPlan'] as String?,
-      status: json['status'] as String? ?? "active",
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
+      phone: json['phone']?.toString() ?? '',
+      email: json['email']?.toString(),
+      address: json['address']?.toString(),
+      city: json['city']?.toString(),
+      country: json['country']?.toString(),
+      logoUrl: json['logoUrl']?.toString(),
+      subscriptionPlan: json['subscriptionPlan']?.toString(),
+      status: json['status']?.toString() ?? "active",
+      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'].toString()) : DateTime.now(),
+      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'].toString()) : DateTime.now(),
     );
   }
 }

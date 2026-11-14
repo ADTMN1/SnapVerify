@@ -43,6 +43,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
   bool _passwordFocused = false;
   bool _confirmPasswordFocused = false;
 
+  // Validation Errors
+  String? _phoneError;
+  String? _otpError;
+  String? _passwordError;
+  String? _confirmPasswordError;
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +61,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
 
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
+    setState(() {
+      _phoneError = null;
+      _otpError = null;
+      _passwordError = null;
+      _confirmPasswordError = null;
+    });
   }
 
   void _setupFocusListeners() {
@@ -98,8 +110,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
   }
 
   Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) return;
+    final phone = _phoneController.text.trim().replaceAll(' ', '');
+    if (phone.isEmpty) {
+      setState(() => _phoneError = 'Phone number is required.');
+      return;
+    }
+    if (!RegExp(r'^(\+?251|0)?9\d{8}$').hasMatch(phone)) {
+      setState(() => _phoneError = 'Please enter a valid Ethiopian phone number.');
+      return;
+    }
     
     await ref.read(authNotifierProvider.notifier).sendOtp(phone);
     
@@ -134,16 +153,38 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         await _sendOtp();
       } else {
         final otp = _otpController.text.trim();
-        if (otp.isEmpty) return;
+        if (otp.isEmpty) {
+          setState(() => _otpError = 'Verification code is required.');
+          return;
+        }
+        if (otp.length != 6) {
+          setState(() => _otpError = 'Verification code must be 6 digits.');
+          return;
+        }
         setState(() => _currentStep = 1);
       }
     } else {
-      if (_passwordController.text != _confirmPasswordController.text) {
-        ToastService.showError('Passwords do not match!');
+      final password = _passwordController.text.trim();
+      if (password.isEmpty) {
+        setState(() => _passwordError = 'Password is required.');
+        return;
+      }
+      if (password.length < 6) {
+        setState(() => _passwordError = 'Password must be at least 6 characters.');
         return;
       }
       
-      final phone = _phoneController.text.trim();
+      final confirmPassword = _confirmPasswordController.text.trim();
+      if (confirmPassword.isEmpty) {
+        setState(() => _confirmPasswordError = 'Please confirm your password.');
+        return;
+      }
+      if (password != confirmPassword) {
+        setState(() => _confirmPasswordError = 'Passwords do not match.');
+        return;
+      }
+      
+      final phone = _phoneController.text.trim().replaceAll(' ', '');
       final otp = _otpController.text.trim();
       final newPassword = _passwordController.text.trim();
       
@@ -174,21 +215,24 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     return Scaffold(
       backgroundColor: TwColors.primaryBg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(size),
-              const SizedBox(height: 24),
-              _buildStepsIndicator(),
-              const SizedBox(height: 28),
-              _buildCurrentStep(),
-              const SizedBox(height: 32),
-              _buildNavigationButtons(authState),
-              const SizedBox(height: 32),
-              _buildLoginLink(),
-            ],
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(size),
+                const SizedBox(height: 24),
+                _buildStepsIndicator(),
+                const SizedBox(height: 28),
+                _buildCurrentStep(),
+                const SizedBox(height: 32),
+                _buildNavigationButtons(authState),
+                const SizedBox(height: 32),
+                _buildLoginLink(),
+              ],
+            ),
           ),
         ),
       ),
@@ -255,7 +299,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                     : null,
               ),
               child: Text(
-                LocaleStrings.languageNames[lang]!,
+                LocaleStrings.languageNames[lang] ?? lang.name,
                 style: TextStyle(
                   color: isSelected ? TwColors.brightGreen : TwColors.slate400,
                   fontSize: 13,
@@ -322,16 +366,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           child: Center(
             child: isCompleted
                 ? const Icon(
-                    Icons.check_rounded,
+                    Icons.done_outline_rounded,
                     color: TwColors.brightGreen,
-                    size: 22,
+                    size: 20,
                   )
                 : Text(
                     '${index + 1}',
                     style: TextStyle(
                       color: isActive ? TwColors.brightGreen : TwColors.slate400,
                       fontSize: 18,
-                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
                     ),
                   ),
           ),
@@ -427,78 +471,150 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
   }
 
   Widget _buildPhoneNumberField() {
-    return _buildUniqueInput(
-      controller: _phoneController,
-      focusNode: _phoneFocusNode,
-      isFocused: _phoneFocused,
-      label: _t('phone_number'),
-      hint: '+251 9XX XXX XXX',
-      icon: Icons.phone_outlined,
-      keyboardType: TextInputType.phone,
-      enabled: !_otpSent,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _phoneController,
+          focusNode: _phoneFocusNode,
+          isFocused: _phoneFocused,
+          label: _t('phone_number'),
+          hint: '+251 9XX XXX XXX',
+          icon: Icons.phone_outlined,
+          keyboardType: TextInputType.phone,
+          enabled: !_otpSent,
+          hasError: _phoneError != null,
+        ),
+        if (_phoneError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _phoneError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildOtpField() {
-    return _buildUniqueInput(
-      controller: _otpController,
-      focusNode: _otpFocusNode,
-      isFocused: _otpFocused,
-      label: _t('otp_code'),
-      hint: '123456',
-      icon: Icons.pin_outlined,
-      keyboardType: TextInputType.number,
-      maxLength: 6,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _otpController,
+          focusNode: _otpFocusNode,
+          isFocused: _otpFocused,
+          label: _t('otp_code'),
+          hint: '123456',
+          icon: Icons.pin_outlined,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          hasError: _otpError != null,
+        ),
+        if (_otpError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _otpError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildPasswordField() {
-    return _buildUniqueInput(
-      controller: _passwordController,
-      focusNode: _passwordFocusNode,
-      isFocused: _passwordFocused,
-      label: _t('password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscurePassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _passwordController,
+          focusNode: _passwordFocusNode,
+          isFocused: _passwordFocused,
+          label: _t('password'),
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
+              size: 16,
+            ),
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+          ),
+          hasError: _passwordError != null,
         ),
-        onPressed: () {
-          setState(() {
-            _obscurePassword = !_obscurePassword;
-          });
-        },
-      ),
+        if (_passwordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _passwordError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildConfirmPasswordField() {
-    return _buildUniqueInput(
-      controller: _confirmPasswordController,
-      focusNode: _confirmPasswordFocusNode,
-      isFocused: _confirmPasswordFocused,
-      label: _t('confirm_password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscureConfirmPassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscureConfirmPassword
-              ? Icons.visibility_off_outlined
-              : Icons.visibility_outlined,
-          color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _confirmPasswordController,
+          focusNode: _confirmPasswordFocusNode,
+          isFocused: _confirmPasswordFocused,
+          label: _t('confirm_password'),
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscureConfirmPassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscureConfirmPassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
+              size: 20,
+            ),
+            onPressed: () {
+              setState(() {
+                _obscureConfirmPassword = !_obscureConfirmPassword;
+              });
+            },
+          ),
+          hasError: _confirmPasswordError != null,
         ),
-        onPressed: () {
-          setState(() {
-            _obscureConfirmPassword = !_obscureConfirmPassword;
-          });
-        },
-      ),
+        if (_confirmPasswordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _confirmPasswordError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -514,23 +630,30 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     bool enabled = true,
     int? maxLength,
     Widget? suffixIcon,
+    bool hasError = false,
   }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isFocused ? TwColors.brightGreen : TwColors.white.withOpacity(0.08),
-          width: isFocused ? 1.5 : 1,
+          color: hasError
+              ? TwColors.red500
+              : isFocused
+                  ? TwColors.brightGreen
+                  : TwColors.white.withOpacity(0.08),
+          width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
             ? [
                 BoxShadow(
-                  color: TwColors.brightGreen.withOpacity(0.15),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
+                  color: hasError
+                      ? TwColors.red500.withOpacity(0.1)
+                      : TwColors.brightGreen.withOpacity(0.1),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2),
                 )
               ]
             : [],
@@ -544,24 +667,24 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         maxLength: maxLength,
         style: const TextStyle(
           color: TwColors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           prefixIcon: Container(
-            margin: const EdgeInsets.only(left: 12, right: 8),
-            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(left: 8, right: 6),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isFocused
                   ? TwColors.brightGreen.withOpacity(0.1)
                   : TwColors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 20,
+              size: 16,
             ),
           ),
           suffixIcon: suffixIcon,
@@ -569,15 +692,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
             label,
             style: TextStyle(
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
           ),
           hintText: hint,
           hintStyle: TextStyle(
             color: TwColors.white.withOpacity(0.3),
-            fontSize: 15,
-            fontWeight: FontWeight.normal,
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
           ),
           border: InputBorder.none,
           counterText: '',
@@ -663,6 +786,21 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                         fontWeight: FontWeight.normal,
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () {
+                        ref.read(authNotifierProvider.notifier).clearError();
+                      },
+                      child: Text(
+                        _t('retry'),
+                        style: TextStyle(
+                          color: TwColors.red500,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -691,12 +829,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         style: ElevatedButton.styleFrom(
           backgroundColor: TwColors.brightGreen,
           foregroundColor: TwColors.primaryBg,
-          padding: const EdgeInsets.symmetric(vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 0,
           shadowColor: Colors.transparent,
+          minimumSize: const Size(double.infinity, 52),
         ),
         child: Text(
           text,

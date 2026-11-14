@@ -68,8 +68,6 @@ class _HomeTabState extends ConsumerState<HomeTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 16),
-                _HeroSection(),
-                const SizedBox(height: 24),
                 if (_branches.isNotEmpty) _BranchSelector(
                   branches: _branches,
                   selectedBranchId: _selectedBranchId,
@@ -120,7 +118,7 @@ class _BranchSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: TwColors.slate800,
+        color: Colors.black,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: TwColors.slate700,
@@ -209,7 +207,7 @@ class _BranchSelector extends StatelessWidget {
                             height: 12,
                             margin: const EdgeInsets.only(right: 10),
                             decoration: BoxDecoration(
-                              color: TwColors.lime400,
+                              color: TwColors.brightGreen,
                               shape: BoxShape.circle,
                             ),
                           ),

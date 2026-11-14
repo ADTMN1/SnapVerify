@@ -6,6 +6,7 @@ import 'core/utils/toast_service.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/business_switcher_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -62,31 +63,44 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   void _handleAuthChange(AuthState authState) {
     if (_isNavigating) return; // Prevent navigation loops
-    
+
+    // Set guard BEFORE scheduling callback, so rapid successive calls
+    // (same frame) are all gated correctly.
+    _isNavigating = true;
+
     print('[Main] Handling auth change: ${authState.status}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_navigatorKey.currentState == null) return;
-
-      _isNavigating = true;
-      
-      if (authState.status == AuthStatus.authenticated) {
-        print('[Main] Navigating to HomeScreen');
-        ToastService.showSuccess('Welcome back!');
-        _navigatorKey.currentState!.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (route) => false,
-        );
-      } else if (authState.status == AuthStatus.unauthenticated) {
-        print('[Main] Navigating to LoginScreen');
-        _navigatorKey.currentState!.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
-      } else if (authState.status == AuthStatus.error && authState.errorMessage != null) {
-        ToastService.showError(authState.errorMessage!);
+      if (_navigatorKey.currentState == null) {
+        _isNavigating = false;
+        return;
       }
-      
-      _isNavigating = false;
+
+      try {
+        if (authState.status == AuthStatus.authenticated) {
+          print('[Main] Navigating to HomeScreen');
+          if (_initialNavigated) ToastService.showSuccess('Welcome back!');
+          _navigatorKey.currentState!.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (route) => false,
+          );
+        } else if (authState.status == AuthStatus.requiresBusinessSelection) {
+          print('[Main] Navigating to BusinessSwitcherScreen (initial selection)');
+          _navigatorKey.currentState!.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen(isInitialSelection: true)),
+            (route) => false,
+          );
+        } else if (authState.status == AuthStatus.unauthenticated) {
+          print('[Main] Navigating to LoginScreen');
+          _navigatorKey.currentState!.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false,
+          );
+        }
+        // Error is displayed by individual screens via _buildErrorState widgets
+        // No duplicate toast needed here
+      } finally {
+        _isNavigating = false;
+      }
     });
   }
 }

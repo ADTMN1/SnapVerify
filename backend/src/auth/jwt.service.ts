@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService as NestJwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
@@ -10,18 +11,45 @@ interface JwtPayload {
   branchId?: string;
 }
 
+const MIN_JWT_SECRET_LENGTH = 32;
 const MAX_REFRESH_TOKENS_PER_USER = 10;
 
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function requireSecret(config: ConfigService, key: string): string {
+  // getOrThrow raises during module initialization if the key is missing, so
+  // the app can never boot with an insecure/unconfigured signing secret.
+  // `config.get` would silently return undefined and let NestJWT sign with
+  // `secret: undefined`, making every token forgeable.
+  const value = config.getOrThrow<string>(key);
+  if (value.length < MIN_JWT_SECRET_LENGTH) {
+    throw new Error(
+      `FATAL: ${key} must be at least ${MIN_JWT_SECRET_LENGTH} characters. ` +
+        `Generate one with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`,
+    );
+  }
+  return value;
+}
+
 @Injectable()
 export class JwtService {
+  private readonly accessSecret: string;
+
   constructor(
     private jwtService: NestJwtService,
+    private config: ConfigService,
     private prisma: PrismaService,
-  ) {}
+  ) {
+    // Validate BOTH configured secrets at startup. Refresh tokens are opaque
+    // random strings (not JWTs) so only the access secret is used for signing,
+    // but the refresh secret is still validated here so a misconfiguration is
+    // caught immediately rather than silently ignored.
+    requireSecret(this.config, 'JWT_ACCESS_SECRET');
+    requireSecret(this.config, 'JWT_REFRESH_SECRET');
+    this.accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
+  }
 
   async generateTokens(
     userId: string,
@@ -34,7 +62,7 @@ export class JwtService {
     const payload: JwtPayload = { sub: userId, organizationId, role, branchId };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_ACCESS_SECRET,
+      secret: this.accessSecret,
       expiresIn: '15m',
     });
 
@@ -90,7 +118,9 @@ export class JwtService {
     });
 
     if (!token || token.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException(
+        'Your session has expired. Please log in again.',
+      );
     }
 
     // Use the organizationId and role stored on the token record (set at login)
@@ -103,7 +133,9 @@ export class JwtService {
     );
     if (!assignment) {
       await this.prisma.refreshToken.delete({ where: { id: token.id } });
-      throw new UnauthorizedException('Organization assignment no longer valid');
+      throw new UnauthorizedException(
+        'Your session is no longer valid. Please log in again.',
+      );
     }
 
     // Rotate: delete old token, issue new one

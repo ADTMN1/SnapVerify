@@ -31,10 +31,14 @@ export class OtpService {
 
   private async sendAfroMessageSms(phone: string, text: string): Promise<void> {
     const apiToken = this.configService.get<string>('AFROMESSAGE_API_TOKEN');
-    const baseUrl = this.configService.get<string>('AFROMESSAGE_BASE_URL') || 'https://api.afromessage.com';
+    const baseUrl =
+      this.configService.get<string>('AFROMESSAGE_BASE_URL') ||
+      'https://api.afromessage.com';
 
     if (!apiToken || apiToken === 'your-afromessage-api-token') {
-      this.logger.warn('AFROMESSAGE_API_TOKEN not set or is placeholder, skipping SMS send');
+      this.logger.warn(
+        'AFROMESSAGE_API_TOKEN not set or is placeholder, skipping SMS send',
+      );
       return;
     }
 
@@ -124,7 +128,7 @@ export class OtpService {
 
     if (recentOtp) {
       throw new BadRequestException(
-        'Please wait 60 seconds before requesting another OTP.',
+        'Please wait 60 seconds before requesting another code.',
       );
     }
 
@@ -138,7 +142,7 @@ export class OtpService {
 
     if (recentOtpCount >= 3) {
       throw new BadRequestException(
-        'Too many OTP requests. Please try again later.',
+        'Too many requests. Please try again later.',
       );
     }
 
@@ -157,7 +161,11 @@ export class OtpService {
     return code;
   }
 
-  async verifyOtp(phone: string, code: string): Promise<boolean> {
+  async verifyOtp(
+    phone: string,
+    code: string,
+    consume: boolean = true,
+  ): Promise<boolean> {
     const formattedPhone = this.formatPhoneNumber(phone);
 
     const otp = await this.prisma.otpCode.findFirst({
@@ -170,12 +178,12 @@ export class OtpService {
     });
 
     if (!otp) {
-      throw new BadRequestException('OTP expired or not found');
+      throw new BadRequestException('Verification code expired or not found');
     }
 
     if (otp.attempts >= 5) {
       throw new BadRequestException(
-        'Too many invalid attempts. Please request a new OTP.',
+        'Too many incorrect attempts. Please request a new code.',
       );
     }
 
@@ -184,10 +192,16 @@ export class OtpService {
         where: { id: otp.id },
         data: { attempts: { increment: 1 } },
       });
-      throw new BadRequestException('Invalid OTP');
+      throw new BadRequestException('Incorrect verification code');
     }
 
-    await this.prisma.otpCode.delete({ where: { id: otp.id } });
+    // Only delete/consume the OTP when `consume` is true.
+    // `consume: false` is used by client-side "preview" verification like
+    // the register flow step 0→1 so that createBusiness can still consume
+    // the same OTP later.
+    if (consume) {
+      await this.prisma.otpCode.delete({ where: { id: otp.id } });
+    }
     return true;
   }
 

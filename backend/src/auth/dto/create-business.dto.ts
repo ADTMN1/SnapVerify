@@ -4,10 +4,13 @@ import {
   IsEmail,
   Length,
   Matches,
+  IsNotEmpty,
+  MinLength,
 } from 'class-validator';
 
 export class CreateBusinessDto {
   @IsString()
+  @IsNotEmpty({ message: 'Business name is required.' })
   name: string;
 
   @IsString()
@@ -15,9 +18,10 @@ export class CreateBusinessDto {
   fullName?: string;
 
   @IsString()
+  @IsNotEmpty({ message: 'Phone number is required.' })
   @Matches(/^(\+?251|0)?9\d{8}$/, {
     message:
-      'phone must be a valid Ethiopian phone number (e.g., 0912345678, +251912345678)',
+      'Please enter a valid Ethiopian phone number (e.g., 0912345678, +251912345678)',
   })
   phone: string;
 
@@ -26,11 +30,13 @@ export class CreateBusinessDto {
    * This proves ownership of the phone number before the business is created.
    */
   @IsString()
-  @Length(6, 6)
+  @IsNotEmpty({ message: 'Verification code is required.' })
+  @Length(6, 6, { message: 'Verification code must be 6 digits.' })
   otpCode: string;
 
   @IsString()
-  @Length(6, 100)
+  @IsNotEmpty({ message: 'Password is required.' })
+  @MinLength(6, { message: 'Password must be at least 6 characters.' })
   password: string;
 
   @IsEmail()
