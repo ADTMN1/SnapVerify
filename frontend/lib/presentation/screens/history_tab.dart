@@ -267,7 +267,7 @@ class _MetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: TwColors.cardBg,
+        color: Colors.black,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: TwColors.slate700),
       ),
@@ -317,7 +317,7 @@ class _HistoryTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: TwColors.cardBg,
+        color: Colors.black,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: TwColors.slate700),
       ),
@@ -447,7 +447,7 @@ class _StateCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: TwColors.cardBg,
+        color: Colors.black,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: TwColors.slate700),
       ),
