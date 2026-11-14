@@ -31,10 +31,13 @@ class PaymentRemoteDatasource {
   }
 
   // ── Verify by captured image ──────────────────────────────────────────────
+  /// [ocrText] is required by the backend for image receipts (the provider
+  /// verifies images against on-device OCR text; PDFs are parsed server-side).
   Future<VerificationResult> verifyByImage({
     required String accessToken,
     required Uint8List imageBytes,
     String mimeType = 'image/jpeg',
+    String? ocrText,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payments/verify-image');
 
@@ -50,6 +53,9 @@ class PaymentRemoteDatasource {
         compressed,
         filename: 'capture.jpg',
       ));
+    if (ocrText != null && ocrText.trim().isNotEmpty) {
+      request.fields['receiptText'] = ocrText;
+    }
 
     http.Response response;
     try {
@@ -57,7 +63,7 @@ class PaymentRemoteDatasource {
         _timeout,
         onTimeout: () => throw Exception(
           'Timed out after ${_timeout.inSeconds}s — '
-          'verify.leul.et OCR is taking too long. Please try again.',
+          'receipt verification is taking too long. Please try again.',
         ),
       );
       response = await http.Response.fromStream(streamed);
@@ -67,7 +73,6 @@ class PaymentRemoteDatasource {
     }
 
     dev.log('[PaymentDS] verifyByImage HTTP ${response.statusCode}');
-    dev.log('[PaymentDS] verifyByImage body: ${response.body}');
 
     _throwIfError(response);
 
@@ -75,7 +80,7 @@ class PaymentRemoteDatasource {
       return VerificationResult.fromJson(
           jsonDecode(response.body) as Map<String, dynamic>);
     } catch (e) {
-      dev.log('[PaymentDS] parse error: $e  body=${response.body}');
+      dev.log('[PaymentDS] verifyByImage parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -116,7 +121,6 @@ class PaymentRemoteDatasource {
     }
 
     dev.log('[PaymentDS] verifyByReference HTTP ${response.statusCode}');
-    dev.log('[PaymentDS] verifyByReference body: ${response.body}');
 
     _throwIfError(response);
 
@@ -124,6 +128,41 @@ class PaymentRemoteDatasource {
       return VerificationResult.fromJson(
           jsonDecode(response.body) as Map<String, dynamic>);
     } catch (e) {
+      dev.log('[PaymentDS] verifyByReference parse error: $e');
+      throw Exception('Could not parse response: $e');
+    }
+  }
+
+  // ── Verification history ──────────────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> getVerificationHistory({
+    required String accessToken,
+  }) async {
+    final uri = Uri.parse('${AppConstants.baseUrl}/payments/history');
+    dev.log('[PaymentDS] getVerificationHistory → $uri');
+
+    final response = await client
+        .get(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        )
+        .timeout(_timeout);
+
+    dev.log('[PaymentDS] getVerificationHistory HTTP ${response.statusCode}');
+    _throwIfError(response);
+
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      dev.log('[PaymentDS] getVerificationHistory parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }

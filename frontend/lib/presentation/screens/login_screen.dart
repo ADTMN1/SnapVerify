@@ -15,8 +15,7 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen>
-    with SingleTickerProviderStateMixin {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -24,38 +23,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _passwordFocused = false;
   Language _selectedLanguage = Language.english;
 
-  late AnimationController _animationController;
-  late Animation<double> _logoScaleAnimation;
-  late Animation<Offset> _logoSlideAnimation;
-
   final _phoneFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
+
+  // Validation Errors
+  String? _phoneError;
+  String? _passwordError;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-
-    _logoScaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
-      ),
-    );
-
-    _logoSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
-
     _phoneFocusNode.addListener(() {
       setState(() => _phoneFocused = _phoneFocusNode.hasFocus);
     });
@@ -66,8 +43,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     // Add listeners to clear error state when user starts typing
     _phoneController.addListener(_clearError);
     _passwordController.addListener(_clearError);
-
-    _animationController.forward();
   }
 
   @override
@@ -78,12 +53,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _passwordController.dispose();
     _phoneFocusNode.dispose();
     _passwordFocusNode.dispose();
-    _animationController.dispose();
     super.dispose();
   }
 
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
+    setState(() {
+      _phoneError = null;
+      _passwordError = null;
+    });
   }
 
   String _t(String key) {
@@ -95,9 +73,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _login() async {
-    final phone = _phoneController.text.trim();
+    final phone = _phoneController.text.trim().replaceAll(' ', '');
     final password = _passwordController.text.trim();
-    if (phone.isEmpty || password.isEmpty) return;
+    
+    // Validate inputs
+    if (phone.isEmpty) {
+      setState(() => _phoneError = 'Phone number is required.');
+      return;
+    }
+    if (!RegExp(r'^(\+?251|0)?9\d{8}$').hasMatch(phone)) {
+      setState(() => _phoneError = 'Please enter a valid Ethiopian phone number.');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _passwordError = 'Password is required.');
+      return;
+    }
     
     await ref.read(authNotifierProvider.notifier).loginWithPassword(
       phone,
@@ -113,25 +104,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     return Scaffold(
       backgroundColor: TwColors.primaryBg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Language Switcher
-              Align(
-                alignment: Alignment.centerRight,
-                child: _buildLanguageSwitcher(),
-              ),
-              SizedBox(height: size.height * 0.03),
-              _buildAnimatedLogo(),
-              SizedBox(height: size.height * 0.05),
-              _buildHeader(),
-              const SizedBox(height: 24),
-              _buildForm(authState),
-              const SizedBox(height: 24),
-              _buildCreateAccount(),
-            ],
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Language Switcher
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildLanguageSwitcher(),
+                ),
+                const SizedBox(height: 48),
+                _buildHeader(),
+                const SizedBox(height: 24),
+                _buildForm(authState),
+                const SizedBox(height: 24),
+                _buildCreateAccount(),
+              ],
+            ),
           ),
         ),
       ),
@@ -186,39 +178,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildAnimatedLogo() {
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        _logoScaleAnimation,
-        _logoSlideAnimation,
-      ]),
-      builder: (context, child) {
-        return Transform.translate(
-          offset: _logoSlideAnimation.value,
-          child: Transform.scale(
-            scale: _logoScaleAnimation.value,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: TwColors.brightGreen.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: TwColors.brightGreen.withOpacity(0.25),
-                  width: 1.5,
-                ),
-              ),
-              child: const Icon(
-                Icons.verified_user_rounded,
-                size: 56,
-                color: TwColors.brightGreen,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,15 +214,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         const SizedBox(height: 8),
         _buildForgotPassword(),
         const SizedBox(height: 32),
-        if (authState.status == AuthStatus.loading)
-          const Center(
-            child: CircularProgressIndicator(
-              color: TwColors.brightGreen,
-              strokeWidth: 3,
-            ),
-          )
-        else if (authState.status == AuthStatus.error)
-          _buildErrorState(authState)
+        if (authState.status == AuthStatus.error)
+          _buildErrorState()
         else
           _buildSubmitButton(),
       ],
@@ -271,38 +223,74 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Widget _buildPhoneField() {
-    return _buildUniqueInput(
-      controller: _phoneController,
-      focusNode: _phoneFocusNode,
-      isFocused: _phoneFocused,
-      label: _t('phone_number'),
-      hint: '+251 9XX XXX XXX',
-      icon: Icons.phone_outlined,
-      keyboardType: TextInputType.phone,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _phoneController,
+          focusNode: _phoneFocusNode,
+          isFocused: _phoneFocused,
+          label: _t('phone_number'),
+          hint: '+251 9XX XXX XXX',
+          icon: Icons.phone_outlined,
+          keyboardType: TextInputType.phone,
+          hasError: _phoneError != null,
+        ),
+        if (_phoneError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _phoneError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildPasswordField() {
-    return _buildUniqueInput(
-      controller: _passwordController,
-      focusNode: _passwordFocusNode,
-      isFocused: _passwordFocused,
-      label: _t('password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscurePassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _passwordController,
+          focusNode: _passwordFocusNode,
+          isFocused: _passwordFocused,
+          label: _t('password'),
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
+              size: 16,
+            ),
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+          ),
+          hasError: _passwordError != null,
         ),
-        onPressed: () {
-          setState(() {
-            _obscurePassword = !_obscurePassword;
-          });
-        },
-      ),
+        if (_passwordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _passwordError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -320,23 +308,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     bool enabled = true,
     int? maxLength,
     Widget? suffixIcon,
+    bool hasError = false,
   }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isFocused ? TwColors.brightGreen : TwColors.white.withOpacity(0.08),
-          width: isFocused ? 1.5 : 1,
+          color: hasError
+              ? TwColors.red500
+              : isFocused
+                  ? TwColors.brightGreen
+                  : TwColors.white.withOpacity(0.08),
+          width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
             ? [
                 BoxShadow(
-                  color: TwColors.brightGreen.withOpacity(0.15),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
+                  color: hasError
+                      ? TwColors.red500.withOpacity(0.1)
+                      : TwColors.brightGreen.withOpacity(0.1),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2),
                 )
               ]
             : [],
@@ -350,24 +345,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         maxLength: maxLength,
         style: const TextStyle(
           color: TwColors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           prefixIcon: Container(
-            margin: const EdgeInsets.only(left: 12, right: 8),
-            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(left: 8, right: 6),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isFocused
                   ? TwColors.brightGreen.withOpacity(0.1)
                   : TwColors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 20,
+              size: 16,
             ),
           ),
           suffixIcon: suffixIcon,
@@ -375,15 +370,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             label,
             style: TextStyle(
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
           ),
           hintText: hint,
           hintStyle: TextStyle(
             color: TwColors.white.withOpacity(0.3),
-            fontSize: 15,
-            fontWeight: FontWeight.normal,
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
           ),
           border: InputBorder.none,
           counterText: '',
@@ -393,27 +388,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Widget _buildSubmitButton() {
+    final authState = ref.watch(authNotifierProvider);
+    final isLoading = authState.status == AuthStatus.loading;
+    
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _login,
+        onPressed: isLoading ? null : _login,
         style: ElevatedButton.styleFrom(
           backgroundColor: TwColors.brightGreen,
           foregroundColor: TwColors.primaryBg,
-          padding: const EdgeInsets.symmetric(vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 0,
           shadowColor: Colors.transparent,
+          minimumSize: const Size(double.infinity, 52),
         ),
-        child: Text(
-          _t('sign_in'),
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(TwColors.primaryBg),
+                ),
+              )
+            : Text(
+                _t('sign_in'),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
       ),
     );
   }
@@ -513,7 +521,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildErrorState(AuthState authState) {
+  Widget _buildErrorState() {
+    final authState = ref.watch(authNotifierProvider);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -559,6 +568,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     color: TwColors.red500.withOpacity(0.8),
                     fontSize: 13,
                     fontWeight: FontWeight.normal,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () {
+                    ref.read(authNotifierProvider.notifier).clearError();
+                  },
+                  child: Text(
+                    _t('retry'),
+                    style: TextStyle(
+                      color: TwColors.red500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                    ),
                   ),
                 ),
               ],

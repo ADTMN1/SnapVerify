@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Req,
   UseGuards,
@@ -9,12 +10,20 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { PaymentService } from './payment.service';
 import { VerifyReferenceDto } from './dto/verify-reference.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { resolveThrottlingConfig } from '../config/throttling.config';
+
+// Stage 1: upstream verification calls are expensive (OCR + per-account
+// verification against the external provider), so the payment endpoints are
+// throttled more strictly than the application default. Limits are shared
+// per organization (all staff of one merchant draw from the same bucket).
+const throttling = resolveThrottlingConfig();
 
 /**
  * All payment routes require:
@@ -34,6 +43,9 @@ export class PaymentController {
    * Any authenticated staff member can verify a payment by reference number.
    */
   @Post('verify')
+  @Throttle({
+    default: { ttl: throttling.ttlMs, limit: throttling.paymentVerifyLimit },
+  })
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER)
   async verifyByReference(@Body() dto: VerifyReferenceDto, @Req() req: any) {
     const { sub: userId, organizationId } = req.user;
@@ -52,13 +64,19 @@ export class PaymentController {
    * Any authenticated staff member can verify a payment by image (OCR).
    */
   @Post('verify-image')
+  @Throttle({
+    default: {
+      ttl: throttling.ttlMs,
+      limit: throttling.paymentVerifyImageLimit,
+    },
+  })
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER)
   @UseInterceptors(
     FileInterceptor('image', {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
-          cb(new BadRequestException('Only image files are accepted'), false);
+          throw new BadRequestException('Please upload an image file.');
         } else {
           cb(null, true);
         }
@@ -67,15 +85,35 @@ export class PaymentController {
   )
   async verifyByImage(
     @UploadedFile() file: Express.Multer.File,
+    @Body('receiptText') receiptText: string,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('Image file is required');
-    const { sub: userId, organizationId } = req.user;
+    if (!file)
+      throw new BadRequestException('Please select an image file to upload.');
+    const { sub: userId, organizationId, role, branchId } = req.user;
+    const userBranchId = role === 'OWNER' ? undefined : branchId ?? undefined;
     return this.paymentService.verifyByImage(
       file.buffer,
       file.mimetype,
       organizationId,
       userId,
+      receiptText,
+      userBranchId,
+    );
+  }
+
+  /**
+   * GET /payments/history
+   * Returns recent verification attempts for the current organization.
+   */
+  @Get('history')
+  @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER)
+  async getHistory(@Req() req: any) {
+    const { sub: userId, organizationId, role } = req.user;
+    return this.paymentService.getVerificationHistory(
+      organizationId,
+      userId,
+      role,
     );
   }
 }

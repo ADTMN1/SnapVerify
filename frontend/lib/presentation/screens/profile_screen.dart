@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/tailwind.dart';
 import '../providers/auth_provider.dart';
+import 'business_switcher_screen.dart';
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
 class ProfileScreen extends ConsumerWidget {
@@ -187,9 +188,26 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   Widget _buildMenuSection(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authNotifierProvider);
+    final canSwitchBusiness = authState.availableOrganizations.length > 1;
+
     return Column(
       children: [
         _MenuGroup(items: [
+          if (canSwitchBusiness)
+            _MenuItem(
+              icon: Icons.swap_horiz_rounded,
+              label: 'Switch Business',
+              color: TwColors.brightGreen,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const BusinessSwitcherScreen(isInitialSelection: false),
+                  ),
+                );
+              },
+            ),
           _MenuItem(
             icon: Icons.edit_rounded,
             label: 'Edit Profile',
@@ -359,7 +377,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       const SizedBox(height: 32),
                       SizedBox(
                         width: double.infinity,
-                        height: 52,
                         child: ElevatedButton(
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
@@ -370,8 +387,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                             }
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: TwColors.brightGreen, foregroundColor: Colors.black,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0,
+                            backgroundColor: TwColors.brightGreen,
+                            foregroundColor: TwColors.primaryBg,
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                            shadowColor: Colors.transparent,
+                            minimumSize: const Size(double.infinity, 52),
                           ),
                           child: const Text('Save Changes', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                         ),
@@ -489,7 +513,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       const SizedBox(height: 32),
                       SizedBox(
                         width: double.infinity,
-                        height: 52,
                         child: ElevatedButton(
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
@@ -500,8 +523,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             }
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: TwColors.brightGreen, foregroundColor: Colors.black,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0,
+                            backgroundColor: TwColors.brightGreen,
+                            foregroundColor: TwColors.primaryBg,
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                            shadowColor: Colors.transparent,
+                            minimumSize: const Size(double.infinity, 52),
                           ),
                           child: const Text('Update Password', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                         ),

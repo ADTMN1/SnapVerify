@@ -8,12 +8,58 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentAccountDto } from './dto/create-payment-account.dto';
 import { UpdatePaymentAccountDto } from './dto/update-payment-account.dto';
 import { PaymentProvider } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { computeAccountNumberHash } from './account-hash';
+
+/**
+ * Stage 1 (data minimization): full receiving-account numbers are never
+ * returned from the API. Responses carry a masked rendering that preserves
+ * the tail digits needed for configuration.
+ */
+function maskAccountNumberForResponse(
+  accountNumber: string | null,
+): string | null {
+  if (!accountNumber) return null;
+  const digits = accountNumber.replace(/\s/g, '');
+  if (digits.length <= 4) return '****';
+  return `****${digits.slice(-4)}`;
+}
+
+function maskAccount<T extends { accountNumber?: string | null }>(
+  account: T,
+): T {
+  return {
+    ...account,
+    accountNumber: maskAccountNumberForResponse(account.accountNumber ?? null),
+  };
+}
 
 @Injectable()
 export class PaymentAccountService {
   private readonly logger = new Logger(PaymentAccountService.name);
+  private readonly accountHashSecret: string;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {
+    // Stage 1 review fix: hashes are keyed HMAC-SHA-256. Writing an account
+    // without a usable secret would produce hashes matching cannot verify,
+    // so fail loudly rather than store a weak hash.
+    const secret = this.config.get<string>('ACCOUNT_HASH_SECRET', '');
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        'FATAL: ACCOUNT_HASH_SECRET is missing or too short (>= 32 chars required). Generate one with: openssl rand -base64 48',
+      );
+    }
+    this.accountHashSecret = secret;
+  }
+
+  private hashAccountNumber(
+    accountNumber: string | null | undefined,
+  ): string | null {
+    return computeAccountNumberHash(accountNumber, this.accountHashSecret);
+  }
 
   // Create a payment account
   async create(organizationId: string, dto: CreatePaymentAccountDto) {
@@ -25,66 +71,84 @@ export class PaymentAccountService {
     if (dto.provider === PaymentProvider.CBE) {
       if (!dto.suffix || dto.suffix.length !== 8) {
         throw new BadRequestException(
-          'CBE payment account requires an 8-digit suffix',
+          'CBE accounts require an 8-digit account suffix.',
         );
       }
     }
     if (dto.provider === PaymentProvider.ABYSSINIA) {
       if (!dto.suffix || dto.suffix.length !== 5) {
         throw new BadRequestException(
-          'Abyssinia payment account requires a 5-digit suffix',
+          'Abyssinia accounts require a 5-digit account suffix.',
         );
       }
     }
 
     try {
-      const account = await this.prisma.paymentAccount.upsert({
+      // Check if account already exists for this organization/provider/branch combination
+      const existingAccount = await this.prisma.paymentAccount.findFirst({
         where: {
-          organizationId_provider_branchId: {
-            organizationId,
-            provider: dto.provider,
-            branchId: dto.branchId || null,
-          } as any, // Type assertion because Prisma's unique constraint types can be tricky
-        },
-        update: {
-          accountNumber: dto.accountNumber,
-          suffix: dto.suffix,
-          accountHolderName: dto.accountHolderName,
-          isActive: true,
-        },
-        create: {
           organizationId,
           provider: dto.provider,
-          accountNumber: dto.accountNumber,
-          suffix: dto.suffix,
-          accountHolderName: dto.accountHolderName,
-          branchId: dto.branchId || null,
+          branchId: dto.branchId || undefined,
         },
       });
-      this.logger.log(
-        `[create] Payment account created/updated: ${account.id}`,
+
+      if (existingAccount) {
+        // Update existing account
+        const account = await this.prisma.paymentAccount.update({
+          where: { id: existingAccount.id },
+          data: {
+            accountNumber: dto.accountNumber,
+            // Stage 1: hash is stored alongside so matching can use hashed
+            // comparison; plaintext column retained for legacy backfill.
+            accountNumberHash: this.hashAccountNumber(dto.accountNumber),
+            suffix: dto.suffix,
+            accountHolderName: dto.accountHolderName,
+            isActive: true,
+          },
+        });
+        this.logger.log(`[create] Payment account updated: ${account.id}`);
+        return maskAccount(account);
+      } else {
+        // Create new account
+        const account = await this.prisma.paymentAccount.create({
+          data: {
+            organizationId,
+            provider: dto.provider,
+            accountNumber: dto.accountNumber,
+            accountNumberHash: this.hashAccountNumber(dto.accountNumber),
+            suffix: dto.suffix,
+            accountHolderName: dto.accountHolderName,
+            branchId: dto.branchId,
+          },
+        });
+        this.logger.log(`[create] Payment account created: ${account.id}`);
+        return maskAccount(account);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[create] DB error: ${errorMessage}`);
+      throw new BadRequestException(
+        'Failed to create payment account. Please try again.',
       );
-      return account;
-    } catch (err: any) {
-      this.logger.error(`[create] DB error: ${err?.message ?? String(err)}`);
-      throw new BadRequestException('Failed to create payment account');
     }
   }
 
   // Get all payment accounts for an organization
   async findAll(organizationId: string) {
-    return this.prisma.paymentAccount.findMany({
+    const accounts = await this.prisma.paymentAccount.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
       include: {
         branch: true,
       },
     });
+    return accounts.map(maskAccount);
   }
 
   // Get payment accounts by organization and optionally branch
   async findByOrganizationAndBranch(organizationId: string, branchId?: string) {
-    return this.prisma.paymentAccount.findMany({
+    const accounts = await this.prisma.paymentAccount.findMany({
       where: {
         organizationId,
         branchId: branchId ?? undefined,
@@ -94,6 +158,7 @@ export class PaymentAccountService {
         branch: true,
       },
     });
+    return accounts.map(maskAccount);
   }
 
   // Get a single payment account by provider and branch
@@ -111,9 +176,11 @@ export class PaymentAccountService {
       },
     });
     if (!account) {
-      throw new NotFoundException(`Payment account for ${provider} not found`);
+      throw new NotFoundException(
+        'Payment account not found. Please check the details.',
+      );
     }
-    return account;
+    return maskAccount(account);
   }
 
   // Update a payment account
@@ -131,14 +198,14 @@ export class PaymentAccountService {
     if (provider === PaymentProvider.CBE && dto.suffix) {
       if (dto.suffix.length !== 8) {
         throw new BadRequestException(
-          'CBE payment account requires an 8-digit suffix',
+          'CBE accounts require an 8-digit account suffix.',
         );
       }
     }
     if (provider === PaymentProvider.ABYSSINIA && dto.suffix) {
       if (dto.suffix.length !== 5) {
         throw new BadRequestException(
-          'Abyssinia payment account requires a 5-digit suffix',
+          'Abyssinia accounts require a 5-digit account suffix.',
         );
       }
     }
@@ -149,11 +216,20 @@ export class PaymentAccountService {
         provider,
         branchId: branchId ?? undefined,
       },
-      data: dto,
+      data: {
+        ...dto,
+        // Stage 1: keep the hash in sync when the account number changes.
+        ...(dto.accountNumber !== undefined
+          ? { accountNumberHash: this.hashAccountNumber(dto.accountNumber) }
+          : {}),
+      },
     });
     if (account.count === 0) {
-      throw new NotFoundException(`Payment account for ${provider} not found`);
+      throw new NotFoundException(
+        'Payment account not found. Please check the details.',
+      );
     }
+
     // Fetch the updated account
     const updatedAccount = await this.prisma.paymentAccount.findFirst({
       where: {
@@ -163,7 +239,7 @@ export class PaymentAccountService {
       },
     });
     this.logger.log(`[update] Payment account updated: ${updatedAccount!.id}`);
-    return updatedAccount!;
+    return maskAccount(updatedAccount!);
   }
 
   // Delete a payment account
@@ -183,7 +259,9 @@ export class PaymentAccountService {
       },
     });
     if (deleted.count === 0) {
-      throw new NotFoundException(`Payment account for ${provider} not found`);
+      throw new NotFoundException(
+        'Payment account not found. Please check the details.',
+      );
     }
     return { message: 'Payment account deleted successfully' };
   }

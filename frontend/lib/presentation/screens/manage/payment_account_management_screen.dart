@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/tailwind.dart';
-import '../../../core/utils/toast_service.dart';
 import '../../../data/datasources/payment_remote_datasource.dart';
 import '../../../domain/entities/payment_account.dart';
 import '../../../presentation/providers/auth_provider.dart';
-import '../../../presentation/widgets/sv_button.dart';
-import '../../../presentation/widgets/sv_input_field.dart';
 
 class PaymentAccountManagementScreen extends ConsumerStatefulWidget {
   const PaymentAccountManagementScreen({super.key});
@@ -59,8 +56,10 @@ class _PaymentAccountManagementScreenState
   }
 
   void _showAddEditDialog([PaymentAccount? account]) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => _PaymentAccountDialog(
         account: account,
         onSave: _saveAccount,
@@ -94,13 +93,33 @@ class _PaymentAccountManagementScreenState
           suffix: suffix,
         );
       }
-      ToastService.showSuccess('Payment account saved!');
       if (mounted) {
         Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Payment account saved successfully'),
+            backgroundColor: TwColors.brightGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
       }
       _loadAccounts();
     } catch (e) {
-      ToastService.showError(e.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: TwColors.red500,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -133,52 +152,199 @@ class _PaymentAccountManagementScreenState
           accessToken: authState.tokens!.accessToken,
           provider: account.provider.name,
         );
-        ToastService.showSuccess('Account deleted!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Account deleted successfully'),
+              backgroundColor: TwColors.brightGreen,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
         _loadAccounts();
       } catch (e) {
-        ToastService.showError(e.toString());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: TwColors.red500,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authNotifierProvider);
+    final canAdd = authState.role.canAddPaymentAccount;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payment Accounts'),
-      ),
+      backgroundColor: TwColors.primaryBg,
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(_error!, style: const TextStyle(color: Colors.red)),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadAccounts,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadAccounts,
+                color: TwColors.brightGreen,
+                backgroundColor: TwColors.slate800,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Only show add button for users with permission
-                      if (ref.watch(authNotifierProvider).role.canAddPaymentAccount)
-                        SVButton(
-                          onPressed: () => _showAddEditDialog(),
-                          text: 'Add Payment Account',
+                      if (canAdd)
+                        GestureDetector(
+                          onTap: () => _showAddEditDialog(),
+                          child: Container(
+                            width: double.infinity,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: TwColors.brightGreen,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.add_rounded,
+                                    color: TwColors.slate900,
+                                    size: 22,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Add Payment Account',
+                                    style: TextStyle(
+                                      color: TwColors.slate900,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       const SizedBox(height: 16),
-                      if (_accounts!.isEmpty)
-                        const Center(
-                          child: Text(
-                            'No payment accounts added yet',
-                            style: TextStyle(color: TwColors.slate400),
+                      if (_loading)
+                        const Center(child: CircularProgressIndicator(color: TwColors.brightGreen))
+                      else if (_error != null)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 60),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  size: 48,
+                                  color: TwColors.red500,
+                                ),
+                                const SizedBox(height: 20),
+                                Text(
+                                  'Failed to load accounts',
+                                  style: TextStyle(
+                                    color: TwColors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _error!,
+                                  style: TextStyle(
+                                    color: TwColors.slate400,
+                                    fontSize: 14,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 20),
+                                GestureDetector(
+                                  onTap: _loadAccounts,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: TwColors.brightGreen.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: TwColors.brightGreen.withValues(alpha: 0.3),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.refresh_rounded,
+                                          color: TwColors.brightGreen,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Retry',
+                                          style: TextStyle(
+                                            color: TwColors.brightGreen,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (_accounts == null || _accounts!.isEmpty)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 60),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: TwColors.brightGreen.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.account_balance_wallet_outlined,
+                                    size: 48,
+                                    color: TwColors.brightGreen,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Text(
+                                  'No payment accounts added yet',
+                                  style: TextStyle(
+                                    color: TwColors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Add your first payment account to get started',
+                                  style: TextStyle(
+                                    color: TwColors.slate400,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         )
                       else
@@ -191,6 +357,61 @@ class _PaymentAccountManagementScreenState
                         ),
                     ],
                   ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: TwColors.slate800,
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: TwColors.slate800,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: TwColors.slate700,
+                  width: 1,
+                ),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: TwColors.white,
+                size: 18,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Text(
+              'Payment Accounts',
+              style: TextStyle(
+                color: TwColors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -223,20 +444,23 @@ class _AccountCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(authNotifierProvider).role;
-    
+    final authState = ref.watch(authNotifierProvider);
+    final canEdit = authState.role.canEditPaymentAccount;
+    final canRemove = authState.role.canRemovePaymentAccount;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.black,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: TwColors.slate700, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
                 child: Text(
@@ -246,38 +470,214 @@ class _AccountCard extends ConsumerWidget {
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Only show edit button for users with permission
-              if (role.canEditPaymentAccount)
-                IconButton(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit, color: TwColors.brightGreen),
-                ),
-              // Only show delete button for users with permission
-              if (role.canRemovePaymentAccount)
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete, color: TwColors.red500),
-                ),
             ],
           ),
-          if (account.accountNumber != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Account: ${account.accountNumber}',
-              style: const TextStyle(color: TwColors.slate400),
+          const SizedBox(height: 8),
+          if (account.accountNumber != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _InfoRow(
+                icon: Icons.account_balance_outlined,
+                value: 'Account: ${account.accountNumber}',
+              ),
             ),
-          ],
-          if (account.suffix != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Suffix: ${account.suffix}',
-              style: const TextStyle(color: TwColors.slate400),
+          if (account.suffix != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _InfoRow(
+                icon: Icons.numbers_outlined,
+                value: 'Suffix: ${account.suffix}',
+              ),
             ),
-          ],
+          if (canEdit || canRemove)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: [
+                  if (canEdit)
+                    Expanded(
+                      child: _ActionBtn(
+                        icon: Icons.edit_outlined,
+                        label: 'Edit',
+                        onTap: onEdit,
+                        isRemove: false,
+                      ),
+                    ),
+                  if (canEdit && canRemove) const SizedBox(width: 8),
+                  if (canRemove)
+                    Expanded(
+                      child: _ActionBtn(
+                        icon: Icons.delete_outline,
+                        label: 'Remove',
+                        onTap: onDelete,
+                        isRemove: true,
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String value;
+
+  const _InfoRow({required this.icon, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: TwColors.slate400,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: TwColors.white.withValues(alpha: 0.8),
+              fontSize: 12,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool isRemove;
+
+  const _ActionBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isRemove = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isRemove ? TwColors.red500 : TwColors.brightGreen;
+    
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: color,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentFormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final String? Function(String?)? validator;
+
+  const _PaymentFormField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.keyboardType,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: TwColors.white.withValues(alpha: 0.65),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 7),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          validator: validator,
+          style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: TwColors.white.withValues(alpha: 0.3), fontSize: 14),
+            prefixIcon: Icon(icon, color: TwColors.white.withValues(alpha: 0.5), size: 18),
+            filled: true,
+            fillColor: Colors.black,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: TwColors.slate700, width: 1),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: TwColors.slate700, width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: TwColors.red500, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: TwColors.red500, width: 1.5),
+            ),
+            errorStyle: const TextStyle(color: TwColors.red500, fontSize: 11),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -303,6 +703,7 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
   String? _selectedProvider;
   final _accountNumberController = TextEditingController();
   final _suffixController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -321,32 +722,107 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
     super.dispose();
   }
 
+  Future<void> _submit() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isSubmitting = true;
+      });
+      try {
+        await widget.onSave(
+          provider: _selectedProvider!,
+          accountNumber: _accountNumberController.text.isEmpty
+              ? null
+              : _accountNumberController.text,
+          suffix: _suffixController.text.isEmpty
+              ? null
+              : _suffixController.text,
+          existingAccount: widget.account,
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+          });
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: TwColors.slate900,
-      title: Text(
-        widget.account == null ? 'Add Payment Account' : 'Edit Payment Account',
-        style: const TextStyle(color: TwColors.white),
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: TwColors.primaryBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      content: Form(
+      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomInset),
+      child: Form(
         key: _formKey,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: TwColors.slate700,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.account == null ? 'Add Payment Account' : 'Edit Payment Account',
+                    style: const TextStyle(
+                      color: TwColors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: TwColors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: TwColors.slate700, width: 1),
+                      ),
+                      child: const Icon(Icons.close_rounded, color: TwColors.white, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
               DropdownButtonFormField<String>(
                 value: _selectedProvider,
                 decoration: InputDecoration(
                   labelText: 'Provider',
                   filled: true,
-                  fillColor: TwColors.slate800,
+                  fillColor: Colors.black,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+                    borderSide: BorderSide(color: TwColors.slate700, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: TwColors.slate700, width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
                   ),
                 ),
-                style: const TextStyle(color: TwColors.white),
+                style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
                 items: PaymentProvider.values.map((provider) {
                   String displayName;
                   switch (provider) {
@@ -385,19 +861,21 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
                     value == null ? 'Please select a provider' : null,
               ),
               const SizedBox(height: 16),
-              SVInputField(
+              _PaymentFormField(
                 controller: _accountNumberController,
                 label: 'Account Number',
                 hint: 'Enter account number (optional)',
+                icon: Icons.account_balance_outlined,
               ),
               const SizedBox(height: 16),
               if (_selectedProvider == 'CBE' || _selectedProvider == 'ABYSSINIA')
-                SVInputField(
+                _PaymentFormField(
                   controller: _suffixController,
                   label: _selectedProvider == 'CBE'
                       ? 'Suffix (8 digits)'
                       : 'Suffix (5 digits)',
                   hint: 'Enter suffix',
+                  icon: Icons.numbers_outlined,
                   keyboardType: TextInputType.number,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -412,36 +890,48 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
                     return null;
                   },
                 ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: TwColors.brightGreen,
+                    foregroundColor: TwColors.primaryBg,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                    shadowColor: Colors.transparent,
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: TwColors.primaryBg, strokeWidth: 2),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              widget.account == null ? Icons.add_rounded : Icons.check_rounded,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              widget.account == null ? 'Add Account' : 'Update Account',
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
             ],
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: TwColors.slate400)),
-        ),
-        TextButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              widget.onSave(
-                provider: _selectedProvider!,
-                accountNumber: _accountNumberController.text.isEmpty
-                    ? null
-                    : _accountNumberController.text,
-                suffix: _suffixController.text.isEmpty
-                    ? null
-                    : _suffixController.text,
-                existingAccount: widget.account,
-              );
-            }
-          },
-          child: Text(
-            widget.account == null ? 'Add' : 'Save',
-            style: const TextStyle(color: TwColors.brightGreen),
-          ),
-        ),
-      ],
     );
   }
 }

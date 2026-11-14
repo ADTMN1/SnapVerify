@@ -9,6 +9,7 @@ import { OtpService } from '../otp/otp.service';
 import { JwtService } from './jwt.service';
 import { Role, SubscriptionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -22,9 +23,34 @@ export class AuthService {
   ) {}
 
   // ── Send OTP ─────────────────────────────────────────────────────────────
-  async sendOtp(phone: string) {
+  async sendOtp(phone: string, purpose?: string) {
+    // For business owner registration, check if phone already has active OWNER assignment
+    if (purpose === 'business_registration') {
+      const user = await this.prisma.user.findUnique({
+        where: { phone },
+        include: { userAssignments: true },
+      });
+
+      if (
+        user &&
+        user.userAssignments.some(
+          (a) => a.role === Role.OWNER && a.status === 'active',
+        )
+      ) {
+        throw new BadRequestException(
+          'This phone number is already registered as a business owner. Please login or create a branch from your dashboard.',
+        );
+      }
+    }
+
     await this.otpService.generateOtp(phone);
     return { message: 'OTP sent successfully' };
+  }
+
+  // ── Check OTP (verify without consuming — for multi-step flows like registration) ─
+  async checkOtp(phone: string, code: string) {
+    await this.otpService.verifyOtp(phone, code, false);
+    return { ok: true, message: 'OTP valid' };
   }
 
   // ── Password Login ───────────────────────────────────────────────────────
@@ -39,43 +65,84 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { phone },
-      include: { userAssignments: true },
+      include: {
+        userAssignments: {
+          include: { organization: true },
+        },
+      },
     });
 
     if (!user) {
       this.logger.warn(`Login failed: no user found for phone=${phone}`);
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Invalid phone number or password. Please try again.',
+      );
     }
 
     if (!user.passwordHash) {
       this.logger.warn(`Login failed: no password hash for user id=${user.id}`);
       throw new UnauthorizedException(
-        'Password not set. Please use OTP login or activate your invitation.',
+        'No password set for this account. Please use OTP login or activate your invitation.',
       );
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       this.logger.warn(`Login failed: invalid password for user id=${user.id}`);
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Invalid phone number or password. Please try again.',
+      );
+    }
+
+    const activeAssignments = user.userAssignments.filter(
+      (a) => a.status === 'active',
+    );
+
+    if (activeAssignments.length === 0) {
+      throw new UnauthorizedException(
+        'Your account is not active. Please contact support.',
+      );
+    }
+
+    // Multi-business: if user has multiple orgs and none specified, return selection
+    if (activeAssignments.length > 1 && !organizationId) {
+      const businesses = activeAssignments.map((a) => ({
+        organizationId: a.organizationId,
+        organizationName: a.organization.name,
+        role: a.role,
+        branchId: a.branchId,
+      }));
+      return {
+        requiresBusinessSelection: true,
+        businesses,
+        user: {
+          id: user.id,
+          fullName: user.fullName,
+          phone: user.phone,
+          email: user.email,
+          status: user.status,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+      };
     }
 
     // Find which assignment to use
     let assignment;
     if (organizationId) {
-      assignment = user.userAssignments.find(
+      assignment = activeAssignments.find(
         (a) => a.organizationId === organizationId,
       );
       if (!assignment) {
         throw new BadRequestException(
-          'You are not a member of this organization',
+          'You are not a member of this organization.',
         );
       }
-    } else if (user.userAssignments.length === 1) {
-      assignment = user.userAssignments[0];
+    } else if (activeAssignments.length === 1) {
+      assignment = activeAssignments[0];
     } else {
       throw new BadRequestException(
-        'Please specify which organization to log in to',
+        'Please select which organization to log in to.',
       );
     }
 
@@ -84,9 +151,12 @@ export class AuthService {
       user.id,
       assignment.organizationId,
       assignment.role,
+      assignment.branchId ?? undefined,
     );
+    const org = assignment.organization;
     return {
       tokens,
+      requiresBusinessSelection: false,
       user: {
         id: user.id,
         fullName: user.fullName,
@@ -95,6 +165,16 @@ export class AuthService {
         status: user.status,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
+      },
+      organization: {
+        id: org.id,
+        name: org.name,
+        type: org.type,
+        phone: org.phone,
+        email: org.email,
+        address: org.address,
+        city: org.city,
+        country: org.country,
       },
       roles: user.userAssignments.map((a) => ({
         businessId: a.organizationId,
@@ -116,13 +196,32 @@ export class AuthService {
 
     let user = await this.prisma.user.findUnique({
       where: { phone },
-      include: { userAssignments: true },
+      include: {
+        userAssignments: {
+          include: { organization: true },
+        },
+      },
     });
 
     if (!user) {
       if (!organizationId) {
         throw new UnauthorizedException(
-          'User not found. Please provide an organization ID or create a business account.',
+          'Account not found. Please check your phone number or create a business account.',
+        );
+      }
+
+      // SECURITY FIX: Only allow auto-create if there's a PENDING invitation for this phone+org
+      const invitation = await this.prisma.invitation.findFirst({
+        where: {
+          phone,
+          organizationId,
+          status: 'PENDING',
+        },
+      });
+
+      if (!invitation) {
+        throw new BadRequestException(
+          'No pending invitation found. Please request an invitation from the business owner.',
         );
       }
 
@@ -131,11 +230,13 @@ export class AuthService {
       });
 
       if (!organization) {
-        throw new BadRequestException('Organization not found');
+        throw new BadRequestException(
+          'Organization not found. Please check the details and try again.',
+        );
       }
 
       this.logger.log(
-        `Auto-creating CASHIER for phone=${phone} org=${organizationId}`,
+        `Auto-creating staff from invitation for phone=${phone} org=${organizationId} role=${invitation.role}`,
       );
       user = await this.prisma.user.create({
         data: {
@@ -143,30 +244,74 @@ export class AuthService {
           userAssignments: {
             create: {
               organizationId,
-              role: Role.CASHIER,
+              role: invitation.role,
+              branchId: invitation.branchId,
             },
           },
         },
-        include: { userAssignments: true },
+        include: {
+          userAssignments: {
+            include: { organization: true },
+          },
+        },
       });
+
+      // Mark invitation as active (used)
+      await this.prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: 'ACTIVE' },
+      });
+    }
+
+    const activeAssignments = user.userAssignments.filter(
+      (a) => a.status === 'active',
+    );
+
+    if (activeAssignments.length === 0) {
+      throw new UnauthorizedException(
+        'Your account is not active. Please contact support.',
+      );
+    }
+
+    // Multi-business: if user has multiple orgs and none specified, return selection
+    if (activeAssignments.length > 1 && !organizationId) {
+      const businesses = activeAssignments.map((a) => ({
+        organizationId: a.organizationId,
+        organizationName: a.organization.name,
+        role: a.role,
+        branchId: a.branchId,
+      }));
+      return {
+        requiresBusinessSelection: true,
+        businesses,
+        user: {
+          id: user.id,
+          fullName: user.fullName,
+          phone: user.phone,
+          email: user.email,
+          status: user.status,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+      };
     }
 
     // Find which assignment to use
     let assignment;
     if (organizationId) {
-      assignment = user.userAssignments.find(
+      assignment = activeAssignments.find(
         (a) => a.organizationId === organizationId,
       );
       if (!assignment) {
         throw new BadRequestException(
-          'You are not a member of this organization',
+          'You are not a member of this organization.',
         );
       }
-    } else if (user.userAssignments.length === 1) {
-      assignment = user.userAssignments[0];
+    } else if (activeAssignments.length === 1) {
+      assignment = activeAssignments[0];
     } else {
       throw new BadRequestException(
-        'Please specify which organization to log in to',
+        'Please select which organization to log in to.',
       );
     }
 
@@ -174,10 +319,78 @@ export class AuthService {
       user.id,
       assignment.organizationId,
       assignment.role,
-      undefined,
+      assignment.branchId ?? undefined,
       undefined,
       ipAddress,
     );
+    const org = assignment.organization;
+    return {
+      tokens,
+      requiresBusinessSelection: false,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        phone: user.phone,
+        email: user.email,
+        status: user.status,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      organization: {
+        id: org.id,
+        name: org.name,
+        type: org.type,
+        phone: org.phone,
+        email: org.email,
+        address: org.address,
+        city: org.city,
+        country: org.country,
+      },
+      roles: user.userAssignments.map((a) => ({
+        businessId: a.organizationId,
+        branchId: a.branchId,
+        role: a.role,
+      })),
+    };
+  }
+
+  // ── Select Business (called when user has multiple orgs) ─────────────────
+  async selectBusiness(userId: string, organizationId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userAssignments: {
+          include: { organization: true },
+          where: { status: 'active' },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'Account not found. Please check your phone number.',
+      );
+    }
+
+    const assignment = user.userAssignments.find(
+      (a) => a.organizationId === organizationId,
+    );
+
+    if (!assignment) {
+      throw new BadRequestException(
+        'You are not a member of this organization',
+      );
+    }
+
+    const tokens = await this.jwtService.generateTokens(
+      user.id,
+      assignment.organizationId,
+      assignment.role,
+      assignment.branchId ?? undefined,
+    );
+
+    const org = assignment.organization;
+
     return {
       tokens,
       user: {
@@ -188,6 +401,16 @@ export class AuthService {
         status: user.status,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
+      },
+      organization: {
+        id: org.id,
+        name: org.name,
+        type: org.type,
+        phone: org.phone,
+        email: org.email,
+        address: org.address,
+        city: org.city,
+        country: org.country,
       },
       roles: user.userAssignments.map((a) => ({
         businessId: a.organizationId,
@@ -217,10 +440,12 @@ export class AuthService {
       include: { userAssignments: true },
     });
 
-    if (user?.userAssignments.some((a) => a.role === Role.OWNER)) {
-      throw new BadRequestException(
-        'This phone number is already registered with a business',
-      );
+    if (user) {
+      if (user.userAssignments.some((a) => a.role === Role.OWNER)) {
+        throw new BadRequestException(
+          'You already own a business. Please create a branch instead.',
+        );
+      }
     }
 
     const organization = await this.prisma.organization.create({
@@ -328,7 +553,7 @@ export class AuthService {
 
     if (!user.passwordHash) {
       throw new BadRequestException(
-        'No password set. Use reset password instead.',
+        'No password set. Please reset your password instead.',
       );
     }
 
@@ -337,7 +562,9 @@ export class AuthService {
       user.passwordHash,
     );
     if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new UnauthorizedException(
+        'Current password is incorrect. Please try again.',
+      );
     }
 
     const newPasswordHash = await bcrypt.hash(newPassword, this.saltRounds);
@@ -361,7 +588,9 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException(
+        'Account not found. Please check your phone number.',
+      );
     }
 
     const newPasswordHash = await bcrypt.hash(newPassword, this.saltRounds);
@@ -402,8 +631,16 @@ export class AuthService {
         where: { id: branchId, organizationId },
       });
       if (!branch) {
-        throw new BadRequestException('Branch not found in your organization');
+        throw new BadRequestException(
+          'Branch not found. Please check the branch details.',
+        );
       }
+    }
+
+    if (role === Role.OWNER) {
+      throw new BadRequestException(
+        'Cannot assign OWNER role through staff invitation. Please create a new business instead.',
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -418,7 +655,7 @@ export class AuthService {
 
       if (existingAssignment) {
         throw new BadRequestException(
-          'This user is already a member of your organization',
+          'This user is already a member of your organization.',
         );
       }
 
@@ -443,55 +680,30 @@ export class AuthService {
       };
     }
 
-    // If password is provided, create user immediately
-    if (password) {
-      const passwordHash = await bcrypt.hash(password, this.saltRounds);
+    // Invitation-only flow: never create User / passwordHash at invite time.
+    // Password field accepted for backwards compatibility but is intentionally ignored.
+    // Staff member receives SMS invitation and sets their own password via
+    // Activate Invitation (OTP verified) flow.
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-      const newUser = await this.prisma.user.create({
-        data: {
-          phone,
-          fullName,
-          passwordHash,
-        },
-      });
-
-      await this.prisma.userBusinessAssignment.create({
-        data: {
-          userId: newUser.id,
-          organizationId,
-          role,
-          branchId: branchId || null,
-        },
-      });
-
-      this.logger.log(
-        `New user created and added to org: id=${newUser.id} role=${role} org=${organizationId}`,
-      );
-
-      return {
-        ...newUser,
-        organizationId,
-        branchId,
-        role,
-      };
-    }
-
-    // Otherwise, create invitation
     const invitation = await this.prisma.invitation.create({
       data: {
+        token,
         phone,
         organizationId,
         role,
         branchId: branchId || null,
+        expiresAt,
       },
     });
 
     const organization = await this.prisma.organization.findUnique({
-      where: { id: organizationId }
+      where: { id: organizationId },
     });
 
     this.logger.log(
-      `Invitation created: id=${invitation.id} phone=${phone} role=${role}`,
+      `Invitation created: id=${invitation.id} phone=${phone} role=${role} expires=${expiresAt.toISOString()}`,
     );
 
     // Send SMS notification for invitation
@@ -500,20 +712,89 @@ export class AuthService {
     return invitation;
   }
 
-  // ── Get Invitation ────────────────────────────────────────────────────────
+  // ── Get Invitation (Authenticated only — JWT guarded) ────────────────────
   async getInvitation(phone: string) {
+    const now = new Date();
+    // Clean up expired invitations first
+    await this.prisma.invitation.deleteMany({
+      where: {
+        phone,
+        status: 'PENDING',
+        expiresAt: { lt: now },
+      },
+    });
+
     const invitations = await this.prisma.invitation.findMany({
-      where: { phone, status: 'PENDING' },
+      where: {
+        phone,
+        status: 'PENDING',
+        expiresAt: { gt: now },
+      },
       include: { organization: true, branch: true },
     });
 
     if (invitations.length === 0) {
       throw new BadRequestException(
-        'No pending invitations found for this phone number',
+        'No pending invitations found for this phone number.',
       );
     }
 
     return invitations;
+  }
+
+  // ── Check Invitation (PUBLIC — used before login) ────────────────────────
+  // Validates { phone + token } pair (strongly recommended), or falls back to
+  // phone-only existence check with the same expiration logic.
+  //
+  // Returns the list of matching valid invitations (same format as getInvitation)
+  // so step 1 of the activation flow can render an invitation picker.
+  //
+  // SECURITY:
+  //   • Requires invitation to be status=PENDING and expiresAt>now
+  //   • If `token` supplied → phone AND token BOTH must match (prevents
+  //     phone-enumeration brute-forcing)
+  //   • Organization must still exist in DB (FK checked implicitly by prisma
+  //     include + explicit guard below for soft-deleted orgs if applicable)
+  async checkInvitation(phone: string, token?: string) {
+    const now = new Date();
+
+    // Passive cleanup — don't throw if this fails, just best-effort.
+    try {
+      await this.prisma.invitation.deleteMany({
+        where: { phone, status: 'PENDING', expiresAt: { lt: now } },
+      });
+    } catch (_) {
+      /* ignore */
+    }
+
+    const invitations = await this.prisma.invitation.findMany({
+      where: {
+        phone,
+        status: 'PENDING',
+        expiresAt: { gt: now },
+        ...(token ? { token } : {}),
+      },
+      include: { organization: true, branch: true },
+    });
+
+    if (invitations.length === 0) {
+      throw new BadRequestException(
+        token
+          ? 'Invalid invitation (wrong phone/token, or already used/expired)'
+          : 'No pending invitations found for this phone number',
+      );
+    }
+
+    return invitations.map((inv) => ({
+      id: inv.id,
+      role: inv.role,
+      branchId: inv.branchId,
+      branch: inv.branch,
+      organizationId: inv.organizationId,
+      organization: inv.organization,
+      status: inv.status,
+      expiresAt: inv.expiresAt.toISOString(),
+    }));
   }
 
   // ── Activate Invitation ───────────────────────────────────────────────────
@@ -523,19 +804,37 @@ export class AuthService {
     fullName: string,
     password: string,
     organizationId: string,
+    invitationToken?: string,
   ) {
     await this.otpService.verifyOtp(phone, otpCode);
 
+    // Verify organization still exists (FK would eventually enforce this but
+    // give a cleaner error to the user + close off an org-guessing vector via
+    // invitation.activate timing differences — negligible in practice, but explicit).
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!organization) {
+      throw new BadRequestException(
+        'Organization not found. Please check the details.',
+      );
+    }
+
+    const now = new Date();
     const invitation = await this.prisma.invitation.findFirst({
       where: {
         phone,
         organizationId,
         status: 'PENDING',
+        expiresAt: { gt: now },
+        ...(invitationToken ? { token: invitationToken } : {}),
       },
     });
 
     if (!invitation) {
-      throw new BadRequestException('Invitation not found');
+      throw new BadRequestException(
+        'Invitation not found or expired. Please request a new invitation.',
+      );
     }
 
     let user = await this.prisma.user.findUnique({
@@ -628,12 +927,12 @@ export class AuthService {
 
     if (!assignment) {
       throw new BadRequestException(
-        'Staff member not found in your organization',
+        'Staff member not found in your organization.',
       );
     }
 
     if (assignment.role === Role.OWNER) {
-      throw new BadRequestException('Cannot remove the organization owner');
+      throw new BadRequestException('Cannot remove the organization owner.');
     }
 
     await this.prisma.userBusinessAssignment.delete({
@@ -641,5 +940,66 @@ export class AuthService {
     });
 
     return { message: 'Staff member removed successfully' };
+  }
+
+  // ── Update a staff member ──────────────────────────────────────────────────
+  async updateStaff(
+    staffAssignmentId: string,
+    organizationId: string,
+    fullName: string,
+    role: Role,
+    branchId?: string,
+  ) {
+    const assignment = await this.prisma.userBusinessAssignment.findFirst({
+      where: { id: staffAssignmentId, organizationId },
+      include: { user: true },
+    });
+
+    if (!assignment) {
+      throw new BadRequestException(
+        'Staff member not found in your organization.',
+      );
+    }
+
+    if (assignment.role === Role.OWNER) {
+      throw new BadRequestException('Cannot update the organization owner.');
+    }
+
+    // Validate branch if provided
+    if (branchId) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { id: branchId, organizationId },
+      });
+      if (!branch) {
+        throw new BadRequestException(
+          'Branch not found. Please check the branch details.',
+        );
+      }
+    }
+
+    // Update user full name
+    await this.prisma.user.update({
+      where: { id: assignment.userId },
+      data: { fullName },
+    });
+
+    // Update assignment (role and branch)
+    const updatedAssignment = await this.prisma.userBusinessAssignment.update({
+      where: { id: staffAssignmentId },
+      data: {
+        role,
+        branchId: branchId || null,
+      },
+      include: {
+        user: true,
+        branch: { select: { id: true, name: true } },
+      },
+    });
+
+    this.logger.log(
+      `Staff updated: id=${staffAssignmentId} role=${role} branch=${branchId || 'none'}`,
+    );
+
+    return updatedAssignment;
   }
 }

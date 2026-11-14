@@ -102,8 +102,8 @@ class LocaleStrings {
   };
 
   static const Map<Language, String> languageNames = {
-    Language.english: 'English',
-    Language.amharic: 'አማርኛ',
-    Language.oromo: 'Afaan Oromoo',
+    Language.english: 'EN',
+    Language.amharic: 'AM',
+    Language.oromo: 'OM',
   };
 }

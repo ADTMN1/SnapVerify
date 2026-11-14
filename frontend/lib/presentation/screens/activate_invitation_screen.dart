@@ -25,6 +25,7 @@ class _ActivateInvitationScreenState
   bool _otpSent = false;
   bool _canResendOtp = true;
   int _resendTimer = 60;
+  bool _isLoading = false;
   List<dynamic> _invitations = [];
   dynamic _selectedInvitation;
 
@@ -49,6 +50,14 @@ class _ActivateInvitationScreenState
   bool _passwordFocused = false;
   bool _confirmPasswordFocused = false;
 
+  // Validation Errors
+  String? _phoneError;
+  String? _otpError;
+  String? _fullNameError;
+  String? _passwordError;
+  String? _confirmPasswordError;
+  String? _invitationError;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +71,14 @@ class _ActivateInvitationScreenState
 
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
+    setState(() {
+      _phoneError = null;
+      _otpError = null;
+      _fullNameError = null;
+      _passwordError = null;
+      _confirmPasswordError = null;
+      _invitationError = null;
+    });
   }
 
   void _setupFocusListeners() {
@@ -111,25 +128,36 @@ class _ActivateInvitationScreenState
   }
 
   Future<void> _checkInvitations() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) return;
+    final phone = _phoneController.text.trim().replaceAll(' ', '');
+    if (phone.isEmpty) {
+      setState(() => _phoneError = 'Phone number is required.');
+      return;
+    }
+    if (!RegExp(r'^(\+?251|0)?9\d{8}$').hasMatch(phone)) {
+      setState(() => _phoneError = 'Please enter a valid Ethiopian phone number.');
+      return;
+    }
+    
+    setState(() => _isLoading = true);
     
     try {
       final invitations = await ref
-          .read(authRemoteDatasourceProvider)
-          .getInvitations(phone);
+          .read(authRepositoryProvider)
+          .checkInvitation(phone);
       
       setState(() {
         _invitations = invitations;
         _currentStep = 1;
+        _isLoading = false;
       });
     } catch (e) {
+      setState(() => _isLoading = false);
       ToastService.showError(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
   Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim();
+    final phone = _phoneController.text.trim().replaceAll(' ', '');
     if (phone.isEmpty) return;
     
     await ref.read(authNotifierProvider.notifier).sendOtp(phone);
@@ -164,27 +192,59 @@ class _ActivateInvitationScreenState
       await _checkInvitations();
     } else if (_currentStep == 1) {
       if (_selectedInvitation == null) {
-        ToastService.showError('Please select an invitation');
+        setState(() => _invitationError = 'Please select an invitation.');
         return;
       }
       if (!_otpSent) {
         await _sendOtp();
       } else {
         final otp = _otpController.text.trim();
-        if (otp.isEmpty) return;
+        if (otp.isEmpty) {
+          setState(() => _otpError = 'Verification code is required.');
+          return;
+        }
+        if (otp.length != 6) {
+          setState(() => _otpError = 'Verification code must be 6 digits.');
+          return;
+        }
         setState(() => _currentStep = 2);
       }
     } else {
-      if (_passwordController.text != _confirmPasswordController.text) {
-        ToastService.showError('Passwords do not match!');
+      final fullName = _fullNameController.text.trim();
+      if (fullName.isEmpty) {
+        setState(() => _fullNameError = 'Full name is required.');
+        return;
+      }
+      
+      final password = _passwordController.text.trim();
+      if (password.isEmpty) {
+        setState(() => _passwordError = 'Password is required.');
+        return;
+      }
+      if (password.length < 6) {
+        setState(() => _passwordError = 'Password must be at least 6 characters.');
+        return;
+      }
+      
+      final confirmPassword = _confirmPasswordController.text.trim();
+      if (confirmPassword.isEmpty) {
+        setState(() => _confirmPasswordError = 'Please confirm your password.');
+        return;
+      }
+      if (password != confirmPassword) {
+        setState(() => _confirmPasswordError = 'Passwords do not match.');
         return;
       }
       
       final phone = _phoneController.text.trim();
       final otp = _otpController.text.trim();
-      final fullName = _fullNameController.text.trim();
-      final password = _passwordController.text.trim();
-      final organizationId = _selectedInvitation['organizationId'];
+      final organizationId = _selectedInvitation['organizationId']?.toString();
+      final invitationToken = _selectedInvitation['token']?.toString();
+      
+      if (organizationId == null) {
+        setState(() => _invitationError = 'Organization ID is missing from invitation.');
+        return;
+      }
       
       await ref.read(authNotifierProvider.notifier).activateInvitation(
         phone: phone,
@@ -192,6 +252,7 @@ class _ActivateInvitationScreenState
         fullName: fullName,
         password: password,
         organizationId: organizationId,
+        invitationToken: invitationToken,
       );
     }
   }
@@ -204,21 +265,24 @@ class _ActivateInvitationScreenState
     return Scaffold(
       backgroundColor: TwColors.primaryBg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(size),
-              const SizedBox(height: 24),
-              _buildStepsIndicator(),
-              const SizedBox(height: 28),
-              _buildCurrentStep(),
-              const SizedBox(height: 32),
-              _buildNavigationButtons(authState),
-              const SizedBox(height: 32),
-              _buildLoginLink(),
-            ],
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(size),
+                const SizedBox(height: 24),
+                _buildStepsIndicator(),
+                const SizedBox(height: 28),
+                _buildCurrentStep(),
+                const SizedBox(height: 32),
+                _buildNavigationButtons(authState),
+                const SizedBox(height: 32),
+                _buildLoginLink(),
+              ],
+            ),
           ),
         ),
       ),
@@ -242,7 +306,7 @@ class _ActivateInvitationScreenState
             decoration: BoxDecoration(
               color: TwColors.cardBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: TwColors.white.withOpacity(0.08)),
+              border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
             ),
             child: const Icon(
               Icons.arrow_back_ios_new_rounded,
@@ -262,7 +326,7 @@ class _ActivateInvitationScreenState
       decoration: BoxDecoration(
         color: TwColors.cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: TwColors.white.withOpacity(0.08)),
+        border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: Language.values.map((lang) {
@@ -278,18 +342,18 @@ class _ActivateInvitationScreenState
               ),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? TwColors.brightGreen.withOpacity(0.15)
+                    ? TwColors.brightGreen.withValues(alpha: 0.15)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
                 border: isSelected
                     ? Border.all(
-                        color: TwColors.brightGreen.withOpacity(0.4),
+                        color: TwColors.brightGreen.withValues(alpha: 0.4),
                         width: 1.5,
                       )
                     : null,
               ),
               child: Text(
-                LocaleStrings.languageNames[lang]!,
+                LocaleStrings.languageNames[lang] ?? lang.name,
                 style: TextStyle(
                   color: isSelected ? TwColors.brightGreen : TwColors.slate400,
                   fontSize: 13,
@@ -317,7 +381,7 @@ class _ActivateInvitationScreenState
           height: 2,
           color: _currentStep > 0
               ? TwColors.brightGreen
-              : TwColors.white.withOpacity(0.1),
+              : TwColors.white.withValues(alpha: 0.1),
         ),
         Expanded(
           child: _buildStepIndicator(
@@ -330,7 +394,7 @@ class _ActivateInvitationScreenState
           height: 2,
           color: _currentStep > 1
               ? TwColors.brightGreen
-              : TwColors.white.withOpacity(0.1),
+              : TwColors.white.withValues(alpha: 0.1),
         ),
         Expanded(
           child: _buildStepIndicator(
@@ -356,29 +420,29 @@ class _ActivateInvitationScreenState
           height: 44,
           decoration: BoxDecoration(
             color: isActive
-                ? TwColors.brightGreen.withOpacity(0.15)
+                ? TwColors.brightGreen.withValues(alpha: 0.15)
                 : TwColors.cardBg,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: isActive
-                  ? TwColors.brightGreen.withOpacity(0.5)
-                  : TwColors.white.withOpacity(0.08),
+                  ? TwColors.brightGreen.withValues(alpha: 0.5)
+                  : TwColors.white.withValues(alpha: 0.08),
               width: isActive ? 1.5 : 1,
             ),
           ),
           child: Center(
             child: isCompleted
                 ? const Icon(
-                    Icons.check_rounded,
+                    Icons.done_outline_rounded,
                     color: TwColors.brightGreen,
-                    size: 22,
+                    size: 20,
                   )
                 : Text(
                     '${index + 1}',
                     style: TextStyle(
                       color: isActive ? TwColors.brightGreen : TwColors.slate400,
                       fontSize: 18,
-                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
                     ),
                   ),
           ),
@@ -424,10 +488,11 @@ class _ActivateInvitationScreenState
         _buildTitle('Select Invitation', 'Choose which invitation to activate'),
         const SizedBox(height: 28),
         ..._invitations.map((invitation) {
-          final isSelected = invitation == _selectedInvitation;
-          final organization = invitation['organization'];
-          final branch = invitation['branch'];
-          final role = invitation['role'];
+          final isSelected = _selectedInvitation != null && 
+              invitation['token'] == _selectedInvitation['token'];
+          final organization = invitation['organization'] as Map<String, dynamic>?;
+          final branch = invitation['branch'] as Map<String, dynamic>?;
+          final role = invitation['role']?.toString();
           return GestureDetector(
             onTap: () {
               setState(() => _selectedInvitation = invitation);
@@ -442,20 +507,20 @@ class _ActivateInvitationScreenState
               margin: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? TwColors.brightGreen.withOpacity(0.1)
+                    ? TwColors.brightGreen.withValues(alpha: 0.1)
                     : TwColors.cardBg,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isSelected
-                      ? TwColors.brightGreen.withOpacity(0.4)
-                      : TwColors.white.withOpacity(0.08),
+                      ? TwColors.brightGreen.withValues(alpha: 0.4)
+                      : TwColors.white.withValues(alpha: 0.08),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    organization['name'],
+                    organization?['name']?.toString() ?? 'Unknown Organization',
                     style: TextStyle(
                       color: isSelected ? TwColors.brightGreen : TwColors.white,
                       fontSize: 18,
@@ -464,18 +529,18 @@ class _ActivateInvitationScreenState
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    role.toString().toLowerCase().capitalize(),
+                    role?.toLowerCase().capitalize() ?? 'Unknown Role',
                     style: const TextStyle(
                       color: TwColors.slate400,
                       fontSize: 14,
                       fontWeight: FontWeight.normal,
                     ),
                   ),
-                  if (branch != null)
+                  if (branch != null && branch['name'] != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        branch['name'],
+                        branch['name'].toString(),
                         style: const TextStyle(
                           color: TwColors.slate500,
                           fontSize: 13,
@@ -487,7 +552,26 @@ class _ActivateInvitationScreenState
               ),
             ),
           );
-        }).toList(),
+        }),
+        const SizedBox(height: 20),
+        if (_otpSent) ...[
+          _buildOtpField(),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _canResendOtp ? _sendOtp : null,
+              child: Text(
+                _canResendOtp ? _t('resend_otp') : '${_t('resend_otp')} ($_resendTimer)',
+                style: TextStyle(
+                  color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
+                  fontSize: 14,
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -499,23 +583,6 @@ class _ActivateInvitationScreenState
         _buildTitle('Set Password', 'Enter your details to activate your account'),
         const SizedBox(height: 28),
         _buildFullNameField(),
-        const SizedBox(height: 20),
-        _buildOtpField(),
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: _canResendOtp ? _sendOtp : null,
-            child: Text(
-              _canResendOtp ? _t('resend_otp') : '${_t('resend_otp')} ($_resendTimer)',
-              style: TextStyle(
-                color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
-                fontSize: 14,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ),
-        ),
         const SizedBox(height: 20),
         _buildPasswordField(),
         const SizedBox(height: 20),
@@ -551,88 +618,178 @@ class _ActivateInvitationScreenState
   }
 
   Widget _buildPhoneNumberField() {
-    return _buildUniqueInput(
-      controller: _phoneController,
-      focusNode: _phoneFocusNode,
-      isFocused: _phoneFocused,
-      label: _t('phone_number'),
-      hint: '+251 9XX XXX XXX',
-      icon: Icons.phone_outlined,
-      keyboardType: TextInputType.phone,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _phoneController,
+          focusNode: _phoneFocusNode,
+          isFocused: _phoneFocused,
+          label: _t('phone_number'),
+          hint: '+251 9XX XXX XXX',
+          icon: Icons.phone_outlined,
+          keyboardType: TextInputType.phone,
+          hasError: _phoneError != null,
+        ),
+        if (_phoneError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _phoneError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildOtpField() {
-    return _buildUniqueInput(
-      controller: _otpController,
-      focusNode: _otpFocusNode,
-      isFocused: _otpFocused,
-      label: _t('otp_code'),
-      hint: '123456',
-      icon: Icons.pin_outlined,
-      keyboardType: TextInputType.number,
-      maxLength: 6,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _otpController,
+          focusNode: _otpFocusNode,
+          isFocused: _otpFocused,
+          label: _t('otp_code'),
+          hint: '123456',
+          icon: Icons.pin_outlined,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          hasError: _otpError != null,
+        ),
+        if (_otpError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _otpError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildFullNameField() {
-    return _buildUniqueInput(
-      controller: _fullNameController,
-      focusNode: _fullNameFocusNode,
-      isFocused: _fullNameFocused,
-      label: _t('full_name'),
-      hint: 'John Doe',
-      icon: Icons.person_outline_rounded,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _fullNameController,
+          focusNode: _fullNameFocusNode,
+          isFocused: _fullNameFocused,
+          label: _t('full_name'),
+          hint: 'John Doe',
+          icon: Icons.person_outline_rounded,
+          hasError: _fullNameError != null,
+        ),
+        if (_fullNameError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _fullNameError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildPasswordField() {
-    return _buildUniqueInput(
-      controller: _passwordController,
-      focusNode: _passwordFocusNode,
-      isFocused: _passwordFocused,
-      label: _t('password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscurePassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _passwordController,
+          focusNode: _passwordFocusNode,
+          isFocused: _passwordFocused,
+          label: _t('password'),
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
+              size: 16,
+            ),
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+          ),
+          hasError: _passwordError != null,
         ),
-        onPressed: () {
-          setState(() {
-            _obscurePassword = !_obscurePassword;
-          });
-        },
-      ),
+        if (_passwordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _passwordError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   Widget _buildConfirmPasswordField() {
-    return _buildUniqueInput(
-      controller: _confirmPasswordController,
-      focusNode: _confirmPasswordFocusNode,
-      isFocused: _confirmPasswordFocused,
-      label: _t('confirm_password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscureConfirmPassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscureConfirmPassword
-              ? Icons.visibility_off_outlined
-              : Icons.visibility_outlined,
-          color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _confirmPasswordController,
+          focusNode: _confirmPasswordFocusNode,
+          isFocused: _confirmPasswordFocused,
+          label: _t('confirm_password'),
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscureConfirmPassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscureConfirmPassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
+              size: 20,
+            ),
+            onPressed: () {
+              setState(() {
+                _obscureConfirmPassword = !_obscureConfirmPassword;
+              });
+            },
+          ),
+          hasError: _confirmPasswordError != null,
         ),
-        onPressed: () {
-          setState(() {
-            _obscureConfirmPassword = !_obscureConfirmPassword;
-          });
-        },
-      ),
+        if (_confirmPasswordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _confirmPasswordError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -648,23 +805,30 @@ class _ActivateInvitationScreenState
     bool enabled = true,
     int? maxLength,
     Widget? suffixIcon,
+    bool hasError = false,
   }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isFocused ? TwColors.brightGreen : TwColors.white.withOpacity(0.08),
-          width: isFocused ? 1.5 : 1,
+          color: hasError
+              ? TwColors.red500
+              : isFocused
+                  ? TwColors.brightGreen
+                  : TwColors.white.withValues(alpha: 0.08),
+          width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
             ? [
                 BoxShadow(
-                  color: TwColors.brightGreen.withOpacity(0.15),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
+                  color: hasError
+                      ? TwColors.red500.withValues(alpha: 0.1)
+                      : TwColors.brightGreen.withValues(alpha: 0.1),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2),
                 )
               ]
             : [],
@@ -678,24 +842,24 @@ class _ActivateInvitationScreenState
         maxLength: maxLength,
         style: const TextStyle(
           color: TwColors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           prefixIcon: Container(
-            margin: const EdgeInsets.only(left: 12, right: 8),
-            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(left: 8, right: 6),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isFocused
-                  ? TwColors.brightGreen.withOpacity(0.1)
-                  : TwColors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(12),
+                  ? TwColors.brightGreen.withValues(alpha: 0.1)
+                  : TwColors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 20,
+              size: 16,
             ),
           ),
           suffixIcon: suffixIcon,
@@ -703,15 +867,15 @@ class _ActivateInvitationScreenState
             label,
             style: TextStyle(
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
           ),
           hintText: hint,
           hintStyle: TextStyle(
-            color: TwColors.white.withOpacity(0.3),
-            fontSize: 15,
-            fontWeight: FontWeight.normal,
+            color: TwColors.white.withValues(alpha: 0.3),
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
           ),
           border: InputBorder.none,
           counterText: '',
@@ -721,7 +885,7 @@ class _ActivateInvitationScreenState
   }
 
   Widget _buildNavigationButtons(AuthState authState) {
-    if (authState.status == AuthStatus.loading) {
+    if (authState.status == AuthStatus.loading || _isLoading) {
       return const Center(
         child: CircularProgressIndicator(
           color: TwColors.brightGreen,
@@ -756,10 +920,10 @@ class _ActivateInvitationScreenState
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: TwColors.red500.withOpacity(0.1),
+            color: TwColors.red500.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: TwColors.red500.withOpacity(0.3),
+              color: TwColors.red500.withValues(alpha: 0.3),
             ),
           ),
           child: Row(
@@ -768,7 +932,7 @@ class _ActivateInvitationScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: TwColors.red500.withOpacity(0.15),
+                  color: TwColors.red500.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -794,9 +958,24 @@ class _ActivateInvitationScreenState
                     Text(
                       authState.errorMessage ?? _t('an_error_occurred'),
                       style: TextStyle(
-                        color: TwColors.red500.withOpacity(0.8),
+                        color: TwColors.red500.withValues(alpha: 0.8),
                         fontSize: 13,
                         fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () {
+                        ref.read(authNotifierProvider.notifier).clearError();
+                      },
+                      child: Text(
+                        _t('retry'),
+                        style: TextStyle(
+                          color: TwColors.red500,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
                       ),
                     ),
                   ],
@@ -827,12 +1006,13 @@ class _ActivateInvitationScreenState
         style: ElevatedButton.styleFrom(
           backgroundColor: TwColors.brightGreen,
           foregroundColor: TwColors.primaryBg,
-          padding: const EdgeInsets.symmetric(vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 0,
           shadowColor: Colors.transparent,
+          minimumSize: const Size(double.infinity, 52),
         ),
         child: Text(
           text,
