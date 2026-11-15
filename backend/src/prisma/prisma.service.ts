@@ -11,7 +11,11 @@ export class PrismaService
   constructor() {
     // Strip sslmode from the connection string — we pass ssl config directly
     // to avoid pg's broken sslmode=require behavior in newer versions
-    const connStr = (process.env.DATABASE_URL ?? '').replace(/[?&]sslmode=[^&]*/g, '').replace(/[?&]uselibpqcompat=[^&]*/g, '').replace(/[?&]connect_timeout=[^&]*/g, '');
+    const url = new URL(process.env.DATABASE_URL ?? '');
+    for (const key of ['sslmode', 'uselibpqcompat', 'connect_timeout']) {
+      url.searchParams.delete(key);
+    }
+    const connStr = url.toString();
     const pool = new Pool({
       connectionString: connStr,
       ssl: { rejectUnauthorized: false },

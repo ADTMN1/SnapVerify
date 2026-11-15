@@ -23,6 +23,11 @@ export interface ThrottlingConfig {
    * registered payment account.
    */
   paymentVerifyImageLimit: number;
+  /**
+   * GET /qr/resolve/:publicId requests-per-window (per organization).
+   * Bounds QR enumeration attempts from a scanned/forged code.
+   */
+  qrResolveLimit: number;
 }
 
 const DEFAULTS: ThrottlingConfig = {
@@ -30,6 +35,7 @@ const DEFAULTS: ThrottlingConfig = {
   defaultLimit: 100,
   paymentVerifyLimit: 60,
   paymentVerifyImageLimit: 30,
+  qrResolveLimit: 60,
 };
 
 function parsePositiveInt(
@@ -68,6 +74,11 @@ export function resolveThrottlingConfig(
       env,
       'PAYMENT_VERIFY_IMAGE_RATE_LIMIT',
       DEFAULTS.paymentVerifyImageLimit,
+    ),
+    qrResolveLimit: parsePositiveInt(
+      env,
+      'QR_RESOLVE_RATE_LIMIT',
+      DEFAULTS.qrResolveLimit,
     ),
   };
 }

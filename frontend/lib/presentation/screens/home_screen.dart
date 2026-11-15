@@ -27,7 +27,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       const HomeTab(),
       const HistoryTab(),
       const CameraTab(),
-      const QRTab(),
+      QRTab(isActive: _activeTab == 3),
       if (canManage) const ManageTab(),
     ];
 

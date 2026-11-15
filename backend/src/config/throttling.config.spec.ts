@@ -8,6 +8,7 @@ describe('resolveThrottlingConfig', () => {
       defaultLimit: 100,
       paymentVerifyLimit: 60,
       paymentVerifyImageLimit: 30,
+      qrResolveLimit: 60,
     });
   });
 
@@ -17,12 +18,14 @@ describe('resolveThrottlingConfig', () => {
       THROTTLE_LIMIT: '50',
       PAYMENT_VERIFY_RATE_LIMIT: '20',
       PAYMENT_VERIFY_IMAGE_RATE_LIMIT: '10',
+      QR_RESOLVE_RATE_LIMIT: '15',
     });
     expect(cfg).toEqual({
       ttlMs: 30_000,
       defaultLimit: 50,
       paymentVerifyLimit: 20,
       paymentVerifyImageLimit: 10,
+      qrResolveLimit: 15,
     });
   });
 
@@ -34,6 +37,7 @@ describe('resolveThrottlingConfig', () => {
     ['invalid ttl', { THROTTLE_TTL_MS: 'abc' }],
     ['invalid verify limit', { PAYMENT_VERIFY_RATE_LIMIT: '0' }],
     ['invalid image limit', { PAYMENT_VERIFY_IMAGE_RATE_LIMIT: '-1' }],
+    ['invalid qr resolve limit', { QR_RESOLVE_RATE_LIMIT: '0' }],
   ])('fails fast on %s configuration', (_label, env) => {
     expect(() => resolveThrottlingConfig(env as any)).toThrow(/FATAL/);
   });

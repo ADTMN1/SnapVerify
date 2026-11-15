@@ -8,6 +8,11 @@ datasource db {
 
 model PaymentAccount {
   id                String            @id @default(uuid())
+  // Opaque, stable public identifier used in the account's QR deep link
+  // (/qr/v1/<publicId>). Generated server-side on creation, unique per
+  // account, and never derived from the bank account number so a QR code
+  // cannot be reversed into sensitive banking data.
+  publicId          String            @unique
   organizationId    String
   provider          PaymentProvider
   accountNumber     String?

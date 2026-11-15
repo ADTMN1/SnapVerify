@@ -111,15 +111,15 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             businessName,
             style: const TextStyle(
               color: TwColors.white,
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           const Text(
             'Overview of your business performance',
             style: TextStyle(
-              color: Colors.white60,
+              color: TwColors.slate400,
               fontSize: 13,
             ),
           ),

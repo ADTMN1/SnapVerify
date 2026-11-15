@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { OtpModule } from './otp/otp.module';
 import { PaymentModule } from './payment/payment.module';
 import { BranchModule } from './branch/branch.module';
+import { QrModule } from './qr/qr.module';
 import { AdminModule } from './admin/admin.module';
 import { OrgThrottlerGuard } from './auth/guards/org-throttler.guard';
 import { resolveThrottlingConfig } from './config/throttling.config';
@@ -16,11 +17,7 @@ import { resolveThrottlingConfig } from './config/throttling.config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [
-        '.env',
-        'backend/.env',
-        join(__dirname, '..', '.env'),
-      ],
+      envFilePath: ['.env', 'backend/.env', join(__dirname, '..', '.env')],
     }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
@@ -39,6 +36,7 @@ import { resolveThrottlingConfig } from './config/throttling.config';
     OtpModule,
     PaymentModule,
     BranchModule,
+    QrModule,
     AdminModule,
   ],
   providers: [

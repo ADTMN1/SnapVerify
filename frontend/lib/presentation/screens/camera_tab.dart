@@ -118,22 +118,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
       _showResultSheet(transaction);
     } else if (mounted) {
       // Show professional error for invalid image
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Invalid Receipt'),
-          content: const Text(
-            'We couldn\'t find a valid transaction in the captured image. '
-            'Please make sure the receipt is clear and contains a transaction reference number.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Try Again'),
-            ),
-          ],
-        ),
-      );
+      _showInvalidReceiptDialog();
     }
   } catch (e, stackTrace) {
       dev.log('[CameraTab] Error capturing/processing image: $e');
@@ -144,6 +129,83 @@ class _CameraTabState extends ConsumerState<CameraTab> {
         );
       }
     }
+  }
+
+  void _showInvalidReceiptDialog() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: TwColors.slate700),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: TwColors.red500.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.receipt_long_rounded,
+                  color: TwColors.red500,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Invalid Receipt',
+                style: TextStyle(
+                  color: TwColors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "We couldn't find a valid transaction in the captured image. "
+                'Please make sure the receipt is clear and contains a '
+                'transaction reference number.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: TwColors.slate400,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: double.infinity,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: TwColors.brightGreen,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Text(
+                    'Try Again',
+                    style: TextStyle(
+                      color: TwColors.slate900,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showResultSheet(ExtractedTransaction transaction) {
@@ -196,35 +258,35 @@ class _CameraTabState extends ConsumerState<CameraTab> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(children: [
                       Container(
-                        width: 30,
-                        height: 30,
+                        width: 34,
+                        height: 34,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [TwColors.brightGreen, TwColors.lime400],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.verified_rounded, color: Colors.black, size: 16),
+                        child: const Icon(Icons.verified_rounded, color: Colors.black, size: 18),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'SnapVerify',
-                            style: TextStyle(color: TwColors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                            style: TextStyle(color: TwColors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5),
                           ),
                           Text(
                             'Capture receipt to verify',
-                            style: TextStyle(color: TwColors.slate400, fontSize: 12),
+                            style: TextStyle(color: TwColors.slate400, fontSize: 13),
                           ),
                         ],
                       ),
@@ -364,7 +426,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           statusSubtitle = state.result!.message.isNotEmpty ? state.result!.message : 'Payment confirmed';
           break;
         case VerificationStatus.alreadyVerified:
-          statusColor = Colors.orange;
+          statusColor = TwColors.amber500;
           statusIcon = Icons.warning_amber_rounded;
           statusTitle = 'Already Used';
           statusSubtitle = state.result!.message ?? 'This payment has already been verified';

@@ -59,6 +59,7 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
 
   const baseAccount = {
     id: 'acc-1',
+    publicId: '0123456789abcdef01234567',
     organizationId: 'org-1',
     provider: PaymentProvider.CBE,
     accountNumber: '1000516323381',
@@ -83,7 +84,10 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
 
     const args = mockPrisma.paymentAccount.create.mock.calls[0][0];
     expect(args.data.accountNumberHash).toBe(hmac('1000516323381'));
-    const plain = crypto.createHash('sha256').update('1000516323381').digest('hex');
+    const plain = crypto
+      .createHash('sha256')
+      .update('1000516323381')
+      .digest('hex');
     expect(args.data.accountNumberHash).not.toContain(plain);
     expect(args.data.accountNumber).toBe('1000516323381');
   });
@@ -112,6 +116,87 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
 
     expect(all[0].accountNumber).toBe('****3381');
     expect(byBranch[0].accountNumber).toBe('****3381');
+  });
+
+  it('assigns a stable, opaque public QR id when creating an account', async () => {
+    mockPrisma.paymentAccount.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.create.mockImplementation(async ({ data }) => ({
+      ...baseAccount,
+      publicId: data.publicId,
+    }));
+
+    const result = await service.create('org-1', {
+      provider: PaymentProvider.CBE,
+      accountNumber: '1000516323381',
+      suffix: '16323381',
+      accountHolderName: 'Test Business',
+      branchId: undefined,
+    } as any);
+
+    const args = mockPrisma.paymentAccount.create.mock.calls[0][0];
+    expect(args.data.publicId).toMatch(/^[0-9a-f]{24}$/);
+    expect(result.publicId).toBe(args.data.publicId);
+    // The QR identifier must not be derived from the account number.
+    expect(args.data.publicId).not.toContain('1000516323381');
+  });
+
+  it('retries with a fresh public id when the generated one collides', async () => {
+    mockPrisma.paymentAccount.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.create
+      .mockRejectedValueOnce({ code: 'P2002', meta: { target: ['publicId'] } })
+      .mockImplementationOnce(async ({ data }) => ({
+        ...baseAccount,
+        publicId: data.publicId,
+      }));
+
+    await service.create('org-1', {
+      provider: PaymentProvider.CBE,
+      accountNumber: '1000516323381',
+      suffix: '16323381',
+      accountHolderName: 'Test Business',
+      branchId: undefined,
+    } as any);
+
+    expect(mockPrisma.paymentAccount.create).toHaveBeenCalledTimes(2);
+    const first = mockPrisma.paymentAccount.create.mock.calls[0][0].data;
+    const second = mockPrisma.paymentAccount.create.mock.calls[1][0].data;
+    expect(second.publicId).toMatch(/^[0-9a-f]{24}$/);
+    expect(second.publicId).not.toBe(first.publicId);
+  });
+
+  it('never rewrites the public id of an existing account', async () => {
+    mockPrisma.paymentAccount.findFirst.mockResolvedValue(baseAccount);
+    mockPrisma.paymentAccount.update.mockResolvedValue(baseAccount);
+
+    await service.create('org-1', {
+      provider: PaymentProvider.CBE,
+      accountNumber: '1000516323381',
+      suffix: '16323381',
+      accountHolderName: 'Test Business',
+      branchId: undefined,
+    } as any);
+
+    const args = mockPrisma.paymentAccount.update.mock.calls[0][0];
+    expect(args.data.publicId).toBeUndefined();
+  });
+
+  it('backfills a public id for a legacy account that has none', async () => {
+    mockPrisma.paymentAccount.findFirst.mockResolvedValue({
+      ...baseAccount,
+      publicId: null,
+    });
+    mockPrisma.paymentAccount.update.mockResolvedValue(baseAccount);
+
+    await service.create('org-1', {
+      provider: PaymentProvider.CBE,
+      accountNumber: '1000516323381',
+      suffix: '16323381',
+      accountHolderName: 'Test Business',
+      branchId: undefined,
+    } as any);
+
+    const args = mockPrisma.paymentAccount.update.mock.calls[0][0];
+    expect(args.data.publicId).toMatch(/^[0-9a-f]{24}$/);
   });
 
   it('keeps the hash in sync when the account number is updated', async () => {

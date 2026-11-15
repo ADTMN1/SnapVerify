@@ -10,29 +10,15 @@ import { UpdatePaymentAccountDto } from './dto/update-payment-account.dto';
 import { PaymentProvider } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { computeAccountNumberHash } from './account-hash';
+import { maskAccount } from './account-mask';
+import { generatePublicId, isUniqueConstraintViolation } from '../qr/public-id';
 
 /**
- * Stage 1 (data minimization): full receiving-account numbers are never
- * returned from the API. Responses carry a masked rendering that preserves
- * the tail digits needed for configuration.
+ * Number of attempts to allocate a unique public QR identifier. A collision
+ * on 96 random bits is practically impossible; the retry exists so a
+ * collision can never surface as a failed account creation.
  */
-function maskAccountNumberForResponse(
-  accountNumber: string | null,
-): string | null {
-  if (!accountNumber) return null;
-  const digits = accountNumber.replace(/\s/g, '');
-  if (digits.length <= 4) return '****';
-  return `****${digits.slice(-4)}`;
-}
-
-function maskAccount<T extends { accountNumber?: string | null }>(
-  account: T,
-): T {
-  return {
-    ...account,
-    accountNumber: maskAccountNumberForResponse(account.accountNumber ?? null),
-  };
-}
+const PUBLIC_ID_ATTEMPTS = 5;
 
 @Injectable()
 export class PaymentAccountService {
@@ -94,7 +80,9 @@ export class PaymentAccountService {
       });
 
       if (existingAccount) {
-        // Update existing account
+        // Update existing account. A public QR identifier is never rewritten
+        // (printed codes stay valid); one is only allocated if a legacy row
+        // somehow has none.
         const account = await this.prisma.paymentAccount.update({
           where: { id: existingAccount.id },
           data: {
@@ -105,25 +93,44 @@ export class PaymentAccountService {
             suffix: dto.suffix,
             accountHolderName: dto.accountHolderName,
             isActive: true,
+            ...(existingAccount.publicId
+              ? {}
+              : { publicId: generatePublicId() }),
           },
         });
         this.logger.log(`[create] Payment account updated: ${account.id}`);
         return maskAccount(account);
       } else {
-        // Create new account
-        const account = await this.prisma.paymentAccount.create({
-          data: {
-            organizationId,
-            provider: dto.provider,
-            accountNumber: dto.accountNumber,
-            accountNumberHash: this.hashAccountNumber(dto.accountNumber),
-            suffix: dto.suffix,
-            accountHolderName: dto.accountHolderName,
-            branchId: dto.branchId,
-          },
-        });
-        this.logger.log(`[create] Payment account created: ${account.id}`);
-        return maskAccount(account);
+        // Create new account. Every account receives its QR identifier here,
+        // in the same write, so an account can never exist without one.
+        for (let attempt = 1; attempt <= PUBLIC_ID_ATTEMPTS; attempt++) {
+          try {
+            const account = await this.prisma.paymentAccount.create({
+              data: {
+                organizationId,
+                publicId: generatePublicId(),
+                provider: dto.provider,
+                accountNumber: dto.accountNumber,
+                accountNumberHash: this.hashAccountNumber(dto.accountNumber),
+                suffix: dto.suffix,
+                accountHolderName: dto.accountHolderName,
+                branchId: dto.branchId,
+              },
+            });
+            this.logger.log(`[create] Payment account created: ${account.id}`);
+            return maskAccount(account);
+          } catch (err) {
+            const collision = isUniqueConstraintViolation(err, 'publicId');
+            if (!collision || attempt === PUBLIC_ID_ATTEMPTS) throw err;
+            this.logger.warn(
+              `[create] publicId collision, retrying (${attempt}/${PUBLIC_ID_ATTEMPTS})`,
+            );
+          }
+        }
+        // Unreachable: the loop either returns or rethrows.
+        throw new BadRequestException(
+          'Failed to create payment account. Please try again.',
+        );
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
