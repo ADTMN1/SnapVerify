@@ -31,8 +31,8 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches(authState.tokens!.accessToken);
-        final staff = await ref.read(authRepositoryProvider).getStaff(authState.tokens!.accessToken);
+        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final staff = await ref.read(authRepositoryProvider).getStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
         if (mounted) {
           setState(() {
             _branches = branches;

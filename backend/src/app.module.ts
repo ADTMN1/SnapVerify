@@ -5,6 +5,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { SmsModule } from './sms/sms.module';
+import { EmailModule } from './email/email.module';
 import { OtpModule } from './otp/otp.module';
 import { PaymentModule } from './payment/payment.module';
 import { BranchModule } from './branch/branch.module';
@@ -33,6 +35,8 @@ import { resolveThrottlingConfig } from './config/throttling.config';
     }),
     PrismaModule,
     AuthModule,
+    SmsModule,
+    EmailModule,
     OtpModule,
     PaymentModule,
     BranchModule,

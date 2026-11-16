@@ -18,7 +18,7 @@ class QrApi {
   QrApi(this._ref);
 
   Future<T> _withAuth<T>(Future<T> Function(String token) action) async {
-    var token = _ref.read(authNotifierProvider).tokens?.accessToken;
+    var token = await _ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
     if (token == null) {
       throw QrApiException('Not authenticated — please log in again', 401);
     }

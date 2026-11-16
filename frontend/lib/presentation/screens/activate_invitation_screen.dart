@@ -7,7 +7,9 @@ import '../providers/auth_provider.dart';
 import 'login_screen.dart';
 
 class ActivateInvitationScreen extends ConsumerStatefulWidget {
-  const ActivateInvitationScreen({super.key});
+  final String? initialToken;
+
+  const ActivateInvitationScreen({super.key, this.initialToken});
 
   @override
   ConsumerState<ActivateInvitationScreen> createState() =>
@@ -22,47 +24,52 @@ class _ActivateInvitationScreenState
   int _currentStep = 0;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _otpSent = false;
-  bool _canResendOtp = true;
-  int _resendTimer = 60;
   bool _isLoading = false;
   List<dynamic> _invitations = [];
   dynamic _selectedInvitation;
 
   // Controllers
-  final _phoneController = TextEditingController();
+  final _tokenController = TextEditingController();
+  final _emailController = TextEditingController();
   final _otpController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   // Focus Nodes
-  final _phoneFocusNode = FocusNode();
+  final _tokenFocusNode = FocusNode();
+  final _emailFocusNode = FocusNode();
   final _otpFocusNode = FocusNode();
   final _fullNameFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   final _confirmPasswordFocusNode = FocusNode();
 
   // Focus States
-  bool _phoneFocused = false;
+  bool _tokenFocused = false;
+  bool _emailFocused = false;
   bool _otpFocused = false;
   bool _fullNameFocused = false;
   bool _passwordFocused = false;
   bool _confirmPasswordFocused = false;
 
   // Validation Errors
-  String? _phoneError;
+  String? _tokenError;
+  String? _emailError;
   String? _otpError;
   String? _fullNameError;
   String? _passwordError;
   String? _confirmPasswordError;
-  String? _invitationError;
 
+  @override
   @override
   void initState() {
     super.initState();
     _setupFocusListeners();
-    _phoneController.addListener(_clearError);
+    if (widget.initialToken != null && widget.initialToken!.isNotEmpty) {
+      _tokenController.text = widget.initialToken!;
+    }
+    _tokenController.addListener(_clearError);
+    _emailController.addListener(_clearError);
     _otpController.addListener(_clearError);
     _fullNameController.addListener(_clearError);
     _passwordController.addListener(_clearError);
@@ -72,18 +79,21 @@ class _ActivateInvitationScreenState
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
     setState(() {
-      _phoneError = null;
+      _tokenError = null;
+      _emailError = null;
       _otpError = null;
       _fullNameError = null;
       _passwordError = null;
       _confirmPasswordError = null;
-      _invitationError = null;
     });
   }
 
   void _setupFocusListeners() {
-    _phoneFocusNode.addListener(() {
-      setState(() => _phoneFocused = _phoneFocusNode.hasFocus);
+    _tokenFocusNode.addListener(() {
+      setState(() => _tokenFocused = _tokenFocusNode.hasFocus);
+    });
+    _emailFocusNode.addListener(() {
+      setState(() => _emailFocused = _emailFocusNode.hasFocus);
     });
     _otpFocusNode.addListener(() {
       setState(() => _otpFocused = _otpFocusNode.hasFocus);
@@ -101,17 +111,21 @@ class _ActivateInvitationScreenState
 
   @override
   void dispose() {
-    _phoneController.removeListener(_clearError);
+    ref.read(authNotifierProvider.notifier).clearError();
+    _tokenController.removeListener(_clearError);
+    _emailController.removeListener(_clearError);
     _otpController.removeListener(_clearError);
     _fullNameController.removeListener(_clearError);
     _passwordController.removeListener(_clearError);
     _confirmPasswordController.removeListener(_clearError);
-    _phoneController.dispose();
+    _tokenController.dispose();
+    _emailController.dispose();
     _otpController.dispose();
     _fullNameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _phoneFocusNode.dispose();
+    _tokenFocusNode.dispose();
+    _emailFocusNode.dispose();
     _otpFocusNode.dispose();
     _fullNameFocusNode.dispose();
     _passwordFocusNode.dispose();
@@ -128,22 +142,18 @@ class _ActivateInvitationScreenState
   }
 
   Future<void> _checkInvitations() async {
-    final phone = _phoneController.text.trim().replaceAll(' ', '');
-    if (phone.isEmpty) {
-      setState(() => _phoneError = 'Phone number is required.');
+    final token = _tokenController.text.trim();
+    if (token.isEmpty) {
+      setState(() => _tokenError = 'Invitation code is required.');
       return;
     }
-    if (!RegExp(r'^(\+?251|0)?9\d{8}$').hasMatch(phone)) {
-      setState(() => _phoneError = 'Please enter a valid Ethiopian phone number.');
-      return;
-    }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       final invitations = await ref
           .read(authRepositoryProvider)
-          .checkInvitation(phone);
+          .checkInvitation(token);
       
       setState(() {
         _invitations = invitations;
@@ -156,76 +166,45 @@ class _ActivateInvitationScreenState
     }
   }
 
-  Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim().replaceAll(' ', '');
-    if (phone.isEmpty) return;
-    
-    await ref.read(authNotifierProvider.notifier).sendOtp(phone);
-    
-    final authState = ref.read(authNotifierProvider);
-    if (authState.status != AuthStatus.error) {
-      setState(() => _otpSent = true);
-      _startResendTimer();
-      ToastService.showSuccess('OTP sent successfully!');
-    }
-  }
-
-  Future<void> _startResendTimer() async {
-    setState(() {
-      _canResendOtp = false;
-      _resendTimer = 60;
-    });
-    
-    for (int i = 59; i >= 0; i--) {
-      if (!mounted) return;
-      setState(() => _resendTimer = i);
-      await Future.delayed(const Duration(seconds: 1));
-    }
-    
-    if (mounted) {
-      setState(() => _canResendOtp = true);
-    }
-  }
+  String? _validationError;
 
   Future<void> _nextStep() async {
     if (_currentStep == 0) {
       await _checkInvitations();
     } else if (_currentStep == 1) {
       if (_selectedInvitation == null) {
-        setState(() => _invitationError = 'Please select an invitation.');
+        ToastService.showError('Please select an invitation.');
         return;
       }
-      if (!_otpSent) {
-        await _sendOtp();
-      } else {
-        final otp = _otpController.text.trim();
-        if (otp.isEmpty) {
-          setState(() => _otpError = 'Verification code is required.');
-          return;
-        }
-        if (otp.length != 6) {
-          setState(() => _otpError = 'Verification code must be 6 digits.');
-          return;
-        }
-        setState(() => _currentStep = 2);
+      setState(() => _currentStep = 2);
+    } else if (_currentStep == 2) {
+      // Validate registration details, then send the activation OTP
+      final email = _emailController.text.trim().toLowerCase();
+      if (email.isEmpty) {
+        setState(() => _emailError = 'Email is required.');
+        return;
       }
-    } else {
+      if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+        setState(() => _emailError = 'Please enter a valid email address.');
+        return;
+      }
+
       final fullName = _fullNameController.text.trim();
       if (fullName.isEmpty) {
         setState(() => _fullNameError = 'Full name is required.');
         return;
       }
-      
+
       final password = _passwordController.text.trim();
       if (password.isEmpty) {
         setState(() => _passwordError = 'Password is required.');
         return;
       }
-      if (password.length < 6) {
-        setState(() => _passwordError = 'Password must be at least 6 characters.');
+      if (password.length < 8) {
+        setState(() => _passwordError = 'Password must be at least 8 characters.');
         return;
       }
-      
+
       final confirmPassword = _confirmPasswordController.text.trim();
       if (confirmPassword.isEmpty) {
         setState(() => _confirmPasswordError = 'Please confirm your password.');
@@ -235,25 +214,80 @@ class _ActivateInvitationScreenState
         setState(() => _confirmPasswordError = 'Passwords do not match.');
         return;
       }
-      
-      final phone = _phoneController.text.trim();
+
+      final token = _selectedInvitation?['token']?.toString() ??
+          (_tokenController.text.trim().isNotEmpty
+              ? _tokenController.text.trim()
+              : null);
+
+      final notifier = ref.read(authNotifierProvider.notifier);
+      await notifier.sendStaffActivationOtp(email: email, token: token);
+      final authState = ref.read(authNotifierProvider);
+      if (authState.status != AuthStatus.error && mounted) {
+        setState(() {
+          _currentStep = 3;
+          _canResendOtp = false;
+          _resendTimer = 60;
+        });
+        _startResendTimer();
+        ToastService.showSuccess('Verification code sent to your email!');
+      }
+    } else {
       final otp = _otpController.text.trim();
-      final organizationId = _selectedInvitation['organizationId']?.toString();
-      final invitationToken = _selectedInvitation['token']?.toString();
-      
-      if (organizationId == null) {
-        setState(() => _invitationError = 'Organization ID is missing from invitation.');
+      if (otp.isEmpty) {
+        setState(() => _otpError = 'Verification code is required.');
         return;
       }
-      
+      if (otp.length != 6) {
+        setState(() => _otpError = 'Verification code must be 6 digits.');
+        return;
+      }
+
+      final email = _emailController.text.trim().toLowerCase();
+      final fullName = _fullNameController.text.trim();
+      final password = _passwordController.text.trim();
+      final token = _selectedInvitation?['token']?.toString() ??
+          (_tokenController.text.trim().isNotEmpty
+              ? _tokenController.text.trim()
+              : null);
+
       await ref.read(authNotifierProvider.notifier).activateInvitation(
-        phone: phone,
+        token: token,
+        email: email,
         otpCode: otp,
         fullName: fullName,
         password: password,
-        organizationId: organizationId,
-        invitationToken: invitationToken,
       );
+    }
+  }
+
+  bool _canResendOtp = false;
+  int _resendTimer = 60;
+
+  Future<void> _startResendTimer() async {
+    for (int i = 59; i >= 0; i--) {
+      if (!mounted) return;
+      setState(() => _resendTimer = i);
+      await Future.delayed(const Duration(seconds: 1));
+    }
+    if (mounted) {
+      setState(() => _canResendOtp = true);
+    }
+  }
+
+  Future<void> _resendOtp() async {
+    final email = _emailController.text.trim().toLowerCase();
+    final token = _selectedInvitation?['token']?.toString() ??
+        (_tokenController.text.trim().isNotEmpty
+            ? _tokenController.text.trim()
+            : null);
+    final notifier = ref.read(authNotifierProvider.notifier);
+    await notifier.sendStaffActivationOtp(email: email, token: token);
+    final authState = ref.read(authNotifierProvider);
+    if (authState.status != AuthStatus.error && mounted) {
+      setState(() => _canResendOtp = false);
+      _startResendTimer();
+      ToastService.showSuccess('New verification code sent!');
     }
   }
 
@@ -370,38 +404,31 @@ class _ActivateInvitationScreenState
   Widget _buildStepsIndicator() {
     return Row(
       children: [
-        Expanded(
-          child: _buildStepIndicator(
-            index: 0,
-            title: 'Phone',
-          ),
-        ),
+        Expanded(child: _buildStepIndicator(index: 0, title: 'Code')),
         Container(
-          width: 40,
+          width: 24,
           height: 2,
           color: _currentStep > 0
               ? TwColors.brightGreen
               : TwColors.white.withValues(alpha: 0.1),
         ),
-        Expanded(
-          child: _buildStepIndicator(
-            index: 1,
-            title: 'Select Invitation',
-          ),
-        ),
+        Expanded(child: _buildStepIndicator(index: 1, title: 'Invite')),
         Container(
-          width: 40,
+          width: 24,
           height: 2,
           color: _currentStep > 1
               ? TwColors.brightGreen
               : TwColors.white.withValues(alpha: 0.1),
         ),
-        Expanded(
-          child: _buildStepIndicator(
-            index: 2,
-            title: 'Set Password',
-          ),
+        Expanded(child: _buildStepIndicator(index: 2, title: 'Details')),
+        Container(
+          width: 24,
+          height: 2,
+          color: _currentStep > 2
+              ? TwColors.brightGreen
+              : TwColors.white.withValues(alpha: 0.1),
         ),
+        Expanded(child: _buildStepIndicator(index: 3, title: 'Verify')),
       ],
     );
   }
@@ -462,21 +489,66 @@ class _ActivateInvitationScreenState
 
   Widget _buildCurrentStep() {
     if (_currentStep == 0) {
-      return _buildPhoneStep();
+      return _buildTokenStep();
     } else if (_currentStep == 1) {
       return _buildSelectInvitationStep();
+    } else if (_currentStep == 2) {
+      return _buildRegistrationStep();
     } else {
-      return _buildActivateStep();
+      return _buildVerifyStep();
     }
   }
 
-  Widget _buildPhoneStep() {
+  Widget _buildTokenStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTitle('Activate Invitation', 'Enter your phone number to check for invitations'),
+        _buildTitle('Activate Invitation', 'Enter the invitation code from your QR invitation'),
         const SizedBox(height: 28),
-        _buildPhoneNumberField(),
+        _buildTokenField(),
+      ],
+    );
+  }
+
+  Widget _buildRegistrationStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTitle('Set Password', 'Enter your details to activate your account'),
+        const SizedBox(height: 28),
+        _buildEmailField(),
+        const SizedBox(height: 20),
+        _buildFullNameField(),
+        const SizedBox(height: 20),
+        _buildPasswordField(),
+        const SizedBox(height: 20),
+        _buildConfirmPasswordField(),
+      ],
+    );
+  }
+
+  Widget _buildVerifyStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTitle('Verify Email', 'Enter the code we sent to ${_emailController.text.trim()}'),
+        const SizedBox(height: 28),
+        _buildOtpField(),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _canResendOtp ? _resendOtp : null,
+            child: Text(
+              _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
+              style: TextStyle(
+                color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -553,25 +625,6 @@ class _ActivateInvitationScreenState
             ),
           );
         }),
-        const SizedBox(height: 20),
-        if (_otpSent) ...[
-          _buildOtpField(),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _canResendOtp ? _sendOtp : null,
-              child: Text(
-                _canResendOtp ? _t('resend_otp') : '${_t('resend_otp')} ($_resendTimer)',
-                style: TextStyle(
-                  color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                ),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -617,25 +670,54 @@ class _ActivateInvitationScreenState
     );
   }
 
-  Widget _buildPhoneNumberField() {
+  Widget _buildTokenField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildUniqueInput(
-          controller: _phoneController,
-          focusNode: _phoneFocusNode,
-          isFocused: _phoneFocused,
-          label: _t('phone_number'),
-          hint: '+251 9XX XXX XXX',
-          icon: Icons.phone_outlined,
-          keyboardType: TextInputType.phone,
-          hasError: _phoneError != null,
+          controller: _tokenController,
+          focusNode: _tokenFocusNode,
+          isFocused: _tokenFocused,
+          label: 'Invitation code',
+          hint: 'Paste the code from your invitation',
+          icon: Icons.qr_code_rounded,
+          hasError: _tokenError != null,
         ),
-        if (_phoneError != null)
+        if (_tokenError != null)
           Padding(
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
-              _phoneError!,
+              _tokenError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildEmailField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUniqueInput(
+          controller: _emailController,
+          focusNode: _emailFocusNode,
+          isFocused: _emailFocused,
+          label: _t('email'),
+          hint: 'you@example.com',
+          icon: Icons.alternate_email_rounded,
+          keyboardType: TextInputType.emailAddress,
+          hasError: _emailError != null,
+        ),
+        if (_emailError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _emailError!,
               style: TextStyle(
                 color: TwColors.red500,
                 fontSize: 12,
@@ -655,7 +737,7 @@ class _ActivateInvitationScreenState
           controller: _otpController,
           focusNode: _otpFocusNode,
           isFocused: _otpFocused,
-          label: _t('otp_code'),
+          label: 'Verification code',
           hint: '123456',
           icon: Icons.pin_outlined,
           keyboardType: TextInputType.number,
@@ -902,7 +984,9 @@ class _ActivateInvitationScreenState
     if (_currentStep == 0) {
       buttonText = 'Check Invitations';
     } else if (_currentStep == 1) {
-      buttonText = _otpSent ? _t('verify_continue') : _t('send_otp');
+      buttonText = 'Continue';
+    } else if (_currentStep == 2) {
+      buttonText = 'Send Code';
     } else {
       buttonText = 'Activate Account';
     }

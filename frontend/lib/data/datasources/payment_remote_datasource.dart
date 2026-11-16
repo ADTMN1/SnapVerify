@@ -1,9 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
-import 'dart:developer' as dev;
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/ocr_parser.dart';
 import '../../domain/entities/verification_result.dart';
 import '../../domain/entities/payment_account.dart';
 
@@ -17,7 +18,7 @@ class PaymentRemoteDatasource {
 
   // ── Compress before sending — smaller = faster OCR ───────────────────────
   Future<Uint8List> _compress(Uint8List bytes) async {
-    dev.log('[PaymentDS] original size: ${bytes.length} bytes');
+    debugPrint('[PaymentDS] original size: ${bytes.length} bytes');
     final compressed = await FlutterImageCompress.compressWithList(
       bytes,
       minWidth: 800,
@@ -25,7 +26,7 @@ class PaymentRemoteDatasource {
       quality: 75,
       format: CompressFormat.jpeg,
     );
-    dev.log('[PaymentDS] compressed size: ${compressed.length} bytes '
+    debugPrint('[PaymentDS] compressed size: ${compressed.length} bytes '
         '(${((1 - compressed.length / bytes.length) * 100).toStringAsFixed(0)}% smaller)');
     return Uint8List.fromList(compressed);
   }
@@ -41,7 +42,7 @@ class PaymentRemoteDatasource {
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payments/verify-image');
 
-    dev.log('[PaymentDS] verifyByImage → $uri');
+    debugPrint('[PaymentDS] verifyByImage → $uri');
 
     // Compress first
     final compressed = await _compress(imageBytes);
@@ -68,11 +69,11 @@ class PaymentRemoteDatasource {
       );
       response = await http.Response.fromStream(streamed);
     } catch (e) {
-      dev.log('[PaymentDS] verifyByImage network/timeout error: $e');
+      debugPrint('[PaymentDS] verifyByImage network/timeout error: $e');
       rethrow;
     }
 
-    dev.log('[PaymentDS] verifyByImage HTTP ${response.statusCode}');
+    debugPrint('[PaymentDS] verifyByImage HTTP ${response.statusCode}');
 
     _throwIfError(response);
 
@@ -80,7 +81,7 @@ class PaymentRemoteDatasource {
       return VerificationResult.fromJson(
           jsonDecode(response.body) as Map<String, dynamic>);
     } catch (e) {
-      dev.log('[PaymentDS] verifyByImage parse error: $e');
+      debugPrint('[PaymentDS] verifyByImage parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -94,7 +95,9 @@ class PaymentRemoteDatasource {
     String? suffix,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payments/verify');
-    dev.log('[PaymentDS] verifyByReference → $uri ref=$referenceNumber');
+    debugPrint('[PaymentDS] verifyByReference → $uri '
+        'ref=${OcrParser.maskReference(referenceNumber)}'
+        '${provider != null ? ' provider=$provider' : ''}');
 
     http.Response response;
     try {
@@ -116,11 +119,11 @@ class PaymentRemoteDatasource {
             'Timed out after ${_timeout.inSeconds}s. Please try again.'),
       );
     } catch (e) {
-      dev.log('[PaymentDS] verifyByReference error: $e');
+      debugPrint('[PaymentDS] verifyByReference error: $e');
       rethrow;
     }
 
-    dev.log('[PaymentDS] verifyByReference HTTP ${response.statusCode}');
+    debugPrint('[PaymentDS] verifyByReference HTTP ${response.statusCode}');
 
     _throwIfError(response);
 
@@ -128,7 +131,7 @@ class PaymentRemoteDatasource {
       return VerificationResult.fromJson(
           jsonDecode(response.body) as Map<String, dynamic>);
     } catch (e) {
-      dev.log('[PaymentDS] verifyByReference parse error: $e');
+      debugPrint('[PaymentDS] verifyByReference parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -138,7 +141,7 @@ class PaymentRemoteDatasource {
     required String accessToken,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payments/history');
-    dev.log('[PaymentDS] getVerificationHistory → $uri');
+    debugPrint('[PaymentDS] getVerificationHistory → $uri');
 
     final response = await client
         .get(
@@ -149,7 +152,7 @@ class PaymentRemoteDatasource {
         )
         .timeout(_timeout);
 
-    dev.log('[PaymentDS] getVerificationHistory HTTP ${response.statusCode}');
+    debugPrint('[PaymentDS] getVerificationHistory HTTP ${response.statusCode}');
     _throwIfError(response);
 
     try {
@@ -162,7 +165,7 @@ class PaymentRemoteDatasource {
       }
       return [];
     } catch (e) {
-      dev.log('[PaymentDS] getVerificationHistory parse error: $e');
+      debugPrint('[PaymentDS] getVerificationHistory parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -172,7 +175,7 @@ class PaymentRemoteDatasource {
     required String accessToken,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts');
-    dev.log('[PaymentDS] getPaymentAccounts → $uri');
+    debugPrint('[PaymentDS] getPaymentAccounts → $uri');
 
     final response = await client.get(
       uri,
@@ -187,7 +190,7 @@ class PaymentRemoteDatasource {
       final List<dynamic> list = jsonDecode(response.body);
       return list.map((e) => PaymentAccount.fromJson(e)).toList();
     } catch (e) {
-      dev.log('[PaymentDS] getPaymentAccounts parse error: $e');
+      debugPrint('[PaymentDS] getPaymentAccounts parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -199,7 +202,7 @@ class PaymentRemoteDatasource {
     String? suffix,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts');
-    dev.log('[PaymentDS] createPaymentAccount → $uri');
+    debugPrint('[PaymentDS] createPaymentAccount → $uri');
 
     final response = await client.post(
       uri,
@@ -219,7 +222,7 @@ class PaymentRemoteDatasource {
     try {
       return PaymentAccount.fromJson(jsonDecode(response.body));
     } catch (e) {
-      dev.log('[PaymentDS] createPaymentAccount parse error: $e');
+      debugPrint('[PaymentDS] createPaymentAccount parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -231,7 +234,7 @@ class PaymentRemoteDatasource {
     String? suffix,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts/$provider');
-    dev.log('[PaymentDS] updatePaymentAccount → $uri');
+    debugPrint('[PaymentDS] updatePaymentAccount → $uri');
 
     final response = await client.put(
       uri,
@@ -250,7 +253,7 @@ class PaymentRemoteDatasource {
     try {
       return PaymentAccount.fromJson(jsonDecode(response.body));
     } catch (e) {
-      dev.log('[PaymentDS] updatePaymentAccount parse error: $e');
+      debugPrint('[PaymentDS] updatePaymentAccount parse error: $e');
       throw Exception('Could not parse response: $e');
     }
   }
@@ -260,7 +263,7 @@ class PaymentRemoteDatasource {
     required String provider,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts/$provider');
-    dev.log('[PaymentDS] deletePaymentAccount → $uri');
+    debugPrint('[PaymentDS] deletePaymentAccount → $uri');
 
     final response = await client.delete(
       uri,
@@ -286,7 +289,7 @@ class PaymentRemoteDatasource {
     } catch (_) {
       errorMsg = 'HTTP ${response.statusCode}: ${response.body}';
     }
-    dev.log('[PaymentDS] error: $errorMsg');
+    debugPrint('[PaymentDS] error: $errorMsg');
     throw Exception(errorMsg);
   }
 }

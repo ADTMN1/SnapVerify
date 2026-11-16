@@ -244,6 +244,11 @@ export class CheckEtService {
       body.account_number = accountNumber;
     }
 
+    // Sanitized diagnostics: bank code + reference style/length only.
+    this.logger.log(
+      `[CheckEt] verifyReference bank=${checkBank} refStyle=${(transactionNumber ?? '').slice(0, 2)} refLen=${(transactionNumber ?? '').length} accountNumberSent=${!!body.account_number}`,
+    );
+
     return this._postJson('/verify', body);
   }
 
@@ -392,6 +397,32 @@ export class CheckEtService {
   private async _request(
     doFetch: (signal: AbortSignal) => Promise<any>,
   ): Promise<NormalizedVerification> {
+    // One bounded retry for RETRYABLE infrastructure failures (network /
+    // 5xx). Check.et's bank-specific upstreams (especially Telebirr) are
+    // intermittently slow or unreachable; without a retry a single transient
+    // failure fails the whole verification even when a second attempt
+    // succeeds. Authoritative business answers are never retried.
+    let lastError: CheckEtError | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        return await this._requestOnce(doFetch);
+      } catch (e) {
+        if (!(e instanceof CheckEtError) || !e.isRetryable) throw e;
+        lastError = e;
+        if (attempt < 2) {
+          this.logger.warn(
+            `[CheckEt] retryable failure (${e.type}, HTTP ${e.httpStatus}) — retrying once in 1.5s`,
+          );
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+    }
+    throw lastError!;
+  }
+
+  private async _requestOnce(
+    doFetch: (signal: AbortSignal) => Promise<any>,
+  ): Promise<NormalizedVerification> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), CHECK_ET_TIMEOUT_MS);
 
@@ -430,6 +461,24 @@ export class CheckEtService {
     }
 
     const raw = json as CheckEtRawResponse;
+
+    if (httpStatus === 409) {
+      // Branch-scoped duplicate: the transaction was already verified through
+      // this Check.et account. Authoritative business answer, NOT an error —
+      // never retried, never fails closed.
+      this.logger.log(
+        `[CheckEt] duplicate (HTTP 409): ${raw?.message ?? 'already verified'}`,
+      );
+      return this._normalize(
+        {
+          ...raw,
+          success: false,
+          duplicate: true,
+          message: raw?.message ?? 'This payment was already verified.',
+        } as CheckEtRawResponse,
+        httpStatus,
+      );
+    }
 
     if (httpStatus >= 400) {
       const classified = classifyCheckEtResponse(json, httpStatus);

@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../../core/utils/jwt_utils.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
 import '../../domain/entities/auth_tokens.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/entities/organization.dart';
@@ -292,7 +294,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Proactively refresh if the access token is about to expire
       AuthTokens finalTokens;
       if (JwtUtils.isExpired(tokens.accessToken)) {
-        dev.log('[Auth] access token expired on restore — refreshing');
+        debugPrint('[Auth] access token expired on restore — refreshing');
         final refreshData = await _repo.refreshToken(tokens.refreshToken);
         finalTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
       } else {
@@ -307,7 +309,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         organization: userAndOrg['organization'],
       );
     } catch (e) {
-      dev.log('[Auth] session restore failed: $e');
+      debugPrint('[Auth] session restore failed: $e');
       await _repo.clearTokens();
       state = AuthState.unauthenticated;
     }
@@ -324,57 +326,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return {'user': user, 'organization': organization};
   }
 
-  // ── Verify OTP without logging in (for multi-step flows like registration) ─
-  //  Uses the server's "check-only" endpoint: invalid OTPs throw, valid OTPs
-  //  remain available for subsequent consumption by createBusiness.
-
-  Future<bool> verifyOtpOnly(String phone, String code) async {
-    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
-    try {
-      await _repo.checkOtp(phone, code);
-      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
-      return true;
-    } catch (e) {
-      state = state.copyWith(
-        status: AuthStatus.error,
-        errorMessage: _friendly(e),
-      );
-      return false;
-    }
-  }
-
-  // ── Send OTP ─────────────────────────────────────────────────────────────
-
-  Future<void> sendOtp(String phone, {String? purpose}) async {
-    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
-    try {
-      await _repo.sendOtp(phone, purpose: purpose);
-      // Return to previous state (or unauthenticated) without triggering navigation
-      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
-    } catch (e) {
-      state = state.copyWith(
-        status: AuthStatus.error,
-        errorMessage: _friendly(e),
-      );
-    }
-  }
-
   // ── Password Login ───────────────────────────────────────────────────────
 
   Future<void> loginWithPassword(
-    String phone,
+    String identifier,
     String password, {
     String? organizationId,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
-      dev.log('[Auth] Logging in with password for phone: $phone');
+      debugPrint('[Auth] Logging in with password for: $identifier');
       final data = await _repo.loginWithPassword(
-        phone,
+        identifier,
         password,
         organizationId: organizationId,
       );
-      dev.log('[Auth] Login data received: $data');
+      debugPrint('[Auth] Login data received: $data');
 
       // Check if multi-business selection is required
       if (data['requiresBusinessSelection'] == true) {
@@ -393,28 +360,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
 
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      final user = data['user'] != null 
-          ? User.fromJson(data['user'] as Map<String, dynamic>) 
-          : null;
-      final org = data['organization'] != null 
-          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
-          : null;
-      final rolesList = (data['roles'] as List<dynamic>?) 
-          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
-          .toList() ?? [];
-      
-      final userAndOrg = org != null 
-          ? {'organization': org} 
-          : await _fetchUserAndOrganization(tokens.accessToken);
-      state = _authenticatedState(
-        tokens, 
-        user: user, 
-        organization: userAndOrg['organization'],
-        roles: rolesList,
-      );
-    } catch (e, stackTrace) {
-      dev.log('[Auth] Login error: $e', stackTrace: stackTrace);
+      await _completeLogin(data);
+    } catch (e) {
+      debugPrint('[Auth] Login error: $e');
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: _friendly(e),
@@ -422,64 +370,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  // ── Verify OTP / Login ───────────────────────────────────────────────────
-
-  Future<void> verifyOtp(
-    String phone,
-    String code, {
-    String? organizationId,
-  }) async {
-    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
-    try {
-      final data = await _repo.verifyOtp(
-        phone,
-        code,
-        organizationId: organizationId,
-      );
-
-      // Check if multi-business selection is required
-      if (data['requiresBusinessSelection'] == true) {
-        final businesses = (data['businesses'] as List<dynamic>)
-            .map((b) => UserBusinessMembership.fromJson(b as Map<String, dynamic>))
-            .toList();
-        final pendingUser = data['user'] != null 
-            ? User.fromJson(data['user'] as Map<String, dynamic>) 
-            : null;
-        state = state.copyWith(
-          status: AuthStatus.requiresBusinessSelection,
-          availableOrganizations: businesses,
-          pendingUser: pendingUser,
-          errorMessage: null,
-        );
-        return;
-      }
-
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      final user = data['user'] != null 
-          ? User.fromJson(data['user'] as Map<String, dynamic>) 
-          : null;
-      final org = data['organization'] != null 
-          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
-          : null;
-      final rolesList = (data['roles'] as List<dynamic>?) 
-          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
-          .toList() ?? [];
-      
-      final userAndOrg = org != null 
-          ? {'organization': org} 
-          : await _fetchUserAndOrganization(tokens.accessToken);
-      state = _authenticatedState(
-        tokens, 
-        user: user, 
-        organization: userAndOrg['organization'],
-        roles: rolesList,
-      );
-    } catch (e) {
-      state = state.copyWith(
-        status: AuthStatus.error,
-        errorMessage: _friendly(e),
-      );
-    }
+  /// Shared completion for login flows: parses tokens/user/org from the
+  /// response payload and transitions to the authenticated state.
+  Future<void> _completeLogin(Map<String, dynamic> data) async {
+    final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
+    final user = data['user'] != null 
+        ? User.fromJson(data['user'] as Map<String, dynamic>) 
+        : null;
+    final org = data['organization'] != null 
+        ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
+        : null;
+    final rolesList = (data['roles'] as List<dynamic>?) 
+        ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
+        .toList() ?? [];
+    
+    final userAndOrg = org != null 
+        ? {'organization': org} 
+        : await _fetchUserAndOrganization(tokens.accessToken);
+    state = _authenticatedState(
+      tokens, 
+      user: user, 
+      organization: userAndOrg['organization'],
+      roles: rolesList,
+    );
   }
 
   // ── Select Business (for multi-org users) ─────────────────────────────────
@@ -594,69 +507,87 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  // ── Register business ─────────────────────────────────────────────────────
+  // ── Owner registration (step 1: create account → email OTP) ───────────────
 
-  Future<void> createBusiness({
+  Future<bool> register({
     required String name,
     required String fullName,
-    required String phone,
-    required String otpCode,
+    required String email,
     required String password,
-    String? email,
-    String? address,
+    required String confirmPassword,
     String? type,
     String? city,
     String? country,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
-      dev.log('[Auth] Creating business...');
-      final data = await _repo.createBusiness(
+      await _repo.register(
         name: name,
         fullName: fullName,
-        phone: phone,
-        otpCode: otpCode,
-        password: password,
         email: email,
-        address: address,
+        password: password,
+        confirmPassword: confirmPassword,
         type: type,
         city: city,
         country: country,
       );
-      dev.log('[Auth] Business created! Data: $data');
-
-      // Parse user, organization, and roles from response
-      final user = data['user'] != null 
-          ? User.fromJson(data['user'] as Map<String, dynamic>) 
-          : null;
-      final organization = data['organization'] != null 
-          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
-          : null;
-      final rolesList = (data['roles'] as List<dynamic>?) 
-          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
-          .toList() ?? [];
-
-      // Tokens are saved inside the repository; load them back to get role.
-      final tokens = await _repo.getTokens();
-      dev.log('[Auth] Tokens from getTokens: $tokens');
-      if (tokens != null) {
-        dev.log('[Auth] Setting authenticated state with tokens from storage');
-        state = _authenticatedState(tokens, user: user, organization: organization, roles: rolesList);
-      } else {
-        // Fallback: parse from response if getTokens somehow returns null
-        final raw = data['tokens'] as Map<String, dynamic>?;
-        dev.log('[Auth] Tokens from response: $raw');
-        if (raw != null) {
-          final t = _tokensFromMap(raw);
-          dev.log('[Auth] Setting authenticated state with tokens from response: $t');
-          state = _authenticatedState(t, user: user, organization: organization, roles: rolesList);
-        } else {
-          dev.log('[Auth] No tokens found, setting unauthenticated');
-          state = AuthState.unauthenticated;
-        }
-      }
+      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
+      return true;
     } catch (e) {
-      dev.log('[Auth] Error creating business: $e');
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+      return false;
+    }
+  }
+
+  // ── Verify email (step 2: OTP → login) ──────────────────────────────────────
+
+  Future<void> verifyEmail({
+    required String email,
+    required String otpCode,
+  }) async {
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      final data = await _repo.verifyEmail(email: email, otpCode: otpCode);
+      await _completeLogin(data);
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+    }
+  }
+
+  // ── Resend verification OTP ─────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> resendVerification(String email) async {
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      final result = await _repo.resendVerification(email);
+      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
+      return result;
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+      return {'message': ''};
+    }
+  }
+
+  // ── Staff activation (email OTP for QR-invited staff) ───────────────────────
+
+  Future<void> sendStaffActivationOtp({
+    required String email,
+    String? token,
+  }) async {
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      await _repo.staffActivationOtp(email: email, token: token);
+      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
+    } catch (e) {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: _friendly(e),
@@ -670,13 +601,46 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final current = state.tokens;
     if (current == null) return null;
 
+    // Single-flight: concurrent callers share one refresh request instead of
+    // hammering /auth/refresh-token in parallel.
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = _doSilentRefresh(current);
+    _refreshInFlight = future;
+    try {
+      return await future;
+    } finally {
+      _refreshInFlight = null;
+    }
+  }
+
+  /// Returns a valid access token, silently refreshing first when the current
+  /// one is expired (or expiring within the buffer). Use this for EVERY
+  /// authenticated request instead of reading `tokens.accessToken` directly —
+  /// otherwise calls fail with "session has expired" whenever the short-lived
+  /// access token (15 min) lapses between user actions.
+  Future<String?> ensureFreshAccessToken() async {
+    final tokens = state.tokens;
+    if (tokens == null) return null;
+    if (!JwtUtils.isExpired(tokens.accessToken, bufferSeconds: 60)) {
+      return tokens.accessToken;
+    }
+    debugPrint('[Auth] access token expired/expiring — silent refresh before request');
+    final refreshed = await silentRefresh();
+    return refreshed?.accessToken;
+  }
+
+  Future<AuthTokens?>? _refreshInFlight;
+
+  Future<AuthTokens?> _doSilentRefresh(AuthTokens current) async {
     try {
       final refreshData = await _repo.refreshToken(current.refreshToken);
       final refreshedTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
       state = _authenticatedState(refreshedTokens, user: state.user, organization: state.organization, roles: state.roles);
       return refreshedTokens;
     } catch (e) {
-      dev.log('[Auth] silent refresh failed: $e — logging out');
+      debugPrint('[Auth] silent refresh failed: $e — logging out');
       await logout();
       return null;
     }
@@ -690,7 +654,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await _repo.logout(state.tokens!.refreshToken);
       }
     } catch (e) {
-      dev.log('[Auth] logout server revocation failed — token may remain active for up to 7 days: $e');
+      debugPrint('[Auth] logout server revocation failed — token may remain active for up to 7 days: $e');
     } finally {
       state = AuthState.unauthenticated;
     }
@@ -709,10 +673,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   // ── Reset Password ────────────────────────────────────────────────────────
 
-  Future<void> resetPassword(String phone, String otpCode, String newPassword) async {
+  Future<void> forgotPassword(String email) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
-      await _repo.resetPassword(phone, otpCode, newPassword);
+      await _repo.forgotPassword(email);
+      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _friendly(e),
+      );
+    }
+  }
+
+  Future<void> resetPassword(
+    String email,
+    String otpCode,
+    String newPassword,
+  ) async {
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      await _repo.resetPassword(email, otpCode, newPassword);
       state = state.copyWith(status: AuthStatus.unauthenticated);
     } catch (e) {
       state = state.copyWith(
@@ -725,22 +706,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // ── Activate Invitation ───────────────────────────────────────────────────
 
   Future<void> activateInvitation({
-    required String phone,
+    String? token,
+    required String email,
     required String otpCode,
     required String fullName,
     required String password,
-    required String organizationId,
-    String? invitationToken,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
       final data = await _repo.activateInvitation(
-        phone: phone,
+        token: token,
+        email: email,
         otpCode: otpCode,
         fullName: fullName,
         password: password,
-        organizationId: organizationId,
-        invitationToken: invitationToken,
       );
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       final user = data['user'] != null
@@ -777,6 +756,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
 
   String _friendly(Object e) {
+    if (e is ApiException) return e.message;
     final msg = e.toString();
     // Strip the "Exception: " prefix Flutter adds
     if (msg.startsWith('Exception: ')) return msg.substring(11);

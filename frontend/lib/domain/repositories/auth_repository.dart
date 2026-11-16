@@ -1,62 +1,60 @@
 import '../entities/auth_tokens.dart';
 
 abstract class AuthRepository {
-  Future<void> sendOtp(String phone, {String? purpose});
-
-  /// Check OTP validity without consuming it (no session created,
-  /// OTP remains valid for subsequent calls like createBusiness).
-  /// Throws on invalid/expired OTP.
-  Future<void> checkOtp(String phone, String code);
-
   Future<Map<String, dynamic>> loginWithPassword(
-    String phone,
+    String identifier,
     String password, {
     String? organizationId,
   });
 
-  Future<Map<String, dynamic>> verifyOtp(
-    String phone,
-    String code, {
-    String? organizationId,
-  });
-
-  Future<Map<String, dynamic>> createBusiness({
+  /// Owner registration (step 1): creates the account + business and sends an
+  /// email verification OTP.
+  Future<Map<String, dynamic>> register({
     required String name,
     required String fullName,
-    required String phone,
-    required String otpCode,
+    required String email,
     required String password,
-    String? email,
-    String? address,
+    required String confirmPassword,
     String? type,
     String? city,
     String? country,
   });
 
+  /// Owner registration (step 2): verify email OTP → tokens.
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String otpCode,
+  });
+
+  Future<Map<String, dynamic>> resendVerification(String email);
+
+  Future<void> forgotPassword(String email);
+
   Future<Map<String, dynamic>> refreshToken(String currentRefreshToken);
 
   Future<void> logout(String refreshToken);
 
-  /// Reset Password
-  Future<void> resetPassword(String phone, String otpCode, String newPassword);
+  /// Password recovery (email OTP)
+  Future<void> resetPassword(String email, String otpCode, String newPassword);
 
   /// Invitation Management
-  /// Pre-login public check — for staff activating an invitation. Returns the
-  /// list of valid (pending, non-expired) invitations for a phone, optionally
-  /// scoped to a specific invitation token.
-  Future<List<dynamic>> checkInvitation(String phone, {String? token});
+  /// Pre-login public check — validates an invitation token from the QR
+  /// deep link. Legacy phone lookup is still supported.
+  Future<List<dynamic>> checkInvitation(String token, {String? phone});
+
+  /// Send the email OTP used to verify a staff registration.
+  Future<void> staffActivationOtp({required String email, String? token});
 
   /// Authenticated invitation lookup — for owners/managers inspecting staff
   /// invitations. Requires a valid access token.
   Future<List<dynamic>> getInvitations(String phone, String accessToken);
 
   Future<Map<String, dynamic>> activateInvitation({
-    required String phone,
+    String? token,
+    required String email,
     required String otpCode,
     required String fullName,
     required String password,
-    required String organizationId,
-    String? invitationToken,
   });
 
   /// Get current user and organization
@@ -65,9 +63,8 @@ abstract class AuthRepository {
   /// Staff Management
   Future<Map<String, dynamic>> addStaff(String accessToken, {
     required String fullName,
-    required String phone,
+    required String email,
     required String role,
-    String? password,
     String? branchId,
   });
   Future<List<dynamic>> getStaff(String accessToken);

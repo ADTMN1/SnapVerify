@@ -17,25 +17,16 @@ class AuthRepositoryImpl implements AuthRepository {
     required this.secureStorage,
   });
 
-  // ── OTP ───────────────────────────────────────────────────────────────────
-
-  @override
-  Future<void> sendOtp(String phone, {String? purpose}) => remoteDatasource.sendOtp(phone, purpose: purpose);
-
-  @override
-  Future<void> checkOtp(String phone, String code) =>
-      remoteDatasource.checkOtp(phone, code);
-
   // ── Password Login ─────────────────────────────────────────────────────────
 
   @override
   Future<Map<String, dynamic>> loginWithPassword(
-    String phone,
+    String identifier,
     String password, {
     String? organizationId,
   }) async {
     final data = await remoteDatasource.loginWithPassword(
-      phone,
+      identifier,
       password,
       organizationId: organizationId,
     );
@@ -46,18 +37,39 @@ class AuthRepositoryImpl implements AuthRepository {
     return data;
   }
 
-  // ── OTP Login ─────────────────────────────────────────────────────────────
+  // ── Owner registration (email verification) ────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> verifyOtp(
-    String phone,
-    String code, {
-    String? organizationId,
+  Future<Map<String, dynamic>> register({
+    required String name,
+    required String fullName,
+    required String email,
+    required String password,
+    required String confirmPassword,
+    String? type,
+    String? city,
+    String? country,
+  }) {
+    return remoteDatasource.register(
+      name: name,
+      fullName: fullName,
+      email: email,
+      password: password,
+      confirmPassword: confirmPassword,
+      type: type,
+      city: city,
+      country: country,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String otpCode,
   }) async {
-    final data = await remoteDatasource.verifyOtp(
-      phone,
-      code,
-      organizationId: organizationId,
+    final data = await remoteDatasource.verifyEmail(
+      email: email,
+      otpCode: otpCode,
     );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
@@ -66,41 +78,14 @@ class AuthRepositoryImpl implements AuthRepository {
     return data;
   }
 
-  // ── Register business ─────────────────────────────────────────────────────
+  @override
+  Future<Map<String, dynamic>> resendVerification(String email) {
+    return remoteDatasource.resendVerification(email);
+  }
 
   @override
-  Future<Map<String, dynamic>> createBusiness({
-    required String name,
-    required String fullName,
-    required String phone,
-    required String otpCode,
-    required String password,
-    String? email,
-    String? address,
-    String? type,
-    String? city,
-    String? country,
-  }) async {
-    final data = await remoteDatasource.createBusiness(
-      name: name,
-      fullName: fullName,
-      phone: phone,
-      otpCode: otpCode,
-      password: password,
-      email: email,
-      address: address,
-      type: type,
-      city: city,
-      country: country,
-    );
-
-    // Auto-login: save the tokens that came back with the new business
-    if (data['tokens'] != null) {
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      await saveTokens(tokens);
-    }
-
-    return data;
+  Future<void> forgotPassword(String email) {
+    return remoteDatasource.forgotPassword(email);
   }
 
   // ── Token refresh ─────────────────────────────────────────────────────────
@@ -126,15 +111,20 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── Reset Password ────────────────────────────────────────────────────────
 
   @override
-  Future<void> resetPassword(String phone, String otpCode, String newPassword) {
-    return remoteDatasource.resetPassword(phone, otpCode, newPassword);
+  Future<void> resetPassword(String email, String otpCode, String newPassword) {
+    return remoteDatasource.resetPassword(email, otpCode, newPassword);
   }
 
   // ── Invitation Management ─────────────────────────────────────────────────
 
   @override
-  Future<List<dynamic>> checkInvitation(String phone, {String? token}) {
-    return remoteDatasource.checkInvitation(phone, token: token);
+  Future<List<dynamic>> checkInvitation(String token, {String? phone}) {
+    return remoteDatasource.checkInvitation(token, phone: phone);
+  }
+
+  @override
+  Future<void> staffActivationOtp({required String email, String? token}) {
+    return remoteDatasource.staffActivationOtp(email: email, token: token);
   }
 
   @override
@@ -144,20 +134,18 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Map<String, dynamic>> activateInvitation({
-    required String phone,
+    String? token,
+    required String email,
     required String otpCode,
     required String fullName,
     required String password,
-    required String organizationId,
-    String? invitationToken,
   }) async {
     final data = await remoteDatasource.activateInvitation(
-      phone: phone,
+      token: token,
+      email: email,
       otpCode: otpCode,
       fullName: fullName,
       password: password,
-      organizationId: organizationId,
-      invitationToken: invitationToken,
     );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
@@ -176,17 +164,15 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Map<String, dynamic>> addStaff(String accessToken, {
     required String fullName,
-    required String phone,
+    required String email,
     required String role,
-    String? password,
     String? branchId,
   }) {
     return remoteDatasource.addStaff(
       accessToken,
       fullName: fullName,
-      phone: phone,
+      email: email,
       role: role,
-      password: password,
       branchId: branchId,
     );
   }

@@ -18,33 +18,29 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     with SingleTickerProviderStateMixin {
   // State
   Language _selectedLanguage = Language.english;
-  int _currentStep = 0;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _otpSent = false;
-  bool _canResendOtp = true;
-  int _resendTimer = 60;
 
   // Controllers
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _otpController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   // Focus Nodes
-  final _phoneFocusNode = FocusNode();
+  final _emailFocusNode = FocusNode();
   final _otpFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   final _confirmPasswordFocusNode = FocusNode();
 
   // Focus States
-  bool _phoneFocused = false;
+  bool _emailFocused = false;
   bool _otpFocused = false;
   bool _passwordFocused = false;
   bool _confirmPasswordFocused = false;
 
   // Validation Errors
-  String? _phoneError;
+  String? _emailError;
   String? _otpError;
   String? _passwordError;
   String? _confirmPasswordError;
@@ -53,7 +49,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
   void initState() {
     super.initState();
     _setupFocusListeners();
-    _phoneController.addListener(_clearError);
+    _emailController.addListener(_clearError);
     _otpController.addListener(_clearError);
     _passwordController.addListener(_clearError);
     _confirmPasswordController.addListener(_clearError);
@@ -62,16 +58,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
     setState(() {
-      _phoneError = null;
-      _otpError = null;
+      _emailError = null;
       _passwordError = null;
       _confirmPasswordError = null;
     });
   }
 
   void _setupFocusListeners() {
-    _phoneFocusNode.addListener(() {
-      setState(() => _phoneFocused = _phoneFocusNode.hasFocus);
+    _emailFocusNode.addListener(() {
+      setState(() => _emailFocused = _emailFocusNode.hasFocus);
     });
     _otpFocusNode.addListener(() {
       setState(() => _otpFocused = _otpFocusNode.hasFocus);
@@ -86,15 +81,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
 
   @override
   void dispose() {
-    _phoneController.removeListener(_clearError);
+    ref.read(authNotifierProvider.notifier).clearError();
+    _emailController.removeListener(_clearError);
     _otpController.removeListener(_clearError);
     _passwordController.removeListener(_clearError);
     _confirmPasswordController.removeListener(_clearError);
-    _phoneController.dispose();
+    _emailController.dispose();
     _otpController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _phoneFocusNode.dispose();
+    _emailFocusNode.dispose();
     _otpFocusNode.dispose();
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
@@ -109,100 +105,105 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     setState(() => _selectedLanguage = lang);
   }
 
-  Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim().replaceAll(' ', '');
-    if (phone.isEmpty) {
-      setState(() => _phoneError = 'Phone number is required.');
-      return;
-    }
-    if (!RegExp(r'^(\+?251|0)?9\d{8}$').hasMatch(phone)) {
-      setState(() => _phoneError = 'Please enter a valid Ethiopian phone number.');
-      return;
-    }
-    
-    await ref.read(authNotifierProvider.notifier).sendOtp(phone);
-    
-    final authState = ref.read(authNotifierProvider);
-    if (authState.status != AuthStatus.error) {
-      setState(() => _otpSent = true);
-      _startResendTimer();
-      ToastService.showSuccess('OTP sent successfully!');
-    }
-  }
+  bool _otpSent = false;
+  bool _canResendOtp = false;
+  int _resendTimer = 60;
 
   Future<void> _startResendTimer() async {
-    setState(() {
-      _canResendOtp = false;
-      _resendTimer = 60;
-    });
-    
     for (int i = 59; i >= 0; i--) {
       if (!mounted) return;
       setState(() => _resendTimer = i);
       await Future.delayed(const Duration(seconds: 1));
     }
-    
     if (mounted) {
       setState(() => _canResendOtp = true);
     }
   }
 
-  Future<void> _nextStep() async {
-    if (_currentStep == 0) {
-      if (!_otpSent) {
-        await _sendOtp();
-      } else {
-        final otp = _otpController.text.trim();
-        if (otp.isEmpty) {
-          setState(() => _otpError = 'Verification code is required.');
-          return;
-        }
-        if (otp.length != 6) {
-          setState(() => _otpError = 'Verification code must be 6 digits.');
-          return;
-        }
-        setState(() => _currentStep = 1);
-      }
-    } else {
-      final password = _passwordController.text.trim();
-      if (password.isEmpty) {
-        setState(() => _passwordError = 'Password is required.');
-        return;
-      }
-      if (password.length < 6) {
-        setState(() => _passwordError = 'Password must be at least 6 characters.');
-        return;
-      }
-      
-      final confirmPassword = _confirmPasswordController.text.trim();
-      if (confirmPassword.isEmpty) {
-        setState(() => _confirmPasswordError = 'Please confirm your password.');
-        return;
-      }
-      if (password != confirmPassword) {
-        setState(() => _confirmPasswordError = 'Passwords do not match.');
-        return;
-      }
-      
-      final phone = _phoneController.text.trim().replaceAll(' ', '');
-      final otp = _otpController.text.trim();
-      final newPassword = _passwordController.text.trim();
-      
-      await ref.read(authNotifierProvider.notifier).resetPassword(
-        phone,
-        otp,
-        newPassword,
-      );
-      
-      final authState = ref.read(authNotifierProvider);
-      if (authState.status != AuthStatus.error) {
-        ToastService.showSuccess('Password reset successfully!');
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
-        }
+  Future<void> _sendResetOtp() async {
+    final email = _emailController.text.trim().toLowerCase();
+    if (email.isEmpty) {
+      setState(() => _emailError = 'Email is required.');
+      return;
+    }
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _emailError = 'Please enter a valid email address.');
+      return;
+    }
+
+    final notifier = ref.read(authNotifierProvider.notifier);
+    await notifier.forgotPassword(email);
+    final authState = ref.read(authNotifierProvider);
+    if (authState.status != AuthStatus.error && mounted) {
+      setState(() {
+        _otpSent = true;
+        _canResendOtp = false;
+        _resendTimer = 60;
+      });
+      _startResendTimer();
+      ToastService.showSuccess('If the account exists, a reset code has been sent.');
+    }
+  }
+
+  Future<void> _resendOtp() async {
+    final email = _emailController.text.trim().toLowerCase();
+    final notifier = ref.read(authNotifierProvider.notifier);
+    await notifier.forgotPassword(email);
+    final authState = ref.read(authNotifierProvider);
+    if (authState.status != AuthStatus.error && mounted) {
+      setState(() => _canResendOtp = false);
+      _startResendTimer();
+      ToastService.showSuccess('New reset code sent!');
+    }
+  }
+
+  Future<void> _submitReset() async {
+    final email = _emailController.text.trim().toLowerCase();
+
+    final otp = _otpController.text.trim();
+    if (otp.isEmpty) {
+      setState(() => _otpError = 'Verification code is required.');
+      return;
+    }
+    if (otp.length != 6) {
+      setState(() => _otpError = 'Verification code must be 6 digits.');
+      return;
+    }
+
+    final password = _passwordController.text.trim();
+    if (password.isEmpty) {
+      setState(() => _passwordError = 'Password is required.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(() => _passwordError = 'Password must be at least 8 characters.');
+      return;
+    }
+
+    final confirmPassword = _confirmPasswordController.text.trim();
+    if (confirmPassword.isEmpty) {
+      setState(() => _confirmPasswordError = 'Please confirm your password.');
+      return;
+    }
+    if (password != confirmPassword) {
+      setState(() => _confirmPasswordError = 'Passwords do not match.');
+      return;
+    }
+
+    await ref.read(authNotifierProvider.notifier).resetPassword(
+      email,
+      otp,
+      password,
+    );
+
+    final authState = ref.read(authNotifierProvider);
+    if (authState.status != AuthStatus.error) {
+      ToastService.showSuccess('Password reset successfully!');
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
       }
     }
   }
@@ -224,8 +225,6 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
               children: [
                 _buildHeader(size),
                 const SizedBox(height: 24),
-                _buildStepsIndicator(),
-                const SizedBox(height: 28),
                 _buildCurrentStep(),
                 const SizedBox(height: 32),
                 _buildNavigationButtons(authState),
@@ -313,111 +312,26 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     );
   }
 
-  Widget _buildStepsIndicator() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStepIndicator(
-            index: 0,
-            title: _t('verify_phone'),
-          ),
-        ),
-        Container(
-          width: 40,
-          height: 2,
-          color: _currentStep > 0
-              ? TwColors.brightGreen
-              : TwColors.white.withOpacity(0.1),
-        ),
-        Expanded(
-          child: _buildStepIndicator(
-            index: 1,
-            title: 'New Password',
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepIndicator({
-    required int index,
-    required String title,
-  }) {
-    final isActive = _currentStep >= index;
-    final isCompleted = _currentStep > index;
-
-    return Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: isActive
-                ? TwColors.brightGreen.withOpacity(0.15)
-                : TwColors.cardBg,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isActive
-                  ? TwColors.brightGreen.withOpacity(0.5)
-                  : TwColors.white.withOpacity(0.08),
-              width: isActive ? 1.5 : 1,
-            ),
-          ),
-          child: Center(
-            child: isCompleted
-                ? const Icon(
-                    Icons.done_outline_rounded,
-                    color: TwColors.brightGreen,
-                    size: 20,
-                  )
-                : Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: isActive ? TwColors.brightGreen : TwColors.slate400,
-                      fontSize: 18,
-                      fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
-                    ),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          style: TextStyle(
-            color: isActive ? TwColors.brightGreen : TwColors.slate400,
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildCurrentStep() {
-    if (_currentStep == 0) {
-      return _buildPhoneOtpStep();
-    } else {
-      return _buildNewPasswordStep();
-    }
-  }
-
-  Widget _buildPhoneOtpStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTitle('Reset Password', 'Enter your phone number to reset your password'),
+        _buildTitle(
+          'Reset Password',
+          'Enter your email and we\'ll send you a verification code',
+        ),
         const SizedBox(height: 28),
-        _buildPhoneNumberField(),
-        const SizedBox(height: 20),
+        _buildEmailField(),
         if (_otpSent) ...[
+          const SizedBox(height: 20),
           _buildOtpField(),
           const SizedBox(height: 14),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: _canResendOtp ? _sendOtp : null,
+              onPressed: _canResendOtp ? _resendOtp : null,
               child: Text(
-                _canResendOtp ? _t('resend_otp') : '${_t('resend_otp')} ($_resendTimer)',
+                _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
                 style: TextStyle(
                   color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
                   fontSize: 14,
@@ -426,20 +340,42 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          _buildPasswordField(),
+          const SizedBox(height: 20),
+          _buildConfirmPasswordField(),
         ],
       ],
     );
   }
 
-  Widget _buildNewPasswordStep() {
+  Widget _buildOtpField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTitle('Create New Password', 'Enter your new password'),
-        const SizedBox(height: 28),
-        _buildPasswordField(),
-        const SizedBox(height: 20),
-        _buildConfirmPasswordField(),
+        _buildUniqueInput(
+          controller: _otpController,
+          focusNode: _otpFocusNode,
+          isFocused: _otpFocused,
+          label: 'Verification code',
+          hint: '123456',
+          icon: Icons.pin_outlined,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          hasError: _otpError != null,
+        ),
+        if (_otpError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _otpError!,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -470,57 +406,25 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     );
   }
 
-  Widget _buildPhoneNumberField() {
+  Widget _buildEmailField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildUniqueInput(
-          controller: _phoneController,
-          focusNode: _phoneFocusNode,
-          isFocused: _phoneFocused,
-          label: _t('phone_number'),
-          hint: '+251 9XX XXX XXX',
-          icon: Icons.phone_outlined,
-          keyboardType: TextInputType.phone,
-          enabled: !_otpSent,
-          hasError: _phoneError != null,
+          controller: _emailController,
+          focusNode: _emailFocusNode,
+          isFocused: _emailFocused,
+          label: _t('email'),
+          hint: 'you@example.com',
+          icon: Icons.alternate_email_rounded,
+          keyboardType: TextInputType.emailAddress,
+          hasError: _emailError != null,
         ),
-        if (_phoneError != null)
+        if (_emailError != null)
           Padding(
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
-              _phoneError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildOtpField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _otpController,
-          focusNode: _otpFocusNode,
-          isFocused: _otpFocused,
-          label: _t('otp_code'),
-          hint: '123456',
-          icon: Icons.pin_outlined,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          hasError: _otpError != null,
-        ),
-        if (_otpError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _otpError!,
+              _emailError!,
               style: TextStyle(
                 color: TwColors.red500,
                 fontSize: 12,
@@ -723,17 +627,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
       return _buildErrorState(authState);
     }
 
-    if (_currentStep == 0) {
-      return _buildNextButton(
-        onPressed: _nextStep,
-        text: _otpSent ? _t('verify_continue') : _t('send_otp'),
-      );
-    } else {
-      return _buildNextButton(
-        onPressed: _nextStep,
-        text: 'Reset Password',
-      );
-    }
+    return _buildNextButton(
+      onPressed: _otpSent ? _submitReset : _sendResetOtp,
+      text: _otpSent ? 'Reset Password' : 'Send Code',
+    );
   }
 
   Widget _buildErrorState(AuthState authState) {

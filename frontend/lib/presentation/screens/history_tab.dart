@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +27,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
   }
 
   Future<void> _load() async {
-    final token = ref.read(authNotifierProvider).tokens?.accessToken;
+    final token = await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
     if (token == null) {
       if (!mounted) return;
       setState(() {
@@ -52,7 +53,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
         _loading = false;
       });
     } catch (e, st) {
-      dev.log('[HistoryTab] load error: $e', stackTrace: st);
+      debugPrint('[HistoryTab] load error: $e');
       if (!mounted) return;
       setState(() {
         _loading = false;

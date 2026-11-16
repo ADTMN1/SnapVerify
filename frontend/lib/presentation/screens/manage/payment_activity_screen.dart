@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,7 +28,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
   }
 
   Future<void> _load() async {
-    final token = ref.read(authNotifierProvider).tokens?.accessToken;
+    final token = await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
     if (token == null) {
       if (!mounted) return;
       setState(() {
@@ -50,7 +51,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         _loading = false;
       });
     } catch (e, st) {
-      dev.log('[PaymentActivityScreen] load error: $e', stackTrace: st);
+      debugPrint('[PaymentActivityScreen] load error: $e');
       if (!mounted) return;
       setState(() {
         _loading = false;

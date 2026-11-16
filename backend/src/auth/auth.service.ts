@@ -2,69 +2,221 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { OtpService } from '../otp/otp.service';
+import { OtpService, OTP_PURPOSES } from '../otp/otp.service';
+import { PasswordService } from './password.service';
+import { EmailService } from '../email/email.service';
+import { SmsService } from '../sms/sms.service';
 import { JwtService } from './jwt.service';
 import { Role, SubscriptionStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { RegisterDto } from './dto/email-auth.dto';
 import * as crypto from 'crypto';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly saltRounds = 12;
 
   constructor(
     private prisma: PrismaService,
     private otpService: OtpService,
+    private passwordService: PasswordService,
+    private emailService: EmailService,
+    private smsService: SmsService,
     private jwtService: JwtService,
   ) {}
 
-  // ── Send OTP ─────────────────────────────────────────────────────────────
-  async sendOtp(phone: string, purpose?: string) {
-    // For business owner registration, check if phone already has active OWNER assignment
-    if (purpose === 'business_registration') {
-      const user = await this.prisma.user.findUnique({
-        where: { phone },
-        include: { userAssignments: true },
-      });
+  // ── Owner Registration (step 1: create account, send email OTP) ────────────
+  async register(dto: RegisterDto) {
+    const email = dto.email.trim().toLowerCase();
 
-      if (
-        user &&
-        user.userAssignments.some(
-          (a) => a.role === Role.OWNER && a.status === 'active',
-        )
-      ) {
-        throw new BadRequestException(
-          'This phone number is already registered as a business owner. Please login or create a branch from your dashboard.',
-        );
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Passwords do not match.');
+    }
+
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing && existing.emailVerified) {
+      throw new ConflictException(
+        'An account with this email already exists. Please login instead.',
+      );
+    }
+
+    // Owner emails are unique across the platform
+    const ownerAssignmentExists = existing
+      ? await this.prisma.userBusinessAssignment.findFirst({
+          where: { userId: existing.id, role: Role.OWNER },
+        })
+      : false;
+    if (ownerAssignmentExists) {
+      throw new BadRequestException(
+        'This email is already registered as a business owner. Please login instead.',
+      );
+    }
+
+    const passwordHash = await this.passwordService.hash(dto.password);
+
+    let user = existing;
+    let organization;
+    if (user) {
+      // Unverified registration being retried — refresh the details
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { fullName: dto.fullName, passwordHash, emailVerified: false },
+      });
+      const priorOrg = await this.prisma.userBusinessAssignment.findFirst({
+        where: { userId: user.id, role: Role.OWNER },
+      });
+      if (priorOrg) {
+        organization = await this.prisma.organization.update({
+          where: { id: priorOrg.organizationId },
+          data: {
+            name: dto.name,
+            email,
+            type: dto.type ?? 'restaurant',
+            city: dto.city,
+            country: dto.country,
+          },
+        });
       }
     }
 
-    await this.otpService.generateOtp(phone);
-    return { message: 'OTP sent successfully' };
-  }
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          fullName: dto.fullName,
+          passwordHash,
+        },
+      });
+    }
 
-  // ── Check OTP (verify without consuming — for multi-step flows like registration) ─
-  async checkOtp(phone: string, code: string) {
-    await this.otpService.verifyOtp(phone, code, false);
-    return { ok: true, message: 'OTP valid' };
-  }
+    if (!organization) {
+      organization = await this.prisma.organization.create({
+        data: {
+          name: dto.name,
+          // Phone is no longer part of registration; retained for legacy data.
+          phone: '',
+          email,
+          type: dto.type ?? 'restaurant',
+          city: dto.city,
+          country: dto.country,
+        },
+      });
 
-  // ── Password Login ───────────────────────────────────────────────────────
-  async loginWithPassword(
-    phone: string,
-    password: string,
-    organizationId?: string,
-  ) {
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 14);
+      await this.prisma.subscription.create({
+        data: {
+          organizationId: organization.id,
+          planName: 'free_trial',
+          status: SubscriptionStatus.ACTIVE,
+          startDate,
+          endDate,
+          maxUsers: 5,
+          maxDevices: 10,
+        },
+      });
+
+      await this.prisma.userBusinessAssignment.create({
+        data: {
+          userId: user.id,
+          organizationId: organization.id,
+          role: Role.OWNER,
+        },
+      });
+    }
+
+    await this.otpService.generateOtp(email, OTP_PURPOSES.REGISTER);
+
     this.logger.log(
-      `Login attempt: phone=${phone}, organizationId=${organizationId || 'not provided'}`,
+      `Registration initiated: org=${organization.id} user=${user.id}`,
+    );
+
+    return {
+      message:
+        'Registration successful. A verification code has been sent to your email.',
+      email,
+    };
+  }
+
+  // ── Verify Email (step 2: consume OTP → login) ─────────────────────────────
+  async verifyEmail(email: string, otpCode: string) {
+    const normalized = email.trim().toLowerCase();
+    await this.otpService.verifyOtp(
+      normalized,
+      otpCode,
+      OTP_PURPOSES.REGISTER,
     );
 
     const user = await this.prisma.user.findUnique({
-      where: { phone },
+      where: { email: normalized },
+      include: {
+        userAssignments: {
+          where: { status: 'active' },
+          include: { organization: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Account not found. Please register again.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true },
+    });
+
+    const assignment = user.userAssignments.find((a) => a.status === 'active');
+    if (!assignment) {
+      throw new BadRequestException(
+        'No active business assignment found. Please contact support.',
+      );
+    }
+
+    const tokens = await this.jwtService.generateTokens(
+      user.id,
+      assignment.organizationId,
+      assignment.role,
+      assignment.branchId ?? undefined,
+    );
+    return this.buildAuthResponse(user, assignment, tokens);
+  }
+
+  // ── Resend verification OTP ────────────────────────────────────────────────
+  async resendVerificationOtp(email: string) {
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalized },
+    });
+
+    if (!user || user.emailVerified) {
+      // Do not leak whether the email is registered — but tell an
+      // already-verified user to log in instead of waiting for an OTP.
+      return {
+        message: user
+          ? 'Email is already verified. Please log in.'
+          : 'If the account exists and is unverified, a new verification code has been sent.',
+        alreadyVerified: !!user?.emailVerified,
+      };
+    }
+
+    await this.otpService.generateOtp(normalized, OTP_PURPOSES.REGISTER);
+    return { message: 'A new verification code has been sent to your email.' };
+  }
+
+  // ── Password Login (email, with legacy phone fallback) ─────────────────────
+  async login(identifier: string, password: string, organizationId?: string) {
+    const isEmail = EMAIL_RE.test(identifier);
+    const user = await this.prisma.user.findFirst({
+      where: isEmail
+        ? { email: identifier.trim().toLowerCase() }
+        : { phone: identifier },
       include: {
         userAssignments: {
           include: { organization: true },
@@ -73,193 +225,42 @@ export class AuthService {
     });
 
     if (!user) {
-      this.logger.warn(`Login failed: no user found for phone=${phone}`);
       throw new UnauthorizedException(
-        'Invalid phone number or password. Please try again.',
+        'Invalid email or password. Please try again.',
       );
     }
 
     if (!user.passwordHash) {
-      this.logger.warn(`Login failed: no password hash for user id=${user.id}`);
       throw new UnauthorizedException(
-        'No password set for this account. Please use OTP login or activate your invitation.',
+        'No password set for this account. Please activate your invitation.',
       );
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-    if (!isPasswordValid) {
-      this.logger.warn(`Login failed: invalid password for user id=${user.id}`);
+    if (isEmail && !user.emailVerified) {
+      await this.otpService
+        .generateOtp(user.email!, OTP_PURPOSES.REGISTER)
+        .catch(() => undefined);
       throw new UnauthorizedException(
-        'Invalid phone number or password. Please try again.',
+        'Please verify your email first. A new verification code has been sent.',
       );
     }
 
-    const activeAssignments = user.userAssignments.filter(
-      (a) => a.status === 'active',
+    const { valid, needsRehash } = await this.passwordService.verify(
+      user.passwordHash,
+      password,
     );
-
-    if (activeAssignments.length === 0) {
+    if (!valid) {
       throw new UnauthorizedException(
-        'Your account is not active. Please contact support.',
+        'Invalid email or password. Please try again.',
       );
     }
 
-    // Multi-business: if user has multiple orgs and none specified, return selection
-    if (activeAssignments.length > 1 && !organizationId) {
-      const businesses = activeAssignments.map((a) => ({
-        organizationId: a.organizationId,
-        organizationName: a.organization.name,
-        role: a.role,
-        branchId: a.branchId,
-      }));
-      return {
-        requiresBusinessSelection: true,
-        businesses,
-        user: {
-          id: user.id,
-          fullName: user.fullName,
-          phone: user.phone,
-          email: user.email,
-          status: user.status,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        },
-      };
-    }
-
-    // Find which assignment to use
-    let assignment;
-    if (organizationId) {
-      assignment = activeAssignments.find(
-        (a) => a.organizationId === organizationId,
-      );
-      if (!assignment) {
-        throw new BadRequestException(
-          'You are not a member of this organization.',
-        );
-      }
-    } else if (activeAssignments.length === 1) {
-      assignment = activeAssignments[0];
-    } else {
-      throw new BadRequestException(
-        'Please select which organization to log in to.',
-      );
-    }
-
-    this.logger.log(`Login successful for user id=${user.id}`);
-    const tokens = await this.jwtService.generateTokens(
-      user.id,
-      assignment.organizationId,
-      assignment.role,
-      assignment.branchId ?? undefined,
-    );
-    const org = assignment.organization;
-    return {
-      tokens,
-      requiresBusinessSelection: false,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        status: user.status,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
-      organization: {
-        id: org.id,
-        name: org.name,
-        type: org.type,
-        phone: org.phone,
-        email: org.email,
-        address: org.address,
-        city: org.city,
-        country: org.country,
-      },
-      roles: user.userAssignments.map((a) => ({
-        businessId: a.organizationId,
-        branchId: a.branchId,
-        role: a.role,
-      })),
-    };
-  }
-
-  // ── Verify OTP → issue tokens ─────────────────────────────────────────────
-  async verifyOtpAndLogin(
-    phone: string,
-    code: string,
-    organizationId?: string,
-    ipAddress?: string,
-  ) {
-    // Verify OTP first — throws BadRequestException on failure
-    await this.otpService.verifyOtp(phone, code);
-
-    let user = await this.prisma.user.findUnique({
-      where: { phone },
-      include: {
-        userAssignments: {
-          include: { organization: true },
-        },
-      },
-    });
-
-    if (!user) {
-      if (!organizationId) {
-        throw new UnauthorizedException(
-          'Account not found. Please check your phone number or create a business account.',
-        );
-      }
-
-      // SECURITY FIX: Only allow auto-create if there's a PENDING invitation for this phone+org
-      const invitation = await this.prisma.invitation.findFirst({
-        where: {
-          phone,
-          organizationId,
-          status: 'PENDING',
-        },
-      });
-
-      if (!invitation) {
-        throw new BadRequestException(
-          'No pending invitation found. Please request an invitation from the business owner.',
-        );
-      }
-
-      const organization = await this.prisma.organization.findUnique({
-        where: { id: organizationId },
-      });
-
-      if (!organization) {
-        throw new BadRequestException(
-          'Organization not found. Please check the details and try again.',
-        );
-      }
-
-      this.logger.log(
-        `Auto-creating staff from invitation for phone=${phone} org=${organizationId} role=${invitation.role}`,
-      );
-      user = await this.prisma.user.create({
-        data: {
-          phone,
-          userAssignments: {
-            create: {
-              organizationId,
-              role: invitation.role,
-              branchId: invitation.branchId,
-            },
-          },
-        },
-        include: {
-          userAssignments: {
-            include: { organization: true },
-          },
-        },
-      });
-
-      // Mark invitation as active (used)
-      await this.prisma.invitation.update({
-        where: { id: invitation.id },
-        data: { status: 'ACTIVE' },
+    // Lazy migration: upgrade legacy bcrypt hashes to Argon2id on successful login
+    if (needsRehash) {
+      const argonHash = await this.passwordService.hash(password);
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: argonHash },
       });
     }
 
@@ -284,19 +285,10 @@ export class AuthService {
       return {
         requiresBusinessSelection: true,
         businesses,
-        user: {
-          id: user.id,
-          fullName: user.fullName,
-          phone: user.phone,
-          email: user.email,
-          status: user.status,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        },
+        user: this.sanitizeUser(user),
       };
     }
 
-    // Find which assignment to use
     let assignment;
     if (organizationId) {
       assignment = activeAssignments.find(
@@ -320,38 +312,8 @@ export class AuthService {
       assignment.organizationId,
       assignment.role,
       assignment.branchId ?? undefined,
-      undefined,
-      ipAddress,
     );
-    const org = assignment.organization;
-    return {
-      tokens,
-      requiresBusinessSelection: false,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        status: user.status,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
-      organization: {
-        id: org.id,
-        name: org.name,
-        type: org.type,
-        phone: org.phone,
-        email: org.email,
-        address: org.address,
-        city: org.city,
-        country: org.country,
-      },
-      roles: user.userAssignments.map((a) => ({
-        businessId: a.organizationId,
-        branchId: a.branchId,
-        role: a.role,
-      })),
-    };
+    return this.buildAuthResponse(user, assignment, tokens);
   }
 
   // ── Select Business (called when user has multiple orgs) ─────────────────
@@ -367,9 +329,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException(
-        'Account not found. Please check your phone number.',
-      );
+      throw new UnauthorizedException('Account not found.');
     }
 
     const assignment = user.userAssignments.find(
@@ -389,156 +349,7 @@ export class AuthService {
       assignment.branchId ?? undefined,
     );
 
-    const org = assignment.organization;
-
-    return {
-      tokens,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        status: user.status,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
-      organization: {
-        id: org.id,
-        name: org.name,
-        type: org.type,
-        phone: org.phone,
-        email: org.email,
-        address: org.address,
-        city: org.city,
-        country: org.country,
-      },
-      roles: user.userAssignments.map((a) => ({
-        businessId: a.organizationId,
-        branchId: a.branchId,
-        role: a.role,
-      })),
-    };
-  }
-
-  // ── Create business (requires verified OTP for owner's phone) ─────────────
-  async createBusiness(
-    name: string,
-    fullName: string | undefined,
-    phone: string,
-    otpCode: string,
-    password: string,
-    email?: string,
-    address?: string,
-    type?: string,
-    city?: string,
-    country?: string,
-  ) {
-    await this.otpService.verifyOtp(phone, otpCode);
-
-    let user = await this.prisma.user.findUnique({
-      where: { phone },
-      include: { userAssignments: true },
-    });
-
-    if (user) {
-      if (user.userAssignments.some((a) => a.role === Role.OWNER)) {
-        throw new BadRequestException(
-          'You already own a business. Please create a branch instead.',
-        );
-      }
-    }
-
-    const organization = await this.prisma.organization.create({
-      data: {
-        name,
-        phone,
-        email,
-        address,
-        type: type ?? 'restaurant',
-        city,
-        country,
-      },
-    });
-
-    const startDate = new Date();
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 14);
-    await this.prisma.subscription.create({
-      data: {
-        organizationId: organization.id,
-        planName: 'free_trial',
-        status: SubscriptionStatus.ACTIVE,
-        startDate,
-        endDate,
-        maxUsers: 5,
-        maxDevices: 10,
-      },
-    });
-
-    const passwordHash = await bcrypt.hash(password, this.saltRounds);
-
-    if (user) {
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          fullName,
-          passwordHash,
-          email,
-          userAssignments: {
-            create: {
-              organizationId: organization.id,
-              role: Role.OWNER,
-            },
-          },
-        },
-        include: { userAssignments: true },
-      });
-    } else {
-      user = await this.prisma.user.create({
-        data: {
-          phone,
-          fullName,
-          passwordHash,
-          email,
-          userAssignments: {
-            create: {
-              organizationId: organization.id,
-              role: Role.OWNER,
-            },
-          },
-        },
-        include: { userAssignments: true },
-      });
-    }
-
-    this.logger.log(
-      `Business created: org=${organization.id} owner=${user.id}`,
-    );
-
-    const tokens = await this.jwtService.generateTokens(
-      user.id,
-      organization.id,
-      Role.OWNER,
-    );
-
-    return {
-      organization,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        status: user.status,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
-      tokens,
-      roles: user.userAssignments.map((a) => ({
-        businessId: a.organizationId,
-        branchId: a.branchId,
-        role: a.role,
-      })),
-    };
+    return this.buildAuthResponse(user, assignment, tokens);
   }
 
   // ── Change Password (authenticated user) ───────────────────────────────────
@@ -557,17 +368,17 @@ export class AuthService {
       );
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(
-      currentPassword,
+    const { valid } = await this.passwordService.verify(
       user.passwordHash,
+      currentPassword,
     );
-    if (!isCurrentPasswordValid) {
+    if (!valid) {
       throw new UnauthorizedException(
         'Current password is incorrect. Please try again.',
       );
     }
 
-    const newPasswordHash = await bcrypt.hash(newPassword, this.saltRounds);
+    const newPasswordHash = await this.passwordService.hash(newPassword);
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash: newPasswordHash },
@@ -579,24 +390,50 @@ export class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  // ── Reset Password (using OTP) ───────────────────────────────────────────
-  async resetPassword(phone: string, otpCode: string, newPassword: string) {
-    await this.otpService.verifyOtp(phone, otpCode);
+  // ── Forgot Password (send email OTP) ───────────────────────────────────────
+  async forgotPassword(email: string) {
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalized },
+    });
+
+    if (user && user.passwordHash) {
+      await this.otpService.generateOtp(
+        normalized,
+        OTP_PURPOSES.PASSWORD_RESET,
+      );
+    }
+
+    // Same response regardless — prevents email enumeration
+    return {
+      message:
+        'If an account exists for this email, a password reset code has been sent.',
+    };
+  }
+
+  // ── Reset Password (email OTP verified) ────────────────────────────────────
+  async resetPassword(email: string, otpCode: string, newPassword: string) {
+    const normalized = email.trim().toLowerCase();
+    await this.otpService.verifyOtp(
+      normalized,
+      otpCode,
+      OTP_PURPOSES.PASSWORD_RESET,
+    );
 
     const user = await this.prisma.user.findUnique({
-      where: { phone },
+      where: { email: normalized },
     });
 
     if (!user) {
       throw new BadRequestException(
-        'Account not found. Please check your phone number.',
+        'Account not found. Please check your email address.',
       );
     }
 
-    const newPasswordHash = await bcrypt.hash(newPassword, this.saltRounds);
+    const newPasswordHash = await this.passwordService.hash(newPassword);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash: newPasswordHash },
+      data: { passwordHash: newPasswordHash, emailVerified: true },
     });
 
     // Invalidate all existing sessions so stolen tokens cannot be reused
@@ -605,27 +442,21 @@ export class AuthService {
     return { message: 'Password reset successfully' };
   }
 
-  // ── Get current user and organization ────────────────────────────────────
-  async getMe(userId: string, organizationId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      include: { userAssignments: true },
-    });
-    const organization = await this.prisma.organization.findUniqueOrThrow({
-      where: { id: organizationId },
-    });
-    return { user, organization };
-  }
-
-  // ── Add staff member ───────────────────────────────────────────────────────
+  // ── Staff invitation (owner/manager creates invite; QR/deep link) ──────────
   async addStaff(
     organizationId: string,
     fullName: string,
-    phone: string,
+    email: string | undefined,
+    phone: string | undefined,
     role: Role,
     branchId?: string,
-    password?: string,
   ) {
+    if (!email && !phone) {
+      throw new BadRequestException(
+        'Email (or legacy phone number) is required to invite staff.',
+      );
+    }
+
     if (branchId) {
       const branch = await this.prisma.branch.findFirst({
         where: { id: branchId, organizationId },
@@ -643,54 +474,57 @@ export class AuthService {
       );
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { phone },
-      include: { userAssignments: true },
-    });
-
-    if (user) {
-      const existingAssignment = user.userAssignments.find(
-        (a) => a.organizationId === organizationId,
-      );
-
-      if (existingAssignment) {
-        throw new BadRequestException(
-          'This user is already a member of your organization.',
-        );
-      }
-
-      await this.prisma.userBusinessAssignment.create({
-        data: {
-          userId: user.id,
-          organizationId,
-          role,
-          branchId: branchId || null,
-        },
+    // If a verified user with this email exists, add them to the org directly
+    if (email) {
+      const normalized = email.trim().toLowerCase();
+      const user = await this.prisma.user.findUnique({
+        where: { email: normalized },
+        include: { userAssignments: true },
       });
 
-      this.logger.log(
-        `Existing user added to org: id=${user.id} role=${role} org=${organizationId}`,
-      );
+      if (user && user.emailVerified) {
+        const existingAssignment = user.userAssignments.find(
+          (a) => a.organizationId === organizationId,
+        );
 
-      return {
-        ...user,
-        organizationId,
-        branchId,
-        role,
-      };
+        if (existingAssignment) {
+          throw new BadRequestException(
+            'This user is already a member of your organization.',
+          );
+        }
+
+        await this.prisma.userBusinessAssignment.create({
+          data: {
+            userId: user.id,
+            organizationId,
+            role,
+            branchId: branchId || null,
+          },
+        });
+
+        this.logger.log(
+          `Existing user added to org: id=${user.id} role=${role} org=${organizationId}`,
+        );
+
+        return {
+          ...user,
+          organizationId,
+          branchId,
+          role,
+        };
+      }
     }
 
-    // Invitation-only flow: never create User / passwordHash at invite time.
-    // Password field accepted for backwards compatibility but is intentionally ignored.
-    // Staff member receives SMS invitation and sets their own password via
-    // Activate Invitation (OTP verified) flow.
+    // Invitation-only flow: staff receives a QR/deep-link invitation and
+    // completes registration (email + password + email OTP verification).
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     const invitation = await this.prisma.invitation.create({
       data: {
         token,
-        phone,
+        email: email?.trim().toLowerCase() ?? null,
+        phone: phone ?? null,
         organizationId,
         role,
         branchId: branchId || null,
@@ -703,11 +537,26 @@ export class AuthService {
     });
 
     this.logger.log(
-      `Invitation created: id=${invitation.id} phone=${phone} role=${role} expires=${expiresAt.toISOString()}`,
+      `Invitation created: id=${invitation.id} role=${role} expires=${expiresAt.toISOString()}`,
     );
 
-    // Send SMS notification for invitation
-    await this.otpService.sendInvitationSms(phone, role, organization?.name);
+    // Notify via email when available; legacy SMS invitations still work
+    if (email) {
+      await this.emailService.sendStaffInvitationEmail(
+        email.trim().toLowerCase(),
+        role,
+        organization?.name,
+        token,
+      );
+    } else if (phone) {
+      // Legacy phone invitation — notify via SMS (non-OTP, kept for backwards compatibility)
+      const formattedPhone = phone.replace(/^0/, '251');
+      await this.smsService.sendInvitationSms(
+        formattedPhone,
+        role,
+        organization?.name,
+      );
+    }
 
     return invitation;
   }
@@ -742,37 +591,29 @@ export class AuthService {
     return invitations;
   }
 
-  // ── Check Invitation (PUBLIC — used before login) ────────────────────────
-  // Validates { phone + token } pair (strongly recommended), or falls back to
-  // phone-only existence check with the same expiration logic.
-  //
-  // Returns the list of matching valid invitations (same format as getInvitation)
-  // so step 1 of the activation flow can render an invitation picker.
-  //
-  // SECURITY:
-  //   • Requires invitation to be status=PENDING and expiresAt>now
-  //   • If `token` supplied → phone AND token BOTH must match (prevents
-  //     phone-enumeration brute-forcing)
-  //   • Organization must still exist in DB (FK checked implicitly by prisma
-  //     include + explicit guard below for soft-deleted orgs if applicable)
-  async checkInvitation(phone: string, token?: string) {
+  // ── Check Invitation (PUBLIC — staff joining via QR deep link) ────────────
+  // Validates the invitation token (from the QR deep link), with a legacy
+  // phone-only fallback. Returns the matching valid invitation(s).
+  async checkInvitation(token?: string, phone?: string) {
     const now = new Date();
 
-    // Passive cleanup — don't throw if this fails, just best-effort.
     try {
       await this.prisma.invitation.deleteMany({
-        where: { phone, status: 'PENDING', expiresAt: { lt: now } },
+        where: {
+          status: 'PENDING',
+          expiresAt: { lt: now },
+          ...(token ? { token } : {}),
+        },
       });
     } catch (_) {
-      /* ignore */
+      /* best-effort cleanup */
     }
 
     const invitations = await this.prisma.invitation.findMany({
       where: {
-        phone,
         status: 'PENDING',
         expiresAt: { gt: now },
-        ...(token ? { token } : {}),
+        ...(token ? { token } : { ...(phone ? { phone } : {}) }),
       },
       include: { organization: true, branch: true },
     });
@@ -780,14 +621,15 @@ export class AuthService {
     if (invitations.length === 0) {
       throw new BadRequestException(
         token
-          ? 'Invalid invitation (wrong phone/token, or already used/expired)'
-          : 'No pending invitations found for this phone number',
+          ? 'Invalid invitation (wrong or already used/expired token)'
+          : 'No pending invitations found',
       );
     }
 
     return invitations.map((inv) => ({
       id: inv.id,
       role: inv.role,
+      email: inv.email,
       branchId: inv.branchId,
       branch: inv.branch,
       organizationId: inv.organizationId,
@@ -797,38 +639,56 @@ export class AuthService {
     }));
   }
 
-  // ── Activate Invitation ───────────────────────────────────────────────────
-  async activateInvitation(
-    phone: string,
-    otpCode: string,
-    fullName: string,
-    password: string,
-    organizationId: string,
-    invitationToken?: string,
-  ) {
-    await this.otpService.verifyOtp(phone, otpCode);
+  // ── Send staff activation OTP (email verification for invited staff) ──────
+  async sendStaffActivationOtp(email: string, token?: string) {
+    const normalized = email.trim().toLowerCase();
 
-    // Verify organization still exists (FK would eventually enforce this but
-    // give a cleaner error to the user + close off an org-guessing vector via
-    // invitation.activate timing differences — negligible in practice, but explicit).
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
+    const invitation = await this.prisma.invitation.findFirst({
+      where: {
+        status: 'PENDING',
+        expiresAt: { gt: new Date() },
+        ...(token ? { token } : { email: normalized }),
+      },
     });
-    if (!organization) {
+
+    if (!invitation) {
       throw new BadRequestException(
-        'Organization not found. Please check the details.',
+        'No pending invitation found for this email. Please request a new invitation.',
       );
     }
+
+    await this.otpService.generateOtp(
+      normalized,
+      OTP_PURPOSES.STAFF_ACTIVATION,
+    );
+    return {
+      message: 'A verification code has been sent to your email.',
+    };
+  }
+
+  // ── Activate Invitation (consume email OTP → create staff account) ────────
+  async activateInvitation(dto: {
+    token?: string;
+    email: string;
+    otpCode: string;
+    fullName: string;
+    password: string;
+  }) {
+    const email = dto.email.trim().toLowerCase();
+    await this.otpService.verifyOtp(
+      email,
+      dto.otpCode,
+      OTP_PURPOSES.STAFF_ACTIVATION,
+    );
 
     const now = new Date();
     const invitation = await this.prisma.invitation.findFirst({
       where: {
-        phone,
-        organizationId,
         status: 'PENDING',
         expiresAt: { gt: now },
-        ...(invitationToken ? { token: invitationToken } : {}),
+        ...(dto.token ? { token: dto.token } : { email }),
       },
+      include: { organization: true },
     });
 
     if (!invitation) {
@@ -837,34 +697,47 @@ export class AuthService {
       );
     }
 
+    // Verify organization still exists
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: invitation.organizationId },
+    });
+    if (!organization) {
+      throw new BadRequestException(
+        'Organization not found. Please check the details.',
+      );
+    }
+
     let user = await this.prisma.user.findUnique({
-      where: { phone },
+      where: { email },
     });
 
-    const passwordHash = await bcrypt.hash(password, this.saltRounds);
+    const passwordHash = await this.passwordService.hash(dto.password);
 
     if (!user) {
       user = await this.prisma.user.create({
         data: {
-          phone,
-          fullName,
+          email,
+          fullName: dto.fullName,
           passwordHash,
+          emailVerified: true,
         },
       });
     } else {
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {
-          fullName,
+          fullName: dto.fullName,
           passwordHash,
+          emailVerified: true,
         },
       });
     }
 
+    // Owner assigned the branch + role on the invitation
     await this.prisma.userBusinessAssignment.create({
       data: {
         userId: user.id,
-        organizationId,
+        organizationId: invitation.organizationId,
         role: invitation.role,
         branchId: invitation.branchId,
       },
@@ -875,32 +748,38 @@ export class AuthService {
       data: { status: 'ACTIVE' },
     });
 
-    this.logger.log(`Invitation activated: user id=${user.id}`);
+    this.logger.log(
+      `Invitation activated: user id=${user.id} org=${invitation.organizationId} role=${invitation.role}`,
+    );
 
     const tokens = await this.jwtService.generateTokens(
       user.id,
-      organizationId,
+      invitation.organizationId,
       invitation.role,
     );
     return {
       tokens,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        status: user.status,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
+      user: this.sanitizeUser(user),
       roles: [
         {
-          businessId: organizationId,
+          businessId: invitation.organizationId,
           branchId: invitation.branchId,
           role: invitation.role,
         },
       ],
     };
+  }
+
+  // ── Get current user and organization ────────────────────────────────────
+  async getMe(userId: string, organizationId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { userAssignments: true },
+    });
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+    });
+    return { user: this.sanitizeUser(user), organization };
   }
 
   // ── List staff for an organization ────────────────────────────────────────
@@ -965,7 +844,6 @@ export class AuthService {
       throw new BadRequestException('Cannot update the organization owner.');
     }
 
-    // Validate branch if provided
     if (branchId) {
       const branch = await this.prisma.branch.findFirst({
         where: { id: branchId, organizationId },
@@ -977,13 +855,11 @@ export class AuthService {
       }
     }
 
-    // Update user full name
     await this.prisma.user.update({
       where: { id: assignment.userId },
       data: { fullName },
     });
 
-    // Update assignment (role and branch)
     const updatedAssignment = await this.prisma.userBusinessAssignment.update({
       where: { id: staffAssignmentId },
       data: {
@@ -1001,5 +877,53 @@ export class AuthService {
     );
 
     return updatedAssignment;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  private sanitizeUser(user: {
+    id: string;
+    fullName: string | null;
+    phone: string | null;
+    email: string | null;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+    emailVerified?: boolean;
+  }) {
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      emailVerified: user.emailVerified ?? undefined,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  private buildAuthResponse(user: any, assignment: any, tokens: any) {
+    const org = assignment.organization;
+    return {
+      tokens,
+      requiresBusinessSelection: false,
+      user: this.sanitizeUser(user),
+      organization: {
+        id: org.id,
+        name: org.name,
+        type: org.type,
+        phone: org.phone,
+        email: org.email,
+        address: org.address,
+        city: org.city,
+        country: org.country,
+      },
+      roles: user.userAssignments.map((a: any) => ({
+        businessId: a.organizationId,
+        branchId: a.branchId,
+        role: a.role,
+      })),
+    };
   }
 }

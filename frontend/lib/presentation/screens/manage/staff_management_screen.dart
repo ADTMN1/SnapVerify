@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/tailwind.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/sv_status_badge.dart';
@@ -49,7 +51,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final staff = await ref.read(authRepositoryProvider).getStaff(authState.tokens!.accessToken);
+        final staff = await ref.read(authRepositoryProvider).getStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
         if (mounted) {
           setState(() {
             _staff = staff;
@@ -622,7 +624,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        await ref.read(authRepositoryProvider).removeStaff(authState.tokens!.accessToken, staffId);
+        await ref.read(authRepositoryProvider).removeStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!, staffId);
         _loadStaff();
         
         // Show success message
@@ -774,7 +776,7 @@ class _AddStaffSheet extends ConsumerStatefulWidget {
 class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
 
   String _selectedRole = 'cashier';
   String? _selectedBranchId;
@@ -795,7 +797,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches(authState.tokens!.accessToken);
+        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -816,7 +818,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
   @override
   void dispose() {
     _fullNameCtrl.dispose();
-    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -828,17 +830,19 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
       try {
         final authState = ref.read(authNotifierProvider);
         if (authState.tokens?.accessToken != null) {
-          print('DEBUG: Adding staff with role=$_selectedRole, phone=${_phoneCtrl.text.trim()}');
-          await ref.read(authRepositoryProvider).addStaff(
+          print('DEBUG: Adding staff with role=$_selectedRole, email=${_emailCtrl.text.trim()}');
+          final invitation = await ref.read(authRepositoryProvider).addStaff(
             authState.tokens!.accessToken,
             fullName: _fullNameCtrl.text.trim(),
-            phone: _phoneCtrl.text.trim(),
+            email: _emailCtrl.text.trim().toLowerCase(),
             role: _selectedRole,
             branchId: _selectedBranchId,
           );
           if (mounted) {
             Navigator.pop(context);
             widget.onStaffAdded();
+            // Show the invitation QR + share link so the owner can hand it over
+            _showInvitationResult(invitation);
           }
         }
       } catch (e) {
@@ -859,6 +863,83 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
         }
       }
     }
+  }
+
+  void _showInvitationResult(dynamic invitation) {
+    final token = invitation is Map
+        ? (invitation['token']?.toString() ?? '')
+        : '';
+    if (token.isEmpty) return;
+    final joinLink = 'snapverify://staff/join?token=$token';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: TwColors.primaryBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Invitation Created',
+              style: TextStyle(
+                color: TwColors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Staff can scan this QR (or share the link) to activate their account.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: TwColors.white.withValues(alpha: 0.7),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: QrImageView(
+                data: joinLink,
+                size: 200,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Share.share(
+                  'Join our business on SnapVerify! Invitation code:\n$joinLink',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: TwColors.brightGreen,
+                  foregroundColor: TwColors.primaryBg,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.share_rounded, size: 18),
+                label: const Text(
+                  'Share Invitation',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -925,14 +1006,17 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
               ),
               const SizedBox(height: 16),
               _FormField(
-                controller: _phoneCtrl,
-                label: 'Phone Number',
-                hint: '+251 9XX XXX XXX',
-                icon: Icons.phone_rounded,
-                keyboardType: TextInputType.phone,
+                controller: _emailCtrl,
+                label: 'Email',
+                hint: 'staff@example.com',
+                icon: Icons.alternate_email_rounded,
+                keyboardType: TextInputType.emailAddress,
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Required';
-                  if (v.trim().length < 9) return 'Enter a valid phone number';
+                  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                      .hasMatch(v.trim())) {
+                    return 'Enter a valid email address';
+                  }
                   return null;
                 },
               ),
@@ -1225,7 +1309,7 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches(authState.tokens!.accessToken);
+        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -1301,6 +1385,83 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
         }
       }
     }
+  }
+
+  void _showInvitationResult(dynamic invitation) {
+    final token = invitation is Map
+        ? (invitation['token']?.toString() ?? '')
+        : '';
+    if (token.isEmpty) return;
+    final joinLink = 'snapverify://staff/join?token=$token';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: TwColors.primaryBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Invitation Created',
+              style: TextStyle(
+                color: TwColors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Staff can scan this QR (or share the link) to activate their account.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: TwColors.white.withValues(alpha: 0.7),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: QrImageView(
+                data: joinLink,
+                size: 200,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Share.share(
+                  'Join our business on SnapVerify! Invitation code:\n$joinLink',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: TwColors.brightGreen,
+                  foregroundColor: TwColors.primaryBg,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.share_rounded, size: 18),
+                label: const Text(
+                  'Share Invitation',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override

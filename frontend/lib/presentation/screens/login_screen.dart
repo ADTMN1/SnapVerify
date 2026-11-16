@@ -16,42 +16,43 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _phoneFocused = false;
+  bool _emailFocused = false;
   bool _passwordFocused = false;
   Language _selectedLanguage = Language.english;
 
-  final _phoneFocusNode = FocusNode();
+  final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
 
   // Validation Errors
-  String? _phoneError;
+  String? _emailError;
   String? _passwordError;
 
   @override
   void initState() {
     super.initState();
-    _phoneFocusNode.addListener(() {
-      setState(() => _phoneFocused = _phoneFocusNode.hasFocus);
+    _emailFocusNode.addListener(() {
+      setState(() => _emailFocused = _emailFocusNode.hasFocus);
     });
     _passwordFocusNode.addListener(() {
       setState(() => _passwordFocused = _passwordFocusNode.hasFocus);
     });
 
     // Add listeners to clear error state when user starts typing
-    _phoneController.addListener(_clearError);
+    _emailController.addListener(_clearError);
     _passwordController.addListener(_clearError);
   }
 
   @override
   void dispose() {
-    _phoneController.removeListener(_clearError);
+    ref.read(authNotifierProvider.notifier).clearError();
+    _emailController.removeListener(_clearError);
     _passwordController.removeListener(_clearError);
-    _phoneController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
-    _phoneFocusNode.dispose();
+    _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
     super.dispose();
   }
@@ -59,7 +60,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
     setState(() {
-      _phoneError = null;
+      _emailError = null;
       _passwordError = null;
     });
   }
@@ -73,25 +74,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _login() async {
-    final phone = _phoneController.text.trim().replaceAll(' ', '');
+    final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text.trim();
-    
+
     // Validate inputs
-    if (phone.isEmpty) {
-      setState(() => _phoneError = 'Phone number is required.');
+    if (email.isEmpty) {
+      setState(() => _emailError = 'Email is required.');
       return;
     }
-    if (!RegExp(r'^(\+?251|0)?9\d{8}$').hasMatch(phone)) {
-      setState(() => _phoneError = 'Please enter a valid Ethiopian phone number.');
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _emailError = 'Please enter a valid email address.');
       return;
     }
     if (password.isEmpty) {
       setState(() => _passwordError = 'Password is required.');
       return;
     }
-    
+
     await ref.read(authNotifierProvider.notifier).loginWithPassword(
-      phone,
+      email,
       password,
     );
   }
@@ -208,7 +209,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildPhoneField(),
+        _buildEmailField(),
         const SizedBox(height: 20),
         _buildPasswordField(),
         const SizedBox(height: 8),
@@ -222,25 +223,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildPhoneField() {
+  Widget _buildEmailField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildUniqueInput(
-          controller: _phoneController,
-          focusNode: _phoneFocusNode,
-          isFocused: _phoneFocused,
-          label: _t('phone_number'),
-          hint: '+251 9XX XXX XXX',
-          icon: Icons.phone_outlined,
-          keyboardType: TextInputType.phone,
-          hasError: _phoneError != null,
+          controller: _emailController,
+          focusNode: _emailFocusNode,
+          isFocused: _emailFocused,
+          label: _t('email'),
+          hint: 'you@example.com',
+          icon: Icons.alternate_email_rounded,
+          keyboardType: TextInputType.emailAddress,
+          hasError: _emailError != null,
         ),
-        if (_phoneError != null)
+        if (_emailError != null)
           Padding(
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
-              _phoneError!,
+              _emailError!,
               style: TextStyle(
                 color: TwColors.red500,
                 fontSize: 12,
@@ -500,8 +501,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const ActivateInvitationScreen()),
-                );
+                  MaterialPageRoute(builder: (context) => const ActivateInvitationScreen()),                );
               },
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 4),

@@ -32,9 +32,39 @@ import * as crypto from 'crypto';
  */
 export const ACCOUNT_HASH_PREFIX = 'hmac-v1:';
 
+/**
+ * Canonicalize an Ethiopian mobile-money / phone-style account number.
+ *
+ * The same phone number is written differently by different providers and
+ * receipts (local 09…, international 251…, E.164 +251…). Before hashing or
+ * comparing receiver evidence, all these representations must resolve to
+ * ONE canonical form — otherwise a legitimate payment is rejected as
+ * "sent to a different account".
+ *
+ * Canonical form: local 10-digit "0" + 9 digits (e.g. 0912345678), which is
+ * the format already stored for existing registered accounts, so no hash
+ * backfill is required.
+ *
+ * Non-phone account numbers (CBE "1000…", BOA "1000…") do not match the
+ * Ethiopian mobile pattern and pass through unchanged.
+ */
+export function canonicalizeEthiopianPhoneNumber(
+  normalized: string,
+): string {
+  const digits = normalized.replace(/\+/g, '');
+  // International: 251 + 9XXXXXXXX (mobile) → local 0 9XXXXXXXX.
+  const intl = digits.match(/^251([97]\d{8})$/);
+  if (intl) return `0${intl[1]}`;
+  // Already local 09…/07… → canonical as-is.
+  if (/^0[97]\d{8}$/.test(digits)) return digits;
+  return normalized;
+}
+
 export function normalizeAccountNumber(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const out = value.replace(/[\s\-_]/g, '');
+  const out = canonicalizeEthiopianPhoneNumber(
+    value.replace(/[\s\-_()]/g, ''),
+  );
   return out.length ? out : null;
 }
 

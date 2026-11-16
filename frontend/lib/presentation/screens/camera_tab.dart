@@ -1,5 +1,5 @@
+import 'package:flutter/foundation.dart';
 
-import 'dart:developer' as dev;
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +23,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   List<CameraDescription> _cameras = [];
   bool _initialized = false;
   bool _torchOn = false;
+  bool _processing = false;
   String? _initError;
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
@@ -40,19 +41,19 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   }
 
   Future<void> _initCamera() async {
-    dev.log('[CameraTab] Initializing camera...');
+    debugPrint('[CameraTab] Initializing camera...');
     try {
-      dev.log('[CameraTab] Requesting camera permission...');
+      debugPrint('[CameraTab] Requesting camera permission...');
       final status = await Permission.camera.request();
       if (!status.isGranted) {
-        dev.log('[CameraTab] Camera permission denied!');
+        debugPrint('[CameraTab] Camera permission denied!');
         if (mounted) setState(() => _initError = 'Camera permission is required');
         return;
       }
 
       _cameras = await availableCameras();
       if (_cameras.isEmpty) {
-        dev.log('[CameraTab] No cameras found');
+        debugPrint('[CameraTab] No cameras found');
         if (mounted) setState(() => _initError = 'No camera found on this device');
         return;
       }
@@ -61,7 +62,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
       );
-      dev.log('[CameraTab] Using camera: ${back.name}');
+      debugPrint('[CameraTab] Using camera: ${back.name}');
 
       final ctrl = CameraController(
         back,
@@ -70,7 +71,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
       );
 
       await ctrl.initialize();
-      dev.log('[CameraTab] Camera initialized successfully');
+      debugPrint('[CameraTab] Camera initialized successfully');
 
       if (!mounted) return;
       _controller = ctrl;
@@ -79,55 +80,63 @@ class _CameraTabState extends ConsumerState<CameraTab> {
         _initError = null;
       });
     } catch (e, stackTrace) {
-      dev.log('[CameraTab] Camera initialization error: $e');
-      dev.log('[CameraTab] Stack trace: $stackTrace');
+      debugPrint('[CameraTab] Camera initialization error: $e');
+      debugPrint('[CameraTab] Stack trace: $stackTrace');
       if (mounted) setState(() => _initError = 'Camera error: $e');
     }
   }
 
   Future<void> _captureAndProcess() async {
     final ctrl = _controller;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (ctrl == null || !ctrl.value.isInitialized || _processing) return;
+
+    final sw = Stopwatch()..start();
+    setState(() => _processing = true);
 
     try {
-      dev.log('[CameraTab] Capturing image...');
+      debugPrint('[CameraTab] Capturing image...');
       final XFile imageFile = await ctrl.takePicture();
-      dev.log('[CameraTab] Image captured: ${imageFile.path}');
+      debugPrint('[CameraTab] Image captured in ${sw.elapsedMilliseconds}ms');
 
       final inputImage = InputImage.fromFilePath(imageFile.path);
-      dev.log('[CameraTab] Starting OCR processing...');
+      debugPrint('[CameraTab] Starting OCR processing...');
       final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
       final ocrText = recognizedText.text;
-      dev.log('[CameraTab] OCR complete. Text length: ${ocrText.length}');
+      debugPrint('[CameraTab] OCR complete in ${sw.elapsedMilliseconds}ms. Text length: ${ocrText.length}');
       if (ocrText.isNotEmpty) {
-        dev.log('[CameraTab] OCR Text: $ocrText');
+        // Sanitized diagnostics: digit runs of 4+ are masked so payer names,
+        // account/phone numbers and full references never reach the logs.
+        debugPrint('[CameraTab] OCR Text (sanitized): '
+            '${ocrText.replaceAll('\n', ' | ').replaceAll(RegExp(r'\d{4,}'), '####')}');
       }
 
       final transaction = OcrParser.extractTransaction(recognizedText);
-    dev.log('[CameraTab] Extracted transaction: ref=${transaction?.referenceId}, suffix=${transaction?.suffix}, amount=${transaction?.amount}, provider=${transaction?.provider}');
+      debugPrint('[CameraTab] Extracted transaction at ${sw.elapsedMilliseconds}ms: ref=${OcrParser.maskReference(transaction?.referenceId)}, suffix=${transaction?.suffix == null ? null : 'present'}, amount=${transaction?.amount}, provider=${transaction?.provider}');
 
-    if (transaction != null && mounted) {
-      dev.log('[CameraTab] Verifying transaction...');
-      ref.read(paymentProvider.notifier).reset();
-      ref.read(paymentProvider.notifier).verifyReference(
-            transaction.referenceId,
-            amount: transaction.amount,
-            provider: transaction.provider,
-            suffix: transaction.suffix,
-          );
-      _showResultSheet(transaction);
-    } else if (mounted) {
-      // Show professional error for invalid image
-      _showInvalidReceiptDialog();
-    }
-  } catch (e, stackTrace) {
-      dev.log('[CameraTab] Error capturing/processing image: $e');
-      dev.log('[CameraTab] Stack trace: $stackTrace');
+      if (!mounted) return;
+      if (transaction != null) {
+        ref.read(paymentProvider.notifier).reset();
+        ref.read(paymentProvider.notifier).verifyReference(
+              transaction.referenceId,
+              amount: transaction.amount,
+              provider: transaction.provider,
+              suffix: transaction.suffix,
+            );
+        _showResultSheet(transaction);
+      } else {
+        _showInvalidReceiptDialog();
+      }
+    } catch (e, stackTrace) {
+      debugPrint('[CameraTab] Error capturing/processing image: $e');
+      debugPrint('[CameraTab] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
       }
+    } finally {
+      sw.stop();
+      if (mounted) setState(() => _processing = false);
     }
   }
 
@@ -242,7 +251,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
       children: [
         SizedBox.expand(
           child: GestureDetector(
-            onTap: _captureAndProcess,
+            onTap: _processing ? null : _captureAndProcess,
             child: FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
@@ -253,6 +262,26 @@ class _CameraTabState extends ConsumerState<CameraTab> {
             ),
           ),
         ),
+
+        if (_processing)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.6),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: TwColors.brightGreen),
+                    SizedBox(height: 16),
+                    Text(
+                      'Reading receipt…',
+                      style: TextStyle(color: TwColors.white, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
         SafeArea(
           child: Column(
@@ -322,16 +351,27 @@ class _CameraTabState extends ConsumerState<CameraTab> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
                 child: GestureDetector(
-                  onTap: _captureAndProcess,
+                  onTap: _processing ? null : _captureAndProcess,
                   child: Container(
                     width: 70,
                     height: 70,
                     decoration: BoxDecoration(
-                      color: TwColors.brightGreen,
+                      color: _processing
+                          ? TwColors.slate700
+                          : TwColors.brightGreen,
                       shape: BoxShape.circle,
-                      border: Border.all(color: TwColors.lime400, width: 3),
+                      border: Border.all(
+                        color: _processing
+                            ? TwColors.slate600
+                            : TwColors.lime400,
+                        width: 3,
+                      ),
                     ),
-                    child: const Icon(Icons.camera_alt, color: Colors.black, size: 30),
+                    child: Icon(
+                      Icons.camera_alt,
+                      color: _processing ? TwColors.slate400 : Colors.black,
+                      size: 30,
+                    ),
                   ),
                 ),
               ),
@@ -408,7 +448,9 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
     String statusSubtitle;
 
     if (isLoading) {
-      statusColor = TwColors.sky500;
+      // Keep the loading state on the app's accent color (brightGreen) to
+      // match the spinner and the rest of the app's active states.
+      statusColor = TwColors.brightGreen;
       statusIcon = Icons.hourglass_top_rounded;
       statusTitle = 'Verifying Transaction...';
       statusSubtitle = 'Checking with payment provider...';
@@ -431,11 +473,19 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           statusTitle = 'Already Used';
           statusSubtitle = state.result!.message ?? 'This payment has already been verified';
           break;
-        default:
+        case VerificationStatus.failed:
           statusColor = TwColors.red500;
           statusIcon = Icons.cancel_rounded;
-          statusTitle = 'Invalid Transaction';
+          statusTitle = 'Verification Failed';
           statusSubtitle = state.result!.message ?? 'Unable to verify payment. Please check the details and try again.';
+          break;
+        case VerificationStatus.pending:
+        // Unknown/unrecognized backend verdicts land here too — they must
+        // never be presented as a definitive "Invalid Transaction".
+          statusColor = TwColors.sky500;
+          statusIcon = Icons.hourglass_top_rounded;
+          statusTitle = 'Pending Verification';
+          statusSubtitle = state.result!.message ?? 'Verification result could not be determined. Please check the history tab.';
           break;
       }
     } else {

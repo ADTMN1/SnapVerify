@@ -173,6 +173,10 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
         message: 'check.et request timed out',
       });
 
+      // Attempt 1 aborts at 30s, bounded retry sleeps 1.5s, attempt 2 aborts
+      // again at 30s — then the failure propagates.
+      await jest.advanceTimersByTimeAsync(30_000);
+      await jest.advanceTimersByTimeAsync(1_500);
       await jest.advanceTimersByTimeAsync(30_000);
       await assertion;
       // No hanging work remains: all pending timers consumed.
@@ -197,6 +201,23 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
       type: ProviderErrorType.NETWORK_ERROR,
       message: expect.stringContaining('ECONNREFUSED'),
     });
+  });
+
+  it('treats HTTP 409 as an authoritative branch duplicate answer (duplicate: true, not an error)', async () => {
+    const svc = await build();
+    mockFetch.mockResolvedValue({
+      status: 409,
+      text: async () =>
+        JSON.stringify({ success: false, message: 'This payment was already verified.' }),
+    });
+
+    const result = await svc.verifyReference(PaymentProvider.TELEBIRR, 'DJV9JIVHMR', null);
+
+    expect(result.success).toBe(false);
+    expect(result.duplicate).toBe(true);
+    expect(result.message).toMatch(/already verified/i);
+    // Exactly ONE upstream attempt — 409 must never be retried.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('clears the timeout timer after a successful request', async () => {

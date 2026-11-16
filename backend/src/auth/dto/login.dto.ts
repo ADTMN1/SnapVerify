@@ -1,21 +1,19 @@
 import {
   IsString,
-  IsOptional,
-  Matches,
-  Length,
   IsNotEmpty,
+  MinLength,
+  IsOptional,
 } from 'class-validator';
 
 export class LoginDto {
+  // Email for new users; legacy phone login is still accepted for existing
+  // users that predate the email-auth migration.
   @IsString()
-  @Matches(/^(\+?251|0)?9\d{8}$/, {
-    message:
-      'Please enter a valid Ethiopian phone number (e.g., 0912345678, +251912345678)',
-  })
-  phone: string;
+  @IsNotEmpty({ message: 'Email is required.' })
+  identifier: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Password is required.' })
   password: string;
 
   @IsString()

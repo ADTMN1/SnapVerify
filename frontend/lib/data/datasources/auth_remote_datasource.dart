@@ -1,7 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:developer' as dev;
 import 'package:http/http.dart' as http;
 import '../../core/constants/app_constants.dart';
+
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  ApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => 'ApiException($statusCode): $message';
+}
 
 class AuthRemoteDatasource {
   final http.Client client;
@@ -10,50 +20,10 @@ class AuthRemoteDatasource {
 
   Duration get _timeout => const Duration(seconds: 30);
 
-  // ── Send OTP ──────────────────────────────────────────────────────────────
-
-  Future<void> sendOtp(String phone, {String? purpose}) async {
-    try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/send-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          if (purpose != null) 'purpose': purpose,
-        }),
-      ).timeout(_timeout);
-      _throwIfError(response, 'sendOtp');
-    } on Exception catch (e) {
-      rethrow;
-    } catch (e) {
-      _handleConnectionError(e, 'sendOtp');
-    }
-  }
-
-  // ── Check OTP (verify without consuming — for multi-step UI flows) ────────
-
-  Future<void> checkOtp(String phone, String code) async {
-    try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/check-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'code': code,
-        }),
-      ).timeout(_timeout);
-      _throwIfError(response, 'checkOtp');
-    } on Exception catch (e) {
-      rethrow;
-    } catch (e) {
-      _handleConnectionError(e, 'checkOtp');
-    }
-  }
-
   // ── Password Login → returns token map ────────────────────────────────────
 
   Future<Map<String, dynamic>> loginWithPassword(
-    String phone,
+    String identifier,
     String password, {
     String? organizationId,
   }) async {
@@ -62,7 +32,7 @@ class AuthRemoteDatasource {
         Uri.parse('${AppConstants.baseUrl}/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'phone': phone,
+          'identifier': identifier,
           'password': password,
           if (organizationId != null) 'organizationId': organizationId,
         }),
@@ -75,68 +45,98 @@ class AuthRemoteDatasource {
     }
   }
 
-  // ── Verify OTP → returns token map ───────────────────────────────────────
+  // ── Owner registration (step 1: create account → email OTP sent) ──────────
 
-  Future<Map<String, dynamic>> verifyOtp(
-    String phone,
-    String code, {
-    String? organizationId,
-  }) async {
-    try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'code': code,
-          if (organizationId != null) 'organizationId': organizationId,
-        }),
-      ).timeout(_timeout);
-      _throwIfError(response, 'verifyOtp');
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (e) {
-      _handleConnectionError(e, 'verifyOtp');
-      rethrow;
-    }
-  }
-
-  // ── Create business ───────────────────────────────────────────────────────
-
-  Future<Map<String, dynamic>> createBusiness({
+  Future<Map<String, dynamic>> register({
     required String name,
     required String fullName,
-    required String phone,
-    required String otpCode,
+    required String email,
     required String password,
-    String? email,
-    String? address,
+    required String confirmPassword,
     String? type,
     String? city,
     String? country,
   }) async {
     try {
       final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/create-business'),
+        Uri.parse('${AppConstants.baseUrl}/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'name': name,
           'fullName': fullName,
-          'phone': phone,
-          'otpCode': otpCode,
+          'email': email,
           'password': password,
-          if (email != null) 'email': email,
-          if (address != null) 'address': address,
+          'confirmPassword': confirmPassword,
           if (type != null) 'type': type,
           if (city != null) 'city': city,
           if (country != null) 'country': country,
         }),
       ).timeout(_timeout);
-      // createBusiness returns 201
-      _throwIfError(response, 'createBusiness', expectedStatus: 201);
+      // register returns 201
+      _throwIfError(response, 'register', expectedStatus: 201);
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      _handleConnectionError(e, 'createBusiness');
+      _handleConnectionError(e, 'register');
       rethrow;
+    }
+  }
+
+  // ── Verify email (step 2: OTP → tokens) ───────────────────────────────────
+
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String otpCode,
+  }) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/verify-email'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'otpCode': otpCode,
+        }),
+      ).timeout(_timeout);
+      _throwIfError(response, 'verifyEmail');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      _handleConnectionError(e, 'verifyEmail');
+      rethrow;
+    }
+  }
+
+  // ── Resend verification OTP ───────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> resendVerification(String email) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/resend-verification'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      ).timeout(_timeout);
+      _throwIfError(response, 'resendVerification');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'resendVerification');
+      rethrow;
+    }
+  }
+
+  // ── Forgot password (send email OTP) ──────────────────────────────────────
+
+  Future<void> forgotPassword(String email) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      ).timeout(_timeout);
+      _throwIfError(response, 'forgotPassword');
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'forgotPassword');
     }
   }
 
@@ -166,18 +166,22 @@ class AuthRemoteDatasource {
       body: jsonEncode({'refreshToken': refreshToken}),
     );
     // Best-effort — ignore server errors on logout
-    dev.log('[AuthDS] logout HTTP ${response.statusCode}');
+    debugPrint('[AuthDS] logout HTTP ${response.statusCode}');
   }
 
   // ── Reset Password ────────────────────────────────────────────────────────
 
-  Future<void> resetPassword(String phone, String otpCode, String newPassword) async {
+  Future<void> resetPassword(
+    String email,
+    String otpCode,
+    String newPassword,
+  ) async {
     try {
       final response = await client.post(
         Uri.parse('${AppConstants.baseUrl}/auth/reset-password'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'phone': phone,
+          'email': email,
           'otpCode': otpCode,
           'newPassword': newPassword,
         }),
@@ -192,17 +196,16 @@ class AuthRemoteDatasource {
 
   // ── Invitations ───────────────────────────────────────────────────────────
 
-  // Public (pre-login) check: finds pending non-expired invitations for a
-  // phone (+ optional invitation token). Does NOT require auth.
-  // Used by Activate Invitation flow step 0.
-  Future<List<dynamic>> checkInvitation(String phone, {String? token}) async {
+  // Public (pre-login) check: validates an invitation token from the QR
+  // deep link. Legacy phone lookup still supported. Does NOT require auth.
+  Future<List<dynamic>> checkInvitation(String token, {String? phone}) async {
     try {
       final response = await client.post(
         Uri.parse('${AppConstants.baseUrl}/auth/check-invitation'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'phone': phone,
-          if (token != null) 'token': token,
+          'token': token,
+          if (phone != null) 'phone': phone,
         }),
       ).timeout(_timeout);
       _throwIfError(response, 'checkInvitation');
@@ -233,25 +236,46 @@ class AuthRemoteDatasource {
     }
   }
 
+  // ── Staff activation (email OTP for QR-invited staff) ─────────────────────
+
+  Future<void> staffActivationOtp({
+    required String email,
+    String? token,
+  }) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/staff-activation-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          if (token != null) 'token': token,
+        }),
+      ).timeout(_timeout);
+      _throwIfError(response, 'staffActivationOtp');
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'staffActivationOtp');
+    }
+  }
+
   Future<Map<String, dynamic>> activateInvitation({
-    required String phone,
+    String? token,
+    required String email,
     required String otpCode,
     required String fullName,
     required String password,
-    required String organizationId,
-    String? invitationToken,
   }) async {
     try {
       final response = await client.post(
         Uri.parse('${AppConstants.baseUrl}/auth/activate-invitation'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'phone': phone,
+          if (token != null) 'token': token,
+          'email': email,
           'otpCode': otpCode,
           'fullName': fullName,
           'password': password,
-          'organizationId': organizationId,
-          if (invitationToken != null) 'token': invitationToken,
         }),
       ).timeout(_timeout);
       _throwIfError(response, 'activateInvitation');
@@ -285,9 +309,8 @@ class AuthRemoteDatasource {
 
   Future<Map<String, dynamic>> addStaff(String accessToken, {
     required String fullName,
-    required String phone,
+    required String email,
     required String role,
-    String? password,
     String? branchId,
   }) async {
     try {
@@ -299,9 +322,8 @@ class AuthRemoteDatasource {
         },
         body: jsonEncode({
           'fullName': fullName,
-          'phone': phone,
+          'email': email,
           'role': role.toUpperCase(),
-          if (password != null) 'password': password,
           if (branchId != null) 'branchId': branchId,
         }),
       ).timeout(_timeout);
@@ -315,7 +337,7 @@ class AuthRemoteDatasource {
 
   Future<List<dynamic>> getStaff(String accessToken) async {
     try {
-      dev.log('[AuthDS] getStaff → ${AppConstants.baseUrl}/auth/staff');
+      debugPrint('[AuthDS] getStaff → ${AppConstants.baseUrl}/auth/staff');
       final response = await client.get(
         Uri.parse('${AppConstants.baseUrl}/auth/staff'),
         headers: {
@@ -323,11 +345,11 @@ class AuthRemoteDatasource {
           'Authorization': 'Bearer $accessToken',
         },
       ).timeout(_timeout);
-      dev.log('[AuthDS] getStaff response: ${response.statusCode}');
+      debugPrint('[AuthDS] getStaff response: ${response.statusCode}');
       _throwIfError(response, 'getStaff');
       return jsonDecode(response.body) as List<dynamic>;
     } catch (e) {
-      dev.log('[AuthDS] getStaff error: $e');
+      debugPrint('[AuthDS] getStaff error: $e');
       _handleConnectionError(e, 'getStaff');
       rethrow;
     }
@@ -486,8 +508,14 @@ class AuthRemoteDatasource {
   // ── Error helper ──────────────────────────────────────────────────────────
 
   void _handleConnectionError(dynamic e, String method) {
-    dev.log('[AuthDS] $method connection error: $e');
-    
+    // API errors (4xx/5xx with server message) are not connection errors —
+    // rethrow them untouched so the user sees the real message.
+    if (e is ApiException) {
+      throw e;
+    }
+
+    debugPrint('[AuthDS] $method connection error: $e');
+
     String message;
     if (e.toString().contains('Connection closed before full header was received')) {
       message = 'Connection lost. Please check your internet connection and try again.';
@@ -526,7 +554,7 @@ class AuthRemoteDatasource {
       message = 'HTTP ${response.statusCode}: ${response.body}';
     }
 
-    dev.log('[AuthDS] $method error: $message');
-    throw Exception(message);
+    debugPrint('[AuthDS] $method error: $message');
+    throw ApiException(message, statusCode: response.statusCode);
   }
 }

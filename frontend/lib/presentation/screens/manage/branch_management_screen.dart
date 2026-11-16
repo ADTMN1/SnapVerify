@@ -29,7 +29,7 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches(authState.tokens!.accessToken);
+        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
         if (mounted) {
           setState(() {
             _branches = branches;

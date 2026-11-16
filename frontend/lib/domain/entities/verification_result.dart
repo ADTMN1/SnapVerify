@@ -27,13 +27,16 @@ class VerificationResult {
 
   factory VerificationResult.fromJson(Map<String, dynamic> json) {
     final rawStatus = (json['status'] as String? ?? '').toUpperCase();
-    final status = rawStatus == 'VERIFIED'
-        ? VerificationStatus.verified
-        : rawStatus == 'FAILED'
-            ? VerificationStatus.failed
-            : rawStatus == 'ALREADY_VERIFIED'
-                ? VerificationStatus.alreadyVerified
-                : VerificationStatus.pending;
+    // Explicit backend-status mapping. Unknown statuses map to `pending`
+    // (NOT a failure): an unrecognized verdict must never be surfaced to the
+    // user as an "Invalid Transaction".
+    final status = switch (rawStatus) {
+      'VERIFIED' => VerificationStatus.verified,
+      'FAILED' => VerificationStatus.failed,
+      'DUPLICATE_TRANSACTION' || 'ALREADY_VERIFIED' =>
+        VerificationStatus.alreadyVerified,
+      'PENDING' || _ => VerificationStatus.pending,
+    };
 
     return VerificationResult(
       verified: json['verified'] as bool? ?? false,

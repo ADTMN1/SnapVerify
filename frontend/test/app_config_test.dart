@@ -14,8 +14,7 @@ void main() {
     expect(AppConstants.prodBaseUrl, startsWith('https://'));
   });
 
-  test('token/OTP durations are unchanged', () {
+  test('token durations are unchanged', () {
     expect(AppConstants.accessTokenExpiry, const Duration(minutes: 15));
-    expect(AppConstants.otpExpiry, const Duration(minutes: 5));
   });
 }

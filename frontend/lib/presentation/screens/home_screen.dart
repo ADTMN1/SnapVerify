@@ -16,39 +16,52 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _activeTab = 0;
+  int _activeTabIndex = 0;
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
+    final isWaiter = authState.role == UserRole.waiter;
     final canManage = authState.role.canManage;
 
-    final children = [
-      const HomeTab(),
+    final children = <Widget>[
+      if (!isWaiter) const HomeTab(),
       const HistoryTab(),
       const CameraTab(),
-      QRTab(isActive: _activeTab == 3),
+      QRTab(isActive: _activeTabIndex == (isWaiter ? 2 : 3)),
       if (canManage) const ManageTab(),
     ];
 
     // Reset active tab if it's now out of bounds
-    if (_activeTab >= children.length) {
-      _activeTab = 0;
+    if (_activeTabIndex >= children.length) {
+      _activeTabIndex = 0;
     }
 
     return Scaffold(
       backgroundColor: TwColors.slate950,
       body: SafeArea(
         child: IndexedStack(
-          index: _activeTab,
+          index: _activeTabIndex,
           children: children,
         ),
       ),
-      bottomNavigationBar: _buildBottomNavBar(canManage),
+      bottomNavigationBar: _buildBottomNavBar(
+        isWaiter: isWaiter,
+        canManage: canManage,
+      ),
     );
   }
 
-  Widget _buildBottomNavBar(bool canManage) {
+  Widget _buildBottomNavBar({
+    required bool isWaiter,
+    required bool canManage,
+  }) {
+    // Waiter layout: History, Camera, QR
+    // Other roles: Home, History, Camera, QR, [Manage]
+    final int historyIdx = isWaiter ? 0 : 1;
+    final int cameraIdx = isWaiter ? 1 : 2;
+    final int qrIdx = isWaiter ? 2 : 3;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
@@ -60,10 +73,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildNavItem(0, Icons.home_rounded, 'Home'),
-          _buildNavItem(1, Icons.history_rounded, 'History'),
-          _activeTab == 2 ? const SizedBox(width: 48) : _buildCameraButton(),
-          _buildNavItem(3, Icons.qr_code_scanner_rounded, 'QR'),
+          if (!isWaiter) _buildNavItem(0, Icons.home_rounded, 'Home'),
+          _buildNavItem(historyIdx, Icons.history_rounded, 'History'),
+          _activeTabIndex == cameraIdx
+              ? const SizedBox(width: 48)
+              : _buildCameraButton(cameraIdx),
+          _buildNavItem(qrIdx, Icons.qr_code_scanner_rounded, 'QR'),
           if (canManage) _buildNavItem(4, Icons.settings_rounded, 'Manage'),
         ],
       ),
@@ -71,11 +86,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {
-    final isActive = _activeTab == index;
+    final isActive = _activeTabIndex == index;
     return GestureDetector(
       onTap: () {
         setState(() {
-          _activeTab = index;
+          _activeTabIndex = index;
         });
       },
       child: Column(
@@ -100,11 +115,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildCameraButton() {
+  Widget _buildCameraButton(int cameraIdx) {
     return GestureDetector(
       onTap: () {
         setState(() {
-          _activeTab = 2;
+          _activeTabIndex = cameraIdx;
         });
       },
       child: Container(

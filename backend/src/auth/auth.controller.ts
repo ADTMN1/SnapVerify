@@ -7,7 +7,6 @@ import {
   UseGuards,
   Request,
   Body,
-  Ip,
   HttpCode,
   HttpStatus,
   Param,
@@ -17,16 +16,21 @@ import { AuthService } from './auth.service';
 import { JwtService } from './jwt.service';
 import { JwtAuthGuard, JwtPayload } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
-import { BranchGuard } from './guards/branch.guard';
 import { Roles } from './decorators/roles.decorator';
 import { Public } from './decorators/public.decorator';
 import { Role } from '@prisma/client';
-import { SendOtpDto } from './dto/send-otp.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { CreateBusinessDto } from './dto/create-business.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import {
+  RegisterDto,
+  VerifyEmailDto,
+  ResendVerificationDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  StaffActivationOtpDto,
+  ActivateInvitationDto,
+} from './dto/email-auth.dto';
 import { LoginDto } from './dto/login.dto';
-import { ChangePasswordDto, ResetPasswordDto } from './dto/change-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AddStaffDto } from './dto/add-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 
@@ -38,63 +42,94 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Post('send-otp')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
-  async sendOtp(@Body() dto: SendOtpDto) {
-    return this.authService.sendOtp(dto.phone, dto.purpose);
-  }
-
-  @Public()
-  @Post('check-otp')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 10, ttl: 60 } })
-  async checkOtp(@Body() dto: VerifyOtpDto) {
-    return this.authService.checkOtp(dto.phone, dto.code);
-  }
-
-  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.loginWithPassword(
-      dto.phone,
+  async login(@Body() dto: LoginDto, @Request() req: { ip: string }) {
+    return this.authService.login(
+      dto.identifier,
       dto.password,
       dto.organizationId,
     );
   }
 
+  // ── Owner registration (email verification) ────────────────────────────────
+
   @Public()
-  @Post('verify-otp')
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 3, ttl: 60 } })
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  async verifyOtp(@Body() dto: VerifyOtpDto, @Ip() ipAddress: string) {
-    return this.authService.verifyOtpAndLogin(
-      dto.phone,
-      dto.code,
-      dto.organizationId,
-      ipAddress,
-    );
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.email, dto.otpCode);
   }
 
   @Public()
-  @Post('create-business')
-  @HttpCode(HttpStatus.CREATED)
-  async createBusiness(@Body() dto: CreateBusinessDto) {
-    return this.authService.createBusiness(
-      dto.name,
-      dto.fullName,
-      dto.phone,
-      dto.otpCode,
-      dto.password,
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60 } })
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerificationOtp(dto.email);
+  }
+
+  // ── Password recovery (email OTP) ───────────────────────────────────────────
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60 } })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60 } })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(
       dto.email,
-      dto.address,
-      dto.type,
-      dto.city,
-      dto.country,
+      dto.otpCode,
+      dto.newPassword,
     );
   }
+
+  // ── Staff activation (QR invitation + email OTP) ────────────────────────────
+
+  @Public()
+  @Post('check-invitation')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 6, ttl: 60 } })
+  async checkInvitationPublic(
+    @Body() body: { token?: string; phone?: string },
+  ) {
+    return this.authService.checkInvitation(body.token, body.phone);
+  }
+
+  @Public()
+  @Post('staff-activation-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60 } })
+  async staffActivationOtp(@Body() dto: StaffActivationOtpDto) {
+    return this.authService.sendStaffActivationOtp(dto.email, dto.token);
+  }
+
+  @Public()
+  @Post('activate-invitation')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60 } })
+  async activateInvitation(@Body() dto: ActivateInvitationDto) {
+    return this.authService.activateInvitation(dto);
+  }
+
+  // ── Session management ──────────────────────────────────────────────────────
 
   @Public()
   @Post('select-business')
@@ -108,11 +143,14 @@ export class AuthController {
   @Public()
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
-  async refreshToken(@Body() dto: RefreshTokenDto, @Ip() ipAddress: string) {
+  async refreshToken(
+    @Body() dto: RefreshTokenDto,
+    @Request() req: { ip: string },
+  ) {
     return this.jwtService.refreshTokens(
       dto.refreshToken,
       undefined,
-      ipAddress,
+      req.ip,
     );
   }
 
@@ -147,24 +185,14 @@ export class AuthController {
     );
   }
 
-  @Public()
-  @Post('reset-password')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(
-      dto.phone,
-      dto.otpCode,
-      dto.newPassword,
-    );
-  }
-
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async getMe(@Request() req: { user: JwtPayload }) {
     return this.authService.getMe(req.user.sub, req.user.organizationId);
   }
+
+  // ── Staff management ────────────────────────────────────────────────────────
 
   @Post('staff')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -177,15 +205,15 @@ export class AuthController {
     return this.authService.addStaff(
       req.user.organizationId,
       dto.fullName,
+      dto.email,
       dto.phone,
       dto.role,
       dto.branchId,
-      dto.password,
     );
   }
 
   @Get('staff')
-  @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
   async getStaff(@Request() req: { user: JwtPayload; branchFilter?: string }) {
     return this.authService.getStaff(req.user.organizationId, req.branchFilter);
@@ -227,42 +255,5 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async getInvitations(@Param('phone') phone: string) {
     return this.authService.getInvitation(phone);
-  }
-
-  // PUBLIC invitation check — for pre-login activation flow.
-  // Takes { phone, token? } and returns valid invitations list
-  // (compatible with invitation picker on step 1 of activation).
-  // Throttled aggressively to block phone-enumeration scans.
-  @Public()
-  @Post('check-invitation')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 6, ttl: 60 } })
-  async checkInvitationPublic(@Body() body: { phone: string; token?: string }) {
-    return this.authService.checkInvitation(body.phone, body.token);
-  }
-
-  @Public()
-  @Post('activate-invitation')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
-  async activateInvitation(
-    @Body()
-    body: {
-      phone: string;
-      otpCode: string;
-      fullName: string;
-      password: string;
-      organizationId: string;
-      token?: string;
-    },
-  ) {
-    return this.authService.activateInvitation(
-      body.phone,
-      body.otpCode,
-      body.fullName,
-      body.password,
-      body.organizationId,
-      body.token,
-    );
   }
 }

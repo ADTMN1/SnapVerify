@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:developer' as dev;
 import 'package:http/http.dart' as http;
@@ -43,7 +44,7 @@ class QrRemoteDatasource {
     final uri = Uri.parse(
       '${AppConstants.baseUrl}/qr',
     ).replace(queryParameters: params.isEmpty ? null : params);
-    dev.log('[QrDS] listQrAccounts → $uri');
+    debugPrint('[QrDS] listQrAccounts → $uri');
 
     final response = await client
         .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
@@ -59,7 +60,7 @@ class QrRemoteDatasource {
           .map((e) => QrAccountInfo.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } catch (e) {
-      dev.log('[QrDS] listQrAccounts parse error: $e');
+      debugPrint('[QrDS] listQrAccounts parse error: $e');
       throw QrApiException('Could not parse QR response: $e', 0);
     }
   }
@@ -70,7 +71,7 @@ class QrRemoteDatasource {
     required String accountId,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/qr/accounts/$accountId');
-    dev.log('[QrDS] getAccountQr → $uri');
+    debugPrint('[QrDS] getAccountQr → $uri');
 
     final response = await client
         .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
@@ -83,7 +84,7 @@ class QrRemoteDatasource {
         jsonDecode(response.body) as Map<String, dynamic>,
       );
     } catch (e) {
-      dev.log('[QrDS] getAccountQr parse error: $e');
+      debugPrint('[QrDS] getAccountQr parse error: $e');
       throw QrApiException('Could not parse QR response: $e', 0);
     }
   }
@@ -94,7 +95,7 @@ class QrRemoteDatasource {
     required String publicId,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/qr/resolve/$publicId');
-    dev.log('[QrDS] resolveQr → $uri');
+    debugPrint('[QrDS] resolveQr → $uri');
 
     final response = await client
         .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
@@ -107,7 +108,7 @@ class QrRemoteDatasource {
         jsonDecode(response.body) as Map<String, dynamic>,
       );
     } catch (e) {
-      dev.log('[QrDS] resolveQr parse error: $e');
+      debugPrint('[QrDS] resolveQr parse error: $e');
       throw QrApiException('Could not parse QR response: $e', 0);
     }
   }
@@ -125,7 +126,7 @@ class QrRemoteDatasource {
     } catch (_) {
       message = 'HTTP ${response.statusCode}';
     }
-    dev.log('[QrDS] error ${response.statusCode}: $message');
+    debugPrint('[QrDS] error ${response.statusCode}: $message');
     throw QrApiException(message, response.statusCode);
   }
 }

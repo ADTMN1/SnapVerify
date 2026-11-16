@@ -3,6 +3,7 @@ import { HttpException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentProvider, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { computeAccountNumberHash } from './account-hash';
 import {
   PaymentService,
   parseVerifiedAmount,
@@ -842,5 +843,233 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
   it('documents the supported receipt MIME types per Check.et contract', () => {
     expect(CHECK_ET_SUPPORTED_PDF_MIMES.has('application/pdf')).toBe(true);
     expect(CHECK_ET_SUPPORTED_PDF_MIMES.has('image/jpeg')).toBe(false);
+  });
+});
+
+describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
+  const HASH_SECRET = 'a'.repeat(48);
+  let service: PaymentService;
+
+  const telebirrAccount = {
+    ...registeredAccount,
+    id: 'account-tb',
+    provider: PaymentProvider.TELEBIRR,
+    accountNumber: '0986006897',
+    suffix: null,
+    accountHolderName: null,
+    // Stored hash uses the LOCAL 09… format (existing registered data).
+    accountNumberHash: computeAccountNumberHash('0986006897', HASH_SECRET),
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    service = await build({ ACCOUNT_HASH_SECRET: HASH_SECRET });
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([telebirrAccount]);
+    mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+  });
+
+  it('approves a Telebirr payment whose receiver_account is in international 251… format', async () => {
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        receiverAccount: '251986006897',
+      }),
+    );
+
+    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1');
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe(PaymentStatus.VERIFIED);
+  });
+
+  it('approves a Telebirr payment whose receiver_account is in E.164 +251… format', async () => {
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        receiverAccount: '+251986006897',
+      }),
+    );
+
+    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1');
+    expect(result.verified).toBe(true);
+  });
+
+  it('still rejects a Telebirr payment to a genuinely different account', async () => {
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        receiverAccount: '251911111111',
+      }),
+    );
+
+    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1');
+    expect(result.verified).toBe(false);
+    expect(result.message).toMatch(/different account/i);
+  });
+
+  it('does NOT forward account_number to Check.et for Telebirr (docs contract)', async () => {
+    mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
+    await service.verifyByReference('TB123', 'org-1', 'user-1');
+    expect(mockCheckEt.verifyReference).toHaveBeenCalledWith(
+      PaymentProvider.TELEBIRR,
+      'TB123',
+      '0986006897',
+    );
+  });
+
+  it('approves a Telebirr payment when Check.et returns a MASKED receiver_account matching the registered phone', async () => {
+    // Runtime-confirmed behavior: Check.et masks wallet receiver accounts
+    // (e.g. "25****97" for 251986006897).
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        receiverAccount: '25****97',
+      }),
+    );
+
+    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    expect(result.verified).toBe(true);
+  });
+
+  it('rejects a Telebirr payment whose masked receiver_account is a different wallet', async () => {
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        receiverAccount: '25****17',
+      }),
+    );
+
+    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    expect(result.verified).toBe(false);
+    expect(result.message).toMatch(/different account/i);
+  });
+});
+
+describe('verifyByReference failure-message selection across multiple banks', () => {
+  const HASH_SECRET = 'a'.repeat(48);
+  let service: PaymentService;
+
+  const telebirrAccount = {
+    ...registeredAccount,
+    id: 'account-tb',
+    provider: PaymentProvider.TELEBIRR,
+    accountNumber: '0986006897',
+    suffix: null,
+    accountHolderName: null,
+    accountNumberHash: computeAccountNumberHash('0986006897', HASH_SECRET),
+  };
+  const cbeAccount = { ...registeredAccount };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    service = await build({ ACCOUNT_HASH_SECRET: HASH_SECRET });
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+  });
+
+  it('surfaces the provider-confirmed "different account" verdict, not the CBE "not found" message', async () => {
+    // Probe order: CBE (negative), Telebirr (confirmed but other wallet).
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([cbeAccount, telebirrAccount]);
+    mockCheckEt.verifyReference.mockImplementation(
+      async (provider: PaymentProvider) => {
+        if (provider === PaymentProvider.CBE) {
+          return validNormalized({
+            success: false,
+            exists: false,
+            provider: PaymentProvider.CBE,
+            checkEtBank: 'cbe',
+            message: 'No CBE payment with this reference was found for this receiving account.',
+            receipt: {},
+          });
+        }
+        return validNormalized({
+          provider: PaymentProvider.TELEBIRR,
+          checkEtBank: 'telebirr',
+          receiverAccount: '25****17',
+        });
+      },
+    );
+
+    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    expect(result.verified).toBe(false);
+    expect(result.message).toMatch(/different account/i);
+    expect(result.message).not.toMatch(/No CBE payment/);
+  });
+
+  it('uses a neutral aggregated message when several banks answer "not found"', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([cbeAccount, telebirrAccount]);
+    mockCheckEt.verifyReference.mockImplementation(async (provider: PaymentProvider) =>
+      validNormalized({
+        success: false,
+        exists: false,
+        provider,
+        checkEtBank: provider === PaymentProvider.CBE ? 'cbe' : 'telebirr',
+        message: 'Transaction not found.',
+        receipt: {},
+      }),
+    );
+
+    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    expect(result.verified).toBe(false);
+    expect(result.message).toMatch(/could not be verified against your registered accounts/i);
+    expect(result.message).not.toMatch(/No CBE payment/);
+  });
+});
+
+describe('CBE and BOA verification compatibility after canonicalization', () => {
+  const HASH_SECRET = 'a'.repeat(48);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('still approves a CBE payment matched via the registered account number', async () => {
+    const service = await build({ ACCOUNT_HASH_SECRET: HASH_SECRET });
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([
+      { ...registeredAccount, suffix: null, accountHolderName: null },
+    ]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({ receiverAccount: '1000516323381', receiver: null }),
+    );
+    mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    expect(result.verified).toBe(true);
+  });
+
+  it('still approves a BOA (Abyssinia) payment matched by account number', async () => {
+    const service = await build({ ACCOUNT_HASH_SECRET: HASH_SECRET });
+    const boaAccount = {
+      ...registeredAccount,
+      id: 'account-boa',
+      provider: PaymentProvider.ABYSSINIA,
+      accountNumber: '1000290172',
+      suffix: '0172',
+      accountHolderName: null,
+      accountNumberHash: computeAccountNumberHash('1000290172', HASH_SECRET),
+    };
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([boaAccount]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.ABYSSINIA,
+        checkEtBank: 'boa',
+        receiverAccount: '1000290172',
+        receiver: null,
+      }),
+    );
+    mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+
+    const result = await service.verifyByReference('BOA123456789', 'org-1', 'user-1');
+    expect(result.verified).toBe(true);
   });
 });

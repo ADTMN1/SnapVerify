@@ -389,6 +389,42 @@ export class PaymentService {
       }
     }
 
+    // Tier 3b (Telebirr/mobile wallets): Check.et returns receiver_account
+    // MASKED for wallet providers (e.g. "25****97" for a 251986006897
+    // receiver), so full-number HMAC matching is impossible. Compare the
+    // masked tail against the last digits of the REGISTERED phone number
+    // (canonicalized), same partial-evidence strength as Tier 3.
+    if (
+      !account.suffix &&
+      accountNumber &&
+      typeof accountNumber === 'string' &&
+      account.accountNumber
+    ) {
+      const maskedTailMatch = accountNumber.match(/\*+(\d+)$/);
+      if (maskedTailMatch) {
+        const registered = this._normalizeAccountNumber(account.accountNumber);
+        // The provider masks the INTERNATIONAL phone form (2519…): try both
+        // the stored canonical form and its 251-prefixed international form.
+        const international = registered?.match(/^0([97]\d{8})$/)
+          ? `251${registered.slice(1)}`
+          : registered;
+        const candidates = [registered, international].filter(
+          (v): v is string => !!v,
+        );
+        const extractedSuffix = maskedTailMatch[1];
+        if (candidates.some((c) => c.endsWith(extractedSuffix))) {
+          this.logger.warn(
+            `[_isPaymentToAccount] Matched via provider-masked wallet tail (partial evidence, no stored suffix)`,
+          );
+          return true;
+        }
+        this.logger.warn(
+          `[_isPaymentToAccount] Masked wallet tail mismatch (no stored suffix)`,
+        );
+        return false;
+      }
+    }
+
     // Tier 4: receiver name — EXACT equality only (substring removed in
     // Stage 1; name substrings were a false-approval vector).
     if (account.accountHolderName && receiverName) {
@@ -527,6 +563,38 @@ export class PaymentService {
       );
     }
 
+    // Use the client-selected bank ONLY as a hint to narrow which registered
+    // accounts are probed. It can never widen matching or inject evidence —
+    // receiver matching still runs against REGISTERED accounts only. A hint
+    // with no matching account fails fast with a clear message instead of
+    // burning 60s+ on unrelated (often slow) bank upstreams.
+    const hintedProvider = provider?.toUpperCase() as
+      | PaymentProvider
+      | undefined;
+    let candidateAccounts = paymentAccounts;
+    if (
+      hintedProvider &&
+      Object.values(PaymentProvider).includes(hintedProvider)
+    ) {
+      const matching = paymentAccounts.filter(
+        (a) => a.provider === hintedProvider,
+      );
+      if (matching.length === 0) {
+        const raw = {
+          success: false,
+          reason: `You don't have a ${hintedProvider.replace(/_/g, ' ')} receiving account registered. Add it in settings, or verify against your registered bank account.`,
+        };
+        return this._saveAndReturn(
+          raw,
+          organizationId,
+          userId,
+          { method: 'REFERENCE', transactionId: referenceNumber },
+          null,
+        );
+      }
+      candidateAccounts = matching;
+    }
+
     if (this.skipPrimaryVerification) {
       // DEV-ONLY mock mode. Constructor rejects this in production.
       this.logger.warn(
@@ -543,15 +611,25 @@ export class PaymentService {
 
     let matchedAccount: PaymentAccount | null = null;
     let raw: any = null;
+    let providerConfirmedUnmatchedRaw: any = null;
+    const authoritativeNegativeProviders = new Set<PaymentProvider>();
     let hadAnyApiSuccess = false;
     let lastUpstreamError: string | null = null;
     let validationRejectionCount = 0;
     let lastValidationMessage: string | null = null;
     let otherContinuableFailureCount = 0;
 
+    // Sanitized diagnostics: reference STYLE and length only — never the
+    // full value, so payer-identifying data stays out of the logs.
+    this.logger.log(
+      `[verifyByReference] attempt ref=${this._maskSensitive(referenceNumber)} ` +
+        `style=${(referenceNumber ?? '').slice(0, 2)} len=${(referenceNumber ?? '').length} ` +
+        `accounts=${candidateAccounts.length}`,
+    );
+
     // SECURITY: the client-supplied suffix is never sent upstream. Receiving-
     // account evidence comes exclusively from the REGISTERED account rows.
-    for (const account of paymentAccounts) {
+    for (const account of candidateAccounts) {
       try {
         const verification = await this.checkEt.verifyReference(
           account.provider,
@@ -582,7 +660,16 @@ export class PaymentService {
           matchedAccount = account;
           break;
         }
-        if (!raw) raw = this._toRawShape(verification);
+        if (verification.success) {
+          // Provider CONFIRMED the transaction but it went to a different
+          // account. This is the most informative failure evidence — keep it
+          // so the final message reflects the actual provider verdict
+          // instead of an unrelated bank's "not found" answer.
+          providerConfirmedUnmatchedRaw = this._toRawShape(verification);
+        } else {
+          authoritativeNegativeProviders.add(account.provider);
+          if (!raw) raw = this._toRawShape(verification);
+        }
       } catch (e) {
         lastUpstreamError = upstreamErrorDetail(e);
         if (e instanceof ProviderError) {
@@ -639,6 +726,26 @@ export class PaymentService {
     // SECURITY: a provider-confirmed transaction that went to a DIFFERENT
     // receiving account must never be approved. Downgrade to a failed
     // verification regardless of the provider's success flag.
+    if (providerConfirmedUnmatchedRaw) {
+      raw = {
+        ...providerConfirmedUnmatchedRaw,
+        success: false,
+        reason:
+          'This payment was sent to a different account. Please ensure the payment was made to your registered business account.',
+      };
+      this.logger.warn(
+        `[verifyByReference] provider-confirmed payment REJECTED by receiver matching — no registered account matched`,
+      );
+    } else if (!raw?.success && authoritativeNegativeProviders.size > 1) {
+      // Multiple banks answered authoritatively with "not found / not to this
+      // account". Naming only one bank (usually the first probed) misleads
+      // the user — e.g. a Telebirr reference shown a CBE rejection message.
+      raw = {
+        success: false,
+        reason:
+          'This payment could not be verified against your registered accounts. Please check the reference and try again.',
+      };
+    }
     if (raw?.success && !matchedAccount) {
       raw = {
         ...raw,
@@ -647,6 +754,9 @@ export class PaymentService {
           'This payment was sent to a different account. Please ensure the payment was made to your registered business account.',
       };
     }
+    this.logger.log(
+      `[verifyByReference] outcome=${raw?.success ? 'VERIFIED' : 'FAILED'} matched=${matchedAccount?.provider ?? 'none'}`,
+    );
 
     if (!raw) {
       raw = {

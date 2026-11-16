@@ -17,11 +17,7 @@ async function main() {
   await prisma.refreshToken.deleteMany({});
   console.log("✅ Deleted all RefreshTokens");
 
-  // 2. OTP codes
-  await prisma.otpCode.deleteMany({});
-  console.log("✅ Deleted all OtpCodes");
-
-  // 3. Logs and Payments (depend on Organization + User)
+  // 2. Logs and Payments (depend on Organization + User)
   await prisma.activityLog.deleteMany({});
   console.log("✅ Deleted all ActivityLogs");
   await prisma.verificationLog.deleteMany({});

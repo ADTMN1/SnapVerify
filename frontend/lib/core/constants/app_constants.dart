@@ -24,7 +24,7 @@ class AppConstants {
 
   /// Current development machine's LAN IP. Used as the default for physical
   /// devices and plain runs. Update if your machine IP changes.
-   static const String devDeviceBaseUrl = 'http://192.168.100.93:3000';
+   static const String devDeviceBaseUrl = 'http://192.168.1.5:3000';
 
   /// Placeholder production domain. Override with --dart-define for real deploys.
   static const String prodBaseUrl = 'https://api.snapverify.example';
@@ -93,5 +93,4 @@ class AppConstants {
   // ── Auth / token lifetimes ─────────────────────────────────────────────────
 
   static const Duration accessTokenExpiry = Duration(minutes: 15);
-  static const Duration otpExpiry = Duration(minutes: 5);
 }

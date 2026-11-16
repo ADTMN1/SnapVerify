@@ -81,8 +81,11 @@ model Organization {
 model User {
   id               String                   @id @default(uuid())
   fullName         String?
-  phone            String                   @unique
-  email            String?
+  // Phone is optional since authentication moved to email; retained for
+  // legacy users and non-auth metadata.
+  phone            String?                  @unique
+  email            String?                  @unique
+  emailVerified    Boolean                  @default(false)
   passwordHash     String?
   status           String                   @default("active")
   createdAt        DateTime                 @default(now())
@@ -116,7 +119,10 @@ model UserBusinessAssignment {
 
 model Invitation {
   id             String       @id @default(uuid())
-  phone          String
+  // Email is the primary contact for new (email-based) invitations; phone is
+  // retained for legacy SMS invitations.
+  email          String?
+  phone          String?
   organizationId String
   branchId       String?
   role           Role
@@ -131,16 +137,19 @@ model Invitation {
   @@map("invitations")
 }
 
-model OtpCode {
-  id        String   @id @default(uuid())
-  phone     String
-  expiresAt DateTime
-  isUsed    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  attempts  Int      @default(0)
-  otpHash   String
+model EmailOtp {
+  id         String    @id @default(uuid())
+  email      String
+  purpose    String
+  // OTP codes are never stored as plaintext — SHA-256 hex digest.
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
 
-  @@map("otp_codes")
+  @@index([email, purpose])
+  @@map("email_otps")
 }
 
 model RefreshToken {
@@ -173,31 +182,31 @@ model Device {
 }
 
 model Payment {
-  id                     String            @id @default(uuid())
-  organizationId         String
-  userId                 String?
-  amount                 Decimal
-  currency               String            @default("ETB")
-  paymentMethod          String
-  transactionId          String
+  id                      String            @id @default(uuid())
+  organizationId          String
+  userId                  String?
+  amount                  Decimal
+  currency                String            @default("ETB")
+  paymentMethod           String
+  transactionId           String
   // Deterministic normalization of transactionId (uppercase, whitespace and
   // separator-stripped). Null for legacy/empty references. Backed by a unique
   // constraint with organizationId for database-level duplicate protection.
   normalizedTransactionId String?
-  senderName             String?
-  receiverName           String?
-  status                 PaymentStatus
-  riskScore              Int?
-  rawData                Json?
+  senderName              String?
+  receiverName            String?
+  status                  PaymentStatus
+  riskScore               Int?
+  rawData                 Json?
   // Which verification VENDOR produced this row: 'check_et' for new
   // verification attempts, null for legacy Veritas-era rows. Historical
   // Veritas records are never rewritten.
-  verificationProvider   String?
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
-  organization           Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user                   User?             @relation(fields: [userId], references: [id])
-  verificationLogs       VerificationLog[]
+  verificationProvider    String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  organization            Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User?             @relation(fields: [userId], references: [id])
+  verificationLogs        VerificationLog[]
 
   @@unique([organizationId, normalizedTransactionId])
   @@index([organizationId, createdAt])
