@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/tailwind.dart';
-import '../../core/locales.dart';
+import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
 
@@ -16,7 +17,6 @@ class RegisterScreen extends ConsumerStatefulWidget {
 class _RegisterScreenState extends ConsumerState<RegisterScreen>
     with SingleTickerProviderStateMixin {
   // State
-  Language _selectedLanguage = Language.english;
   int _currentStep = 0;
   String _registeredEmail = '';
   bool _canResendOtp = false;
@@ -223,14 +223,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _confirmPasswordFocusNode.dispose();
     _animationController.dispose();
     super.dispose();
-  }
-
-  String _t(String key) {
-    return LocaleStrings.strings[_selectedLanguage]?[key] ?? key;
-  }
-
-  void _toggleLanguage(Language lang) {
-    setState(() => _selectedLanguage = lang);
   }
 
   Future<void> _submitRegistration() async {
@@ -441,16 +433,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
-        children: Language.values.map((lang) {
-          final isSelected = lang == _selectedLanguage;
+        children: AppLanguage.values.map((lang) {
+          final isSelected = lang == ref.watch(languageProvider);
           return GestureDetector(
-            onTap: () => _toggleLanguage(lang),
+            onTap: () => ref.read(languageProvider.notifier).select(lang),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               margin: EdgeInsets.only(
-                right: lang == Language.values.last ? 0 : 4,
+                right: lang == AppLanguage.values.last ? 0 : 4,
               ),
               decoration: BoxDecoration(
                 color: isSelected
@@ -465,7 +457,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                     : null,
               ),
               child: Text(
-                LocaleStrings.languageNames[lang]!,
+                lang.shortName,
                 style: TextStyle(
                   color: isSelected ? TwColors.brightGreen : TwColors.slate400,
                   fontSize: 13,
@@ -617,11 +609,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _selectedLanguage == Language.english
-              ? 'Create Account'
-              : _selectedLanguage == Language.amharic
-                  ? 'አካውንት ፍጠር'
-                  : 'Akaawuntii Uum',
+          AppLocalizations.of(context)!.createAccount,
           style: const TextStyle(
             color: TwColors.white,
             fontSize: 32,
@@ -631,7 +619,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         const SizedBox(height: 10),
         Text(
-          _currentStep == 0 ? _t('create_new_account') : 'Verify your email',
+          _currentStep == 0 ? AppLocalizations.of(context)!.createNewAccount : 'Verify your email',
           style: TextStyle(
             color: TwColors.slate400,
             fontSize: 15,
@@ -650,7 +638,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           controller: _emailController,
           focusNode: _emailFocusNode,
           isFocused: _emailFocused,
-          label: _t('email'),
+          label: AppLocalizations.of(context)!.email,
           hint: 'you@example.com',
           icon: Icons.alternate_email_rounded,
           keyboardType: TextInputType.emailAddress,
@@ -680,7 +668,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           controller: _fullNameController,
           focusNode: _fullNameFocusNode,
           isFocused: _fullNameFocused,
-          label: _t('full_name'),
+          label: AppLocalizations.of(context)!.fullName,
           hint: 'John Doe',
           icon: Icons.person_outline_rounded,
           hasError: _fullNameError != null,
@@ -710,7 +698,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           controller: _businessNameController,
           focusNode: _businessNameFocusNode,
           isFocused: _businessNameFocused,
-          label: _t('business_name'),
+          label: AppLocalizations.of(context)!.businessName,
           hint: 'My Awesome Business',
           icon: Icons.store_outlined,
           hasError: _businessNameError != null,
@@ -787,7 +775,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _t('business_type'),
+                        AppLocalizations.of(context)!.businessType,
                         style: TextStyle(
                           color: _selectedBusinessType != null
                               ? TwColors.brightGreen
@@ -855,7 +843,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             ),
             const SizedBox(height: 20),
             Text(
-              _t('business_type'),
+              AppLocalizations.of(context)!.businessType,
               style: const TextStyle(
                 color: TwColors.white,
                 fontSize: 20,
@@ -937,7 +925,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           controller: _cityController,
           focusNode: _cityFocusNode,
           isFocused: _cityFocused,
-          label: _t('city'),
+          label: AppLocalizations.of(context)!.city,
           hint: 'Addis Ababa',
           icon: Icons.location_on_outlined,
           hasError: _cityError != null,
@@ -967,7 +955,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           controller: _passwordController,
           focusNode: _passwordFocusNode,
           isFocused: _passwordFocused,
-          label: _t('password'),
+          label: AppLocalizations.of(context)!.password,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
           obscureText: _obscurePassword,
@@ -1010,7 +998,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           controller: _confirmPasswordController,
           focusNode: _confirmPasswordFocusNode,
           isFocused: _confirmPasswordFocused,
-          label: _t('confirm_password'),
+          label: AppLocalizations.of(context)!.confirmPassword,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
           obscureText: _obscureConfirmPassword,
@@ -1157,12 +1145,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     if (_currentStep == 0) {
       return _buildNextButton(
         onPressed: _submitRegistration,
-        text: _t('register_now'),
+        text: AppLocalizations.of(context)!.registerNow,
       );
     }
     return _buildNextButton(
       onPressed: _verifyEmailOtp,
-      text: _t('verify_continue'),
+      text: AppLocalizations.of(context)!.verifyContinue,
     );
   }
 
@@ -1200,7 +1188,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _t('error'),
+                      AppLocalizations.of(context)!.error,
                       style: TextStyle(
                         color: TwColors.red500,
                         fontSize: 14,
@@ -1209,7 +1197,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      authState.errorMessage ?? _t('an_error_occurred'),
+                      authState.errorMessage ?? AppLocalizations.of(context)!.anErrorOccurred,
                       style: TextStyle(
                         color: TwColors.red500.withValues(alpha: 0.8),
                         fontSize: 13,
@@ -1222,7 +1210,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                         ref.read(authNotifierProvider.notifier).clearError();
                       },
                       child: Text(
-                        _t('retry'),
+                        AppLocalizations.of(context)!.retry,
                         style: TextStyle(
                           color: TwColors.red500,
                           fontSize: 13,
@@ -1260,6 +1248,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         style: ElevatedButton.styleFrom(
           backgroundColor: TwColors.brightGreen,
           foregroundColor: TwColors.primaryBg,
+          disabledBackgroundColor: TwColors.brightGreen,
+          disabledForegroundColor: TwColors.primaryBg,
           padding: const EdgeInsets.symmetric(horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -1284,7 +1274,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          _t('already_have_account'),
+          AppLocalizations.of(context)!.alreadyHaveAccount,
           style: TextStyle(
             color: TwColors.slate400,
             fontSize: 14,
@@ -1302,7 +1292,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             padding: const EdgeInsets.symmetric(horizontal: 4),
           ),
           child: Text(
-            _t('login_now'),
+            AppLocalizations.of(context)!.loginNow,
             style: TextStyle(
               color: TwColors.brightGreen,
               fontSize: 14,

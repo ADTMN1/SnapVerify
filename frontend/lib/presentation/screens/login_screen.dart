@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/tailwind.dart';
-import '../../core/locales.dart';
+import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -21,7 +22,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   bool _emailFocused = false;
   bool _passwordFocused = false;
-  Language _selectedLanguage = Language.english;
 
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
@@ -29,6 +29,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // Validation Errors
   String? _emailError;
   String? _passwordError;
+
+  bool _rememberMe = true;
 
   @override
   void initState() {
@@ -43,6 +45,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // Add listeners to clear error state when user starts typing
     _emailController.addListener(_clearError);
     _passwordController.addListener(_clearError);
+
+    _loadRememberedLogin();
+  }
+
+  /// Prefill the identifier (and checkbox) from the last "Remember me" login.
+  Future<void> _loadRememberedLogin() async {
+    try {
+      final remembered =
+          await ref.read(authRepositoryProvider).getRememberedLogin();
+      if (remembered != null && remembered.isNotEmpty && mounted) {
+        setState(() {
+          _emailController.text = remembered;
+          _rememberMe = true;
+        });
+      }
+    } catch (_) {
+      // Non-critical — fall back to an empty form.
+    }
   }
 
   @override
@@ -65,25 +85,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
   }
 
-  String _t(String key) {
-    return LocaleStrings.strings[_selectedLanguage]?[key] ?? key;
-  }
-
-  void _toggleLanguage(Language lang) {
-    setState(() => _selectedLanguage = lang);
-  }
-
   Future<void> _login() async {
     final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text.trim();
 
     // Validate inputs
     if (email.isEmpty) {
-      setState(() => _emailError = 'Email is required.');
+      setState(() => _emailError = 'Email or username is required.');
       return;
     }
-    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
-      setState(() => _emailError = 'Please enter a valid email address.');
+    // Accept an email address, a staff username, or a phone number — the
+    // backend resolves the account (email → username → legacy phone).
+    final isEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+    final isUsername =
+        RegExp(r'^[a-zA-Z0-9._-]{3,30}$').hasMatch(email.trim());
+    final isPhone = RegExp(r'^\+?\d[\d\s-]{6,}$').hasMatch(email.trim());
+    if (!isEmail && !isUsername && !isPhone) {
+      setState(() => _emailError = 'Enter a valid email, username or phone.');
       return;
     }
     if (password.isEmpty) {
@@ -94,6 +112,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     await ref.read(authNotifierProvider.notifier).loginWithPassword(
       email,
       password,
+      rememberMe: _rememberMe,
     );
   }
 
@@ -132,6 +151,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildLanguageSwitcher() {
+    final selected = ref.watch(languageProvider);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -141,16 +161,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: Language.values.map((lang) {
-          final isSelected = lang == _selectedLanguage;
+        children: AppLanguage.values.map((lang) {
+          final isSelected = lang == selected;
           return GestureDetector(
-            onTap: () => _toggleLanguage(lang),
+            onTap: () => ref.read(languageProvider.notifier).select(lang),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               margin: EdgeInsets.only(
-                right: lang == Language.values.last ? 0 : 4,
+                right: lang == AppLanguage.values.last ? 0 : 4,
               ),
               decoration: BoxDecoration(
                 color: isSelected
@@ -165,7 +185,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     : null,
               ),
               child: Text(
-                LocaleStrings.languageNames[lang]!,
+                lang.shortName,
                 style: TextStyle(
                   color: isSelected ? TwColors.brightGreen : TwColors.slate400,
                   fontSize: 13,
@@ -184,7 +204,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _t('welcome_back'),
+          AppLocalizations.of(context)!.welcomeBack,
           style: const TextStyle(
             color: TwColors.white,
             fontSize: 32,
@@ -194,7 +214,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          _t('sign_in_continue'),
+          AppLocalizations.of(context)!.signInContinue,
           style: TextStyle(
             color: TwColors.slate400,
             fontSize: 15,
@@ -212,7 +232,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _buildEmailField(),
         const SizedBox(height: 20),
         _buildPasswordField(),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
+        _buildRememberMe(),
+        const SizedBox(height: 4),
         _buildForgotPassword(),
         const SizedBox(height: 32),
         if (authState.status == AuthStatus.error)
@@ -231,10 +253,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           controller: _emailController,
           focusNode: _emailFocusNode,
           isFocused: _emailFocused,
-          label: _t('email'),
-          hint: 'you@example.com',
+          label: AppLocalizations.of(context)!.email,
+          hint: 'email, username or phone',
           icon: Icons.alternate_email_rounded,
-          keyboardType: TextInputType.emailAddress,
+          keyboardType: TextInputType.text,
           hasError: _emailError != null,
         ),
         if (_emailError != null)
@@ -261,7 +283,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           controller: _passwordController,
           focusNode: _passwordFocusNode,
           isFocused: _passwordFocused,
-          label: _t('password'),
+          label: AppLocalizations.of(context)!.password,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
           obscureText: _obscurePassword,
@@ -399,6 +421,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: TwColors.brightGreen,
           foregroundColor: TwColors.primaryBg,
+          // Keep the button bright green while disabled (loading) instead of
+          // letting Material overlay its default gray disabled state.
+          disabledBackgroundColor: TwColors.brightGreen,
+          disabledForegroundColor: TwColors.primaryBg,
           padding: const EdgeInsets.symmetric(horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -417,12 +443,52 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               )
             : Text(
-                _t('sign_in'),
+                AppLocalizations.of(context)!.signIn,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildRememberMe() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: () => setState(() => _rememberMe = !_rememberMe),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: Checkbox(
+                value: _rememberMe,
+                onChanged: (v) => setState(() => _rememberMe = v ?? true),
+                activeColor: TwColors.brightGreen,
+                checkColor: TwColors.primaryBg,
+                side: BorderSide(
+                  color: TwColors.slate500,
+                  width: 1.5,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Remember me',
+              style: TextStyle(
+                color: TwColors.white.withValues(alpha: 0.75),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -438,7 +504,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
         },
         child: Text(
-          _t('forgot_password'),
+          AppLocalizations.of(context)!.forgotPassword,
           style: TextStyle(
             color: TwColors.brightGreen,
             fontSize: 14,
@@ -457,7 +523,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _t('no_account'),
+              AppLocalizations.of(context)!.noAccount,
               style: TextStyle(
                 color: TwColors.slate400,
                 fontSize: 14,
@@ -475,7 +541,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
               ),
               child: Text(
-                _t('create_account'),
+                AppLocalizations.of(context)!.createAccount,
                 style: TextStyle(
                   color: TwColors.brightGreen,
                   fontSize: 14,
@@ -490,7 +556,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _t('received_invitation'),
+              AppLocalizations.of(context)!.receivedInvitation,
               style: TextStyle(
                 color: TwColors.slate400,
                 fontSize: 14,
@@ -507,7 +573,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
               ),
               child: Text(
-                _t('activate_invitation'),
+                AppLocalizations.of(context)!.activateInvitation,
                 style: TextStyle(
                   color: TwColors.brightGreen,
                   fontSize: 14,
@@ -554,7 +620,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _t('error'),
+                  AppLocalizations.of(context)!.error,
                   style: TextStyle(
                     color: TwColors.red500,
                     fontSize: 14,
@@ -563,7 +629,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  authState.errorMessage ?? _t('an_error_occurred'),
+                  authState.errorMessage ?? AppLocalizations.of(context)!.anErrorOccurred,
                   style: TextStyle(
                     color: TwColors.red500.withOpacity(0.8),
                     fontSize: 13,
@@ -576,7 +642,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ref.read(authNotifierProvider.notifier).clearError();
                   },
                   child: Text(
-                    _t('retry'),
+                    AppLocalizations.of(context)!.retry,
                     style: TextStyle(
                       color: TwColors.red500,
                       fontSize: 13,

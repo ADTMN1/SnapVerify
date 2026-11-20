@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import '../../data/datasources/payment_remote_datasource.dart';
 import '../../domain/entities/verification_result.dart';
 import 'auth_provider.dart';
+import 'notifications_provider.dart';
+import 'reports_provider.dart';
 
 final paymentDatasourceProvider = Provider<PaymentRemoteDatasource>((ref) {
   return PaymentRemoteDatasource(client: http.Client());
@@ -125,11 +127,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         status: PaymentVerifyStatus.success,
         result: result,
       );
+      ref.invalidate(reportSummaryProvider);
+      ref.invalidate(notificationsProvider);
     } catch (e, st) {
       debugPrint('[PaymentProvider] verifyImage error: $e');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      // Provider outages must never be surfaced as an invalid receipt.
       state = state.copyWith(
         status: PaymentVerifyStatus.error,
-        errorMessage: e.toString().replaceFirst('Exception: ', ''),
+        errorMessage: msg,
       );
     }
   }
@@ -187,6 +193,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         status: PaymentVerifyStatus.success,
         result: result,
       );
+      ref.invalidate(reportSummaryProvider);
+      ref.invalidate(notificationsProvider);
     } catch (e, st) {
       debugPrint('[PaymentProvider] verifyReference error: $e');
       state = state.copyWith(

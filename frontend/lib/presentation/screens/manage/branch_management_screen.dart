@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/tailwind.dart';
+import '../../../core/utils/toast_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/sv_status_badge.dart';
 
@@ -8,10 +9,12 @@ class BranchManagementScreen extends ConsumerStatefulWidget {
   const BranchManagementScreen({super.key});
 
   @override
-  ConsumerState<BranchManagementScreen> createState() => _BranchManagementScreenState();
+  ConsumerState<BranchManagementScreen> createState() =>
+      _BranchManagementScreenState();
 }
 
-class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen> {
+class _BranchManagementScreenState
+    extends ConsumerState<BranchManagementScreen> {
   List<dynamic> _branches = [];
   bool _isLoading = true;
 
@@ -25,11 +28,17 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -44,21 +53,12 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
         }
       }
     } catch (e) {
-      print('Error loading branches: $e');
+      debugPrint('Error loading branches: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load branches: ${e.toString()}'),
-            backgroundColor: TwColors.red500,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        ToastService.showError('Failed to load branches: ${e.toString()}');
       }
     }
   }
@@ -78,7 +78,10 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
                 backgroundColor: TwColors.slate800,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -117,7 +120,11 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
                         ),
                       const SizedBox(height: 16),
                       if (_isLoading)
-                        const Center(child: CircularProgressIndicator(color: TwColors.brightGreen))
+                        const Center(
+                          child: CircularProgressIndicator(
+                            color: TwColors.brightGreen,
+                          ),
+                        )
                       else if (_branches.isEmpty)
                         Center(
                           child: Padding(
@@ -128,7 +135,9 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
                                 Container(
                                   padding: const EdgeInsets.all(20),
                                   decoration: BoxDecoration(
-                                    color: TwColors.brightGreen.withValues(alpha: 0.1),
+                                    color: TwColors.brightGreen.withValues(
+                                      alpha: 0.1,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
@@ -159,12 +168,19 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
                                 GestureDetector(
                                   onTap: _loadBranches,
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 12,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: TwColors.brightGreen.withValues(alpha: 0.12),
+                                      color: TwColors.brightGreen.withValues(
+                                        alpha: 0.12,
+                                      ),
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: TwColors.brightGreen.withValues(alpha: 0.3),
+                                        color: TwColors.brightGreen.withValues(
+                                          alpha: 0.3,
+                                        ),
                                         width: 1,
                                       ),
                                     ),
@@ -211,12 +227,7 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: TwColors.slate800,
-            width: 1,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
       ),
       child: Row(
         children: [
@@ -228,10 +239,7 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
               decoration: BoxDecoration(
                 color: TwColors.slate800,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: TwColors.slate700,
-                  width: 1,
-                ),
+                border: Border.all(color: TwColors.slate700, width: 1),
               ),
               child: const Icon(
                 Icons.arrow_back_ios_new_rounded,
@@ -377,9 +385,7 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
-                  color: TwColors.red500.withValues(alpha: 0.3),
-                ),
+                side: BorderSide(color: TwColors.red500.withValues(alpha: 0.3)),
               ),
             ),
             child: const Text(
@@ -401,39 +407,20 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        await ref.read(authRepositoryProvider).removeBranch(
-          authState.tokens!.accessToken,
-          branchId,
-        );
+        await ref
+            .read(authRepositoryProvider)
+            .removeBranch(authState.tokens!.accessToken, branchId);
         _loadBranches();
-        
+
         // Show success message
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Branch removed successfully'),
-              backgroundColor: TwColors.brightGreen,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          ToastService.showSuccess('Branch removed successfully');
         }
       }
     } catch (e) {
       // Show error message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: TwColors.red500,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        ToastService.showError('Error: ${e.toString()}');
       }
     }
   }
@@ -443,10 +430,8 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _EditBranchSheet(
-        branch: branch,
-        onBranchUpdated: _loadBranches,
-      ),
+      builder: (context) =>
+          _EditBranchSheet(branch: branch, onBranchUpdated: _loadBranches),
     );
   }
 
@@ -470,11 +455,7 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 16,
-          color: TwColors.slate400,
-        ),
+        Icon(icon, size: 16, color: TwColors.slate400),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -507,7 +488,7 @@ class _ActionBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isRemove ? TwColors.red500 : TwColors.brightGreen;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -515,19 +496,12 @@ class _ActionBtn extends StatelessWidget {
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withValues(alpha: 0.3),
-            width: 1,
-          ),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: color,
-            ),
+            Icon(icon, size: 16, color: color),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -585,12 +559,16 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
       try {
         final authState = ref.read(authNotifierProvider);
         if (authState.tokens?.accessToken != null) {
-          await ref.read(authRepositoryProvider).addBranch(
-            authState.tokens!.accessToken,
-            name: _nameCtrl.text.trim(),
-            phone: _phoneCtrl.text.trim().isNotEmpty ? _phoneCtrl.text.trim() : null,
-            address: _addressCtrl.text.trim(),
-          );
+          await ref
+              .read(authRepositoryProvider)
+              .addBranch(
+                authState.tokens!.accessToken,
+                name: _nameCtrl.text.trim(),
+                phone: _phoneCtrl.text.trim().isNotEmpty
+                    ? _phoneCtrl.text.trim()
+                    : null,
+                address: _addressCtrl.text.trim(),
+              );
           if (mounted) {
             Navigator.pop(context);
             widget.onBranchAdded();
@@ -657,7 +635,11 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: TwColors.slate700, width: 1),
                       ),
-                      child: const Icon(Icons.close_rounded, color: TwColors.white, size: 18),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: TwColors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -668,7 +650,8 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
                 label: 'Branch Name',
                 hint: 'e.g. Bole Main Branch',
                 icon: Icons.storefront_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               _BranchFormField(
@@ -684,7 +667,8 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
                 label: 'Address',
                 hint: 'e.g. Bole Road, Addis Ababa',
                 icon: Icons.location_on_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               _BranchFormField(
@@ -720,7 +704,10 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: TwColors.primaryBg, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: TwColors.primaryBg,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -729,7 +716,10 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
                             SizedBox(width: 8),
                             Text(
                               'Add Branch',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),
@@ -778,14 +768,28 @@ class _BranchFormField extends StatelessWidget {
           controller: controller,
           keyboardType: keyboardType,
           validator: validator,
-          style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            color: TwColors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: TwColors.white.withValues(alpha: 0.3), fontSize: 14),
-            prefixIcon: Icon(icon, color: TwColors.white.withValues(alpha: 0.5), size: 18),
+            hintStyle: TextStyle(
+              color: TwColors.white.withValues(alpha: 0.3),
+              fontSize: 14,
+            ),
+            prefixIcon: Icon(
+              icon,
+              color: TwColors.white.withValues(alpha: 0.5),
+              size: 18,
+            ),
             filled: true,
             fillColor: Colors.black,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: TwColors.slate700, width: 1),
@@ -796,7 +800,10 @@ class _BranchFormField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
+              borderSide: const BorderSide(
+                color: TwColors.brightGreen,
+                width: 1.5,
+              ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -822,10 +829,7 @@ class _EditBranchSheet extends ConsumerStatefulWidget {
   final dynamic branch;
   final VoidCallback onBranchUpdated;
 
-  const _EditBranchSheet({
-    required this.branch,
-    required this.onBranchUpdated,
-  });
+  const _EditBranchSheet({required this.branch, required this.onBranchUpdated});
 
   @override
   ConsumerState<_EditBranchSheet> createState() => _EditBranchSheetState();
@@ -863,42 +867,26 @@ class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
       try {
         final authState = ref.read(authNotifierProvider);
         if (authState.tokens?.accessToken != null) {
-          // Note: You'll need to add an updateBranch method to the repository
-          // For now, we'll show a placeholder
-          await ref.read(authRepositoryProvider).updateBranch(
-            authState.tokens!.accessToken,
-            widget.branch['id'],
-            name: _nameCtrl.text.trim(),
-            phone: _phoneCtrl.text.trim().isNotEmpty ? _phoneCtrl.text.trim() : null,
-            address: _addressCtrl.text.trim(),
-          );
+          await ref
+              .read(authRepositoryProvider)
+              .updateBranch(
+                authState.tokens!.accessToken,
+                widget.branch['id'],
+                name: _nameCtrl.text.trim(),
+                phone: _phoneCtrl.text.trim().isNotEmpty
+                    ? _phoneCtrl.text.trim()
+                    : null,
+                address: _addressCtrl.text.trim(),
+              );
           if (mounted) {
             Navigator.pop(context);
             widget.onBranchUpdated();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Branch updated successfully'),
-                backgroundColor: TwColors.brightGreen,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            );
+            ToastService.showSuccess('Branch updated successfully');
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: TwColors.red500,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          ToastService.showError('Error: ${e.toString()}');
         }
       } finally {
         if (mounted) {
@@ -959,7 +947,11 @@ class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: TwColors.slate700, width: 1),
                       ),
-                      child: const Icon(Icons.close_rounded, color: TwColors.white, size: 18),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: TwColors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -970,7 +962,8 @@ class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
                 label: 'Branch Name',
                 hint: 'e.g. Bole Main Branch',
                 icon: Icons.storefront_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               _BranchFormField(
@@ -986,7 +979,8 @@ class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
                 label: 'Address',
                 hint: 'e.g. Bole Road, Addis Ababa',
                 icon: Icons.location_on_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 28),
               SizedBox(
@@ -1008,7 +1002,10 @@ class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: TwColors.primaryBg, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: TwColors.primaryBg,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1017,7 +1014,10 @@ class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
                             SizedBox(width: 8),
                             Text(
                               'Update Branch',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),

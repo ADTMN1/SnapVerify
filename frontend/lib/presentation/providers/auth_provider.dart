@@ -283,36 +283,53 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   // ── Session restore on app start ─────────────────────────────────────────
 
+  /// Upper bound on the whole restore (secure-storage read + token refresh +
+  /// `/auth/me`). Startup must never wait on an unreachable backend: without
+  /// this cap a stored session plus a dead server left the app on a blank
+  /// screen for the full HTTP timeout (30s per call, twice).
+  static const Duration _restoreTimeout = Duration(seconds: 8);
+
   Future<void> _restoreSession() async {
     try {
-      final tokens = await _repo.getTokens();
-      if (tokens == null) {
-        state = AuthState.unauthenticated;
-        return;
-      }
-
-      // Proactively refresh if the access token is about to expire
-      AuthTokens finalTokens;
-      if (JwtUtils.isExpired(tokens.accessToken)) {
-        debugPrint('[Auth] access token expired on restore — refreshing');
-        final refreshData = await _repo.refreshToken(tokens.refreshToken);
-        finalTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
-      } else {
-        finalTokens = tokens;
-      }
-
-      // Fetch user and organization
-      final userAndOrg = await _fetchUserAndOrganization(finalTokens.accessToken);
-      state = _authenticatedState(
-        finalTokens, 
-        user: userAndOrg['user'], 
-        organization: userAndOrg['organization'],
+      final restored = await _restoreStoredSession().timeout(
+        _restoreTimeout,
+        onTimeout: () {
+          debugPrint('[Auth] session restore timed out — showing login');
+          return null;
+        },
       );
+      // Null means "no usable stored session" (or timed out): land on login.
+      state = restored ?? AuthState.unauthenticated;
     } catch (e) {
       debugPrint('[Auth] session restore failed: $e');
       await _repo.clearTokens();
       state = AuthState.unauthenticated;
     }
+  }
+
+  /// Reads the persisted session and validates it against the backend.
+  /// Returns the authenticated state, or `null` when there is nothing stored.
+  Future<AuthState?> _restoreStoredSession() async {
+    final tokens = await _repo.getTokens();
+    if (tokens == null) return null;
+
+    // Proactively refresh if the access token is about to expire
+    AuthTokens finalTokens;
+    if (JwtUtils.isExpired(tokens.accessToken)) {
+      debugPrint('[Auth] access token expired on restore — refreshing');
+      final refreshData = await _repo.refreshToken(tokens.refreshToken);
+      finalTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
+    } else {
+      finalTokens = tokens;
+    }
+
+    // Fetch user and organization
+    final userAndOrg = await _fetchUserAndOrganization(finalTokens.accessToken);
+    return _authenticatedState(
+      finalTokens,
+      user: userAndOrg['user'],
+      organization: userAndOrg['organization'],
+    );
   }
 
   Future<Map<String, dynamic>> _fetchUserAndOrganization(String accessToken) async {
@@ -332,10 +349,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     String identifier,
     String password, {
     String? organizationId,
+    bool rememberMe = true,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
-      debugPrint('[Auth] Logging in with password for: $identifier');
+      // Persist tokens only when "Remember me" is checked.
+      await _repo.setSessionOnly(!rememberMe);
+      if (rememberMe) {
+        await _repo.saveRememberedLogin(identifier);
+      } else {
+        await _repo.forgetRememberedLogin();
+      }
       final data = await _repo.loginWithPassword(
         identifier,
         password,
@@ -637,6 +661,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final refreshData = await _repo.refreshToken(current.refreshToken);
       final refreshedTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
+      // Discard the result if the session changed while the refresh was in
+      // flight (logout, switch business, or another login) — otherwise a
+      // late response would silently resurrect a logged-out session.
+      if (state.tokens?.refreshToken != current.refreshToken) {
+        debugPrint('[Auth] refresh result discarded — session changed');
+        return null;
+      }
       state = _authenticatedState(refreshedTokens, user: state.user, organization: state.organization, roles: state.roles);
       return refreshedTokens;
     } catch (e) {
@@ -703,44 +734,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  // ── Activate Invitation ───────────────────────────────────────────────────
+  // ── Activate Invitation (QR flow: no auto-login) ──────────────────────────
 
-  Future<void> activateInvitation({
-    String? token,
-    required String email,
-    required String otpCode,
-    required String fullName,
+  Future<Map<String, dynamic>> activateInvitation({
+    required String token,
     required String password,
+    required String confirmPassword,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
       final data = await _repo.activateInvitation(
         token: token,
-        email: email,
-        otpCode: otpCode,
-        fullName: fullName,
         password: password,
+        confirmPassword: confirmPassword,
       );
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      final user = data['user'] != null
-          ? User.fromJson(data['user'] as Map<String, dynamic>)
-          : null;
-      final rolesList = (data['roles'] as List<dynamic>?)
-          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
-          .toList() ?? [];
-      
-      final userAndOrg = await _fetchUserAndOrganization(tokens.accessToken);
-      state = _authenticatedState(
-        tokens, 
-        user: user, 
-        organization: userAndOrg['organization'],
-        roles: rolesList,
-      );
+      state = state.copyWith(status: AuthStatus.initial, errorMessage: null);
+      return data;
     } catch (e) {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: _friendly(e),
       );
+      return {'message': ''};
     }
   }
 

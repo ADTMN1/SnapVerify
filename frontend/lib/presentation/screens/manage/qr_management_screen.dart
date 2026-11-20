@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/tailwind.dart';
+import '../../../core/utils/toast_service.dart';
 import '../../../domain/entities/qr_account.dart';
 import '../../providers/qr_provider.dart';
 import '../../widgets/qr_code_view.dart';
@@ -84,15 +85,11 @@ class _QRManagementScreenState extends ConsumerState<QRManagementScreen> {
   }
 
   void _toast(String message, {bool error = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: error ? TwColors.red500 : TwColors.emerald600,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    if (error) {
+      ToastService.showError(message);
+    } else {
+      ToastService.showSuccess(message);
+    }
   }
 
   Rect? get _shareOrigin {

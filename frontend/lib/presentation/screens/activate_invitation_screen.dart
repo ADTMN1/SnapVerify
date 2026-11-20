@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/tailwind.dart';
-import '../../core/locales.dart';
-import '../../core/utils/toast_service.dart';
-import '../providers/auth_provider.dart';
-import 'login_screen.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../../core/tailwind.dart';
+import '../../../core/utils/toast_service.dart';
+import '../providers/auth_provider.dart';
+
+/// Staff activation — QR invitation flow.
+///
+/// Step 0: scan the invitation QR (or paste the token manually).
+/// Step 1: review the assigned staff details (name, role, branch, business).
+/// Step 2: create + confirm a password to activate the account.
+/// Done: staff logs in with their username and password.
 class ActivateInvitationScreen extends ConsumerStatefulWidget {
   final String? initialToken;
-
   const ActivateInvitationScreen({super.key, this.initialToken});
 
   @override
@@ -17,1137 +22,486 @@ class ActivateInvitationScreen extends ConsumerStatefulWidget {
 }
 
 class _ActivateInvitationScreenState
-    extends ConsumerState<ActivateInvitationScreen>
-    with SingleTickerProviderStateMixin {
-  // State
-  Language _selectedLanguage = Language.english;
-  int _currentStep = 0;
+    extends ConsumerState<ActivateInvitationScreen> {
+  int _step = 0;
+
+  String? _token;
+  Map<String, dynamic>? _invitation;
+  bool _checking = false;
+  String? _error;
+
+  final _formKey = GlobalKey<FormState>();
+  final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
-  bool _isLoading = false;
-  List<dynamic> _invitations = [];
-  dynamic _selectedInvitation;
+  bool _obscureConfirm = true;
+  bool _activating = false;
 
-  // Controllers
-  final _tokenController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _otpController = TextEditingController();
-  final _fullNameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  // Focus Nodes
-  final _tokenFocusNode = FocusNode();
-  final _emailFocusNode = FocusNode();
-  final _otpFocusNode = FocusNode();
-  final _fullNameFocusNode = FocusNode();
-  final _passwordFocusNode = FocusNode();
-  final _confirmPasswordFocusNode = FocusNode();
-
-  // Focus States
-  bool _tokenFocused = false;
-  bool _emailFocused = false;
-  bool _otpFocused = false;
-  bool _fullNameFocused = false;
-  bool _passwordFocused = false;
-  bool _confirmPasswordFocused = false;
-
-  // Validation Errors
-  String? _tokenError;
-  String? _emailError;
-  String? _otpError;
-  String? _fullNameError;
-  String? _passwordError;
-  String? _confirmPasswordError;
-
-  @override
   @override
   void initState() {
     super.initState();
-    _setupFocusListeners();
-    if (widget.initialToken != null && widget.initialToken!.isNotEmpty) {
-      _tokenController.text = widget.initialToken!;
+    if (widget.initialToken != null) {
+      _step = 1;
+      _checkToken(widget.initialToken!);
     }
-    _tokenController.addListener(_clearError);
-    _emailController.addListener(_clearError);
-    _otpController.addListener(_clearError);
-    _fullNameController.addListener(_clearError);
-    _passwordController.addListener(_clearError);
-    _confirmPasswordController.addListener(_clearError);
-  }
-
-  void _clearError() {
-    ref.read(authNotifierProvider.notifier).clearError();
-    setState(() {
-      _tokenError = null;
-      _emailError = null;
-      _otpError = null;
-      _fullNameError = null;
-      _passwordError = null;
-      _confirmPasswordError = null;
-    });
-  }
-
-  void _setupFocusListeners() {
-    _tokenFocusNode.addListener(() {
-      setState(() => _tokenFocused = _tokenFocusNode.hasFocus);
-    });
-    _emailFocusNode.addListener(() {
-      setState(() => _emailFocused = _emailFocusNode.hasFocus);
-    });
-    _otpFocusNode.addListener(() {
-      setState(() => _otpFocused = _otpFocusNode.hasFocus);
-    });
-    _fullNameFocusNode.addListener(() {
-      setState(() => _fullNameFocused = _fullNameFocusNode.hasFocus);
-    });
-    _passwordFocusNode.addListener(() {
-      setState(() => _passwordFocused = _passwordFocusNode.hasFocus);
-    });
-    _confirmPasswordFocusNode.addListener(() {
-      setState(() => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus);
-    });
   }
 
   @override
   void dispose() {
-    ref.read(authNotifierProvider.notifier).clearError();
-    _tokenController.removeListener(_clearError);
-    _emailController.removeListener(_clearError);
-    _otpController.removeListener(_clearError);
-    _fullNameController.removeListener(_clearError);
-    _passwordController.removeListener(_clearError);
-    _confirmPasswordController.removeListener(_clearError);
-    _tokenController.dispose();
-    _emailController.dispose();
-    _otpController.dispose();
-    _fullNameController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _tokenFocusNode.dispose();
-    _emailFocusNode.dispose();
-    _otpFocusNode.dispose();
-    _fullNameFocusNode.dispose();
-    _passwordFocusNode.dispose();
-    _confirmPasswordFocusNode.dispose();
-    super.dispose();
+    _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
+      super.dispose();
   }
 
-  String _t(String key) {
-    return LocaleStrings.strings[_selectedLanguage]?[key] ?? key;
-  }
+  Future<void> _checkToken(String rawToken) async {
+    // Accept both the raw token and the full deep link from the QR.
+    final match =
+        RegExp(r'token=([A-Za-z0-9]+)').firstMatch(rawToken);
+    final token = match?.group(1) ?? rawToken.trim();
 
-  void _toggleLanguage(Language lang) {
-    setState(() => _selectedLanguage = lang);
-  }
-
-  Future<void> _checkInvitations() async {
-    final token = _tokenController.text.trim();
-    if (token.isEmpty) {
-      setState(() => _tokenError = 'Invitation code is required.');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
     try {
-      final invitations = await ref
-          .read(authRepositoryProvider)
-          .checkInvitation(token);
-      
+      final repo = ref.read(authRepositoryProvider);
+      final results = await repo.checkInvitation(token);
+      if (results.isEmpty) {
+        setState(() {
+          _error = 'This invitation is not valid anymore.';
+          _checking = false;
+        });
+        return;
+      }
+      final inv = results.first as Map<String, dynamic>;
+      if (inv['status'] != null && inv['status'] != 'PENDING') {
+        setState(() {
+          _error = _statusMessage(inv['status'].toString());
+          _checking = false;
+        });
+        return;
+      }
       setState(() {
-        _invitations = invitations;
-        _currentStep = 1;
-        _isLoading = false;
+        _token = token;
+        _invitation = inv;
+        _step = 1;
+        _checking = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      ToastService.showError(e.toString().replaceFirst('Exception: ', ''));
+      setState(() {
+        _error = e.toString().replaceFirst(RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'), '');
+        _checking = false;
+      });
     }
   }
 
-  String? _validationError;
+  String _statusMessage(String status) {
+    switch (status.toUpperCase()) {
+      case 'ACTIVATED':
+        return 'This invitation was already activated. Please log in instead.';
+      case 'REVOKED':
+        return 'This invitation was revoked. Ask your manager for a new one.';
+      case 'EXPIRED':
+        return 'This invitation expired. Ask your manager to show you a new QR code.';
+      default:
+        return 'This invitation is not valid anymore.';
+    }
+  }
 
-  Future<void> _nextStep() async {
-    if (_currentStep == 0) {
-      await _checkInvitations();
-    } else if (_currentStep == 1) {
-      if (_selectedInvitation == null) {
-        ToastService.showError('Please select an invitation.');
-        return;
-      }
-      setState(() => _currentStep = 2);
-    } else if (_currentStep == 2) {
-      // Validate registration details, then send the activation OTP
-      final email = _emailController.text.trim().toLowerCase();
-      if (email.isEmpty) {
-        setState(() => _emailError = 'Email is required.');
-        return;
-      }
-      if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
-        setState(() => _emailError = 'Please enter a valid email address.');
-        return;
-      }
-
-      final fullName = _fullNameController.text.trim();
-      if (fullName.isEmpty) {
-        setState(() => _fullNameError = 'Full name is required.');
-        return;
-      }
-
-      final password = _passwordController.text.trim();
-      if (password.isEmpty) {
-        setState(() => _passwordError = 'Password is required.');
-        return;
-      }
-      if (password.length < 8) {
-        setState(() => _passwordError = 'Password must be at least 8 characters.');
-        return;
-      }
-
-      final confirmPassword = _confirmPasswordController.text.trim();
-      if (confirmPassword.isEmpty) {
-        setState(() => _confirmPasswordError = 'Please confirm your password.');
-        return;
-      }
-      if (password != confirmPassword) {
-        setState(() => _confirmPasswordError = 'Passwords do not match.');
-        return;
-      }
-
-      final token = _selectedInvitation?['token']?.toString() ??
-          (_tokenController.text.trim().isNotEmpty
-              ? _tokenController.text.trim()
-              : null);
-
+  Future<void> _activate() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _activating = true);
+    try {
       final notifier = ref.read(authNotifierProvider.notifier);
-      await notifier.sendStaffActivationOtp(email: email, token: token);
-      final authState = ref.read(authNotifierProvider);
-      if (authState.status != AuthStatus.error && mounted) {
-        setState(() {
-          _currentStep = 3;
-          _canResendOtp = false;
-          _resendTimer = 60;
-        });
-        _startResendTimer();
-        ToastService.showSuccess('Verification code sent to your email!');
-      }
-    } else {
-      final otp = _otpController.text.trim();
-      if (otp.isEmpty) {
-        setState(() => _otpError = 'Verification code is required.');
-        return;
-      }
-      if (otp.length != 6) {
-        setState(() => _otpError = 'Verification code must be 6 digits.');
-        return;
-      }
-
-      final email = _emailController.text.trim().toLowerCase();
-      final fullName = _fullNameController.text.trim();
-      final password = _passwordController.text.trim();
-      final token = _selectedInvitation?['token']?.toString() ??
-          (_tokenController.text.trim().isNotEmpty
-              ? _tokenController.text.trim()
-              : null);
-
-      await ref.read(authNotifierProvider.notifier).activateInvitation(
-        token: token,
-        email: email,
-        otpCode: otp,
-        fullName: fullName,
-        password: password,
+      final result = await notifier.activateInvitation(
+        token: _token!,
+        password: _passwordCtrl.text,
+        confirmPassword: _confirmCtrl.text,
       );
-    }
-  }
-
-  bool _canResendOtp = false;
-  int _resendTimer = 60;
-
-  Future<void> _startResendTimer() async {
-    for (int i = 59; i >= 0; i--) {
       if (!mounted) return;
-      setState(() => _resendTimer = i);
-      await Future.delayed(const Duration(seconds: 1));
-    }
-    if (mounted) {
-      setState(() => _canResendOtp = true);
-    }
-  }
-
-  Future<void> _resendOtp() async {
-    final email = _emailController.text.trim().toLowerCase();
-    final token = _selectedInvitation?['token']?.toString() ??
-        (_tokenController.text.trim().isNotEmpty
-            ? _tokenController.text.trim()
-            : null);
-    final notifier = ref.read(authNotifierProvider.notifier);
-    await notifier.sendStaffActivationOtp(email: email, token: token);
-    final authState = ref.read(authNotifierProvider);
-    if (authState.status != AuthStatus.error && mounted) {
-      setState(() => _canResendOtp = false);
-      _startResendTimer();
-      ToastService.showSuccess('New verification code sent!');
+      if (result['message'] == '') {
+        // Error state — message already surfaced via auth state listener.
+        setState(() => _activating = false);
+        return;
+      }
+      final username = result['username'] ?? '';
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      ToastService.showSuccess(
+        username.isEmpty
+            ? 'Account activated! You can now log in.'
+            : 'Account activated! Log in with username "$username".',
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst(RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'), '');
+          _activating = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authNotifierProvider);
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
       backgroundColor: TwColors.primaryBg,
-      body: SafeArea(
-        child: GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(size),
-                const SizedBox(height: 24),
-                _buildStepsIndicator(),
-                const SizedBox(height: 28),
-                _buildCurrentStep(),
-                const SizedBox(height: 32),
-                _buildNavigationButtons(authState),
-                const SizedBox(height: 32),
-                _buildLoginLink(),
-              ],
-            ),
-          ),
-        ),
+      appBar: AppBar(
+        backgroundColor: TwColors.primaryBg,
+        foregroundColor: TwColors.white,
+        elevation: 0,
+        title: const Text('Activate Account'),
       ),
+      body: _buildBody(),
     );
   }
 
-  Widget _buildHeader(Size size) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        InkWell(
-          onTap: () {
-            if (_currentStep > 0) {
-              setState(() => _currentStep--);
-            } else {
-              Navigator.pop(context);
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: TwColors.cardBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: TwColors.white,
-              size: 20,
-            ),
-          ),
-        ),
-        _buildLanguageSwitcher(),
-      ],
-    );
-  }
-
-  Widget _buildLanguageSwitcher() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: Language.values.map((lang) {
-          final isSelected = lang == _selectedLanguage;
-          return GestureDetector(
-            onTap: () => _toggleLanguage(lang),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              margin: EdgeInsets.only(
-                right: lang == Language.values.last ? 0 : 4,
-              ),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? TwColors.brightGreen.withValues(alpha: 0.15)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-                border: isSelected
-                    ? Border.all(
-                        color: TwColors.brightGreen.withValues(alpha: 0.4),
-                        width: 1.5,
-                      )
-                    : null,
-              ),
-              child: Text(
-                LocaleStrings.languageNames[lang] ?? lang.name,
-                style: TextStyle(
-                  color: isSelected ? TwColors.brightGreen : TwColors.slate400,
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildStepsIndicator() {
-    return Row(
-      children: [
-        Expanded(child: _buildStepIndicator(index: 0, title: 'Code')),
-        Container(
-          width: 24,
-          height: 2,
-          color: _currentStep > 0
-              ? TwColors.brightGreen
-              : TwColors.white.withValues(alpha: 0.1),
-        ),
-        Expanded(child: _buildStepIndicator(index: 1, title: 'Invite')),
-        Container(
-          width: 24,
-          height: 2,
-          color: _currentStep > 1
-              ? TwColors.brightGreen
-              : TwColors.white.withValues(alpha: 0.1),
-        ),
-        Expanded(child: _buildStepIndicator(index: 2, title: 'Details')),
-        Container(
-          width: 24,
-          height: 2,
-          color: _currentStep > 2
-              ? TwColors.brightGreen
-              : TwColors.white.withValues(alpha: 0.1),
-        ),
-        Expanded(child: _buildStepIndicator(index: 3, title: 'Verify')),
-      ],
-    );
-  }
-
-  Widget _buildStepIndicator({
-    required int index,
-    required String title,
-  }) {
-    final isActive = _currentStep >= index;
-    final isCompleted = _currentStep > index;
-
-    return Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: isActive
-                ? TwColors.brightGreen.withValues(alpha: 0.15)
-                : TwColors.cardBg,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isActive
-                  ? TwColors.brightGreen.withValues(alpha: 0.5)
-                  : TwColors.white.withValues(alpha: 0.08),
-              width: isActive ? 1.5 : 1,
-            ),
-          ),
-          child: Center(
-            child: isCompleted
-                ? const Icon(
-                    Icons.done_outline_rounded,
-                    color: TwColors.brightGreen,
-                    size: 20,
-                  )
-                : Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: isActive ? TwColors.brightGreen : TwColors.slate400,
-                      fontSize: 18,
-                      fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
-                    ),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          style: TextStyle(
-            color: isActive ? TwColors.brightGreen : TwColors.slate400,
-            fontSize: 11,
-            fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCurrentStep() {
-    if (_currentStep == 0) {
-      return _buildTokenStep();
-    } else if (_currentStep == 1) {
-      return _buildSelectInvitationStep();
-    } else if (_currentStep == 2) {
-      return _buildRegistrationStep();
-    } else {
-      return _buildVerifyStep();
+  Widget _buildBody() {
+    if (_checking) {
+      return const Center(child: CircularProgressIndicator(color: TwColors.brightGreen));
     }
+    if (_step == 0) return _buildScanStep();
+    if (_step == 1) return _buildDetailsStep();
+    return _buildPasswordStep();
   }
 
-  Widget _buildTokenStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle('Activate Invitation', 'Enter the invitation code from your QR invitation'),
-        const SizedBox(height: 28),
-        _buildTokenField(),
-      ],
-    );
-  }
+  // ── Step 0: scan QR ───────────────────────────────────────────────────────
 
-  Widget _buildRegistrationStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle('Set Password', 'Enter your details to activate your account'),
-        const SizedBox(height: 28),
-        _buildEmailField(),
-        const SizedBox(height: 20),
-        _buildFullNameField(),
-        const SizedBox(height: 20),
-        _buildPasswordField(),
-        const SizedBox(height: 20),
-        _buildConfirmPasswordField(),
-      ],
-    );
-  }
-
-  Widget _buildVerifyStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle('Verify Email', 'Enter the code we sent to ${_emailController.text.trim()}'),
-        const SizedBox(height: 28),
-        _buildOtpField(),
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: _canResendOtp ? _resendOtp : null,
-            child: Text(
-              _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
-              style: TextStyle(
-                color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
-                fontSize: 14,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSelectInvitationStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle('Select Invitation', 'Choose which invitation to activate'),
-        const SizedBox(height: 28),
-        ..._invitations.map((invitation) {
-          final isSelected = _selectedInvitation != null && 
-              invitation['token'] == _selectedInvitation['token'];
-          final organization = invitation['organization'] as Map<String, dynamic>?;
-          final branch = invitation['branch'] as Map<String, dynamic>?;
-          final role = invitation['role']?.toString();
-          return GestureDetector(
-            onTap: () {
-              setState(() => _selectedInvitation = invitation);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 16,
-              ),
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? TwColors.brightGreen.withValues(alpha: 0.1)
-                    : TwColors.cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isSelected
-                      ? TwColors.brightGreen.withValues(alpha: 0.4)
-                      : TwColors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    organization?['name']?.toString() ?? 'Unknown Organization',
-                    style: TextStyle(
-                      color: isSelected ? TwColors.brightGreen : TwColors.white,
-                      fontSize: 18,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    role?.toLowerCase().capitalize() ?? 'Unknown Role',
-                    style: const TextStyle(
-                      color: TwColors.slate400,
-                      fontSize: 14,
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                  if (branch != null && branch['name'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        branch['name'].toString(),
-                        style: const TextStyle(
-                          color: TwColors.slate500,
-                          fontSize: 13,
-                          fontWeight: FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildActivateStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle('Set Password', 'Enter your details to activate your account'),
-        const SizedBox(height: 28),
-        _buildFullNameField(),
-        const SizedBox(height: 20),
-        _buildPasswordField(),
-        const SizedBox(height: 20),
-        _buildConfirmPasswordField(),
-      ],
-    );
-  }
-
-  Widget _buildTitle(String title, String subtitle) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: TwColors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.normal,
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          subtitle,
-          style: TextStyle(
-            color: TwColors.slate400,
-            fontSize: 15,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTokenField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _tokenController,
-          focusNode: _tokenFocusNode,
-          isFocused: _tokenFocused,
-          label: 'Invitation code',
-          hint: 'Paste the code from your invitation',
-          icon: Icons.qr_code_rounded,
-          hasError: _tokenError != null,
-        ),
-        if (_tokenError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _tokenError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildEmailField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _emailController,
-          focusNode: _emailFocusNode,
-          isFocused: _emailFocused,
-          label: _t('email'),
-          hint: 'you@example.com',
-          icon: Icons.alternate_email_rounded,
-          keyboardType: TextInputType.emailAddress,
-          hasError: _emailError != null,
-        ),
-        if (_emailError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _emailError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildOtpField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _otpController,
-          focusNode: _otpFocusNode,
-          isFocused: _otpFocused,
-          label: 'Verification code',
-          hint: '123456',
-          icon: Icons.pin_outlined,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          hasError: _otpError != null,
-        ),
-        if (_otpError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _otpError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildFullNameField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _fullNameController,
-          focusNode: _fullNameFocusNode,
-          isFocused: _fullNameFocused,
-          label: _t('full_name'),
-          hint: 'John Doe',
-          icon: Icons.person_outline_rounded,
-          hasError: _fullNameError != null,
-        ),
-        if (_fullNameError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _fullNameError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildPasswordField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _passwordController,
-          focusNode: _passwordFocusNode,
-          isFocused: _passwordFocused,
-          label: _t('password'),
-          hint: '••••••••',
-          icon: Icons.lock_outline_rounded,
-          obscureText: _obscurePassword,
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 16,
-            ),
-            onPressed: () {
-              setState(() {
-                _obscurePassword = !_obscurePassword;
-              });
-            },
-          ),
-          hasError: _passwordError != null,
-        ),
-        if (_passwordError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _passwordError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildConfirmPasswordField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _confirmPasswordController,
-          focusNode: _confirmPasswordFocusNode,
-          isFocused: _confirmPasswordFocused,
-          label: _t('confirm_password'),
-          hint: '••••••••',
-          icon: Icons.lock_outline_rounded,
-          obscureText: _obscureConfirmPassword,
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscureConfirmPassword
-                  ? Icons.visibility_off_outlined
-                  : Icons.visibility_outlined,
-              color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 20,
-            ),
-            onPressed: () {
-              setState(() {
-                _obscureConfirmPassword = !_obscureConfirmPassword;
-              });
-            },
-          ),
-          hasError: _confirmPasswordError != null,
-        ),
-        if (_confirmPasswordError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _confirmPasswordError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildUniqueInput({
-    required TextEditingController controller,
-    required FocusNode focusNode,
-    required bool isFocused,
-    required String label,
-    required String hint,
-    required IconData icon,
-    TextInputType? keyboardType,
-    bool obscureText = false,
-    bool enabled = true,
-    int? maxLength,
-    Widget? suffixIcon,
-    bool hasError = false,
-  }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
-        color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: hasError
-              ? TwColors.red500
-              : isFocused
-                  ? TwColors.brightGreen
-                  : TwColors.white.withValues(alpha: 0.08),
-          width: hasError || isFocused ? 1.2 : 1,
-        ),
-        boxShadow: isFocused
-            ? [
-                BoxShadow(
-                  color: hasError
-                      ? TwColors.red500.withValues(alpha: 0.1)
-                      : TwColors.brightGreen.withValues(alpha: 0.1),
-                  blurRadius: 12,
-                  offset: const Offset(0, 2),
-                )
-              ]
-            : [],
-      ),
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        enabled: enabled,
-        obscureText: obscureText,
-        keyboardType: keyboardType,
-        maxLength: maxLength,
-        style: const TextStyle(
-          color: TwColors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-        ),
-        decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          prefixIcon: Container(
-            margin: const EdgeInsets.only(left: 8, right: 6),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isFocused
-                  ? TwColors.brightGreen.withValues(alpha: 0.1)
-                  : TwColors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 16,
-            ),
-          ),
-          suffixIcon: suffixIcon,
-          label: Text(
-            label,
-            style: TextStyle(
-              color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          hintText: hint,
-          hintStyle: TextStyle(
-            color: TwColors.white.withValues(alpha: 0.3),
-            fontSize: 14,
-            fontWeight: FontWeight.w400,
-          ),
-          border: InputBorder.none,
-          counterText: '',
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavigationButtons(AuthState authState) {
-    if (authState.status == AuthStatus.loading || _isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: TwColors.brightGreen,
-          strokeWidth: 3,
-        ),
-      );
-    }
-
-    if (authState.status == AuthStatus.error) {
-      return _buildErrorState(authState);
-    }
-
-    String buttonText;
-    if (_currentStep == 0) {
-      buttonText = 'Check Invitations';
-    } else if (_currentStep == 1) {
-      buttonText = 'Continue';
-    } else if (_currentStep == 2) {
-      buttonText = 'Send Code';
-    } else {
-      buttonText = 'Activate Account';
-    }
-
-    return _buildNextButton(
-      onPressed: _nextStep,
-      text: buttonText,
-    );
-  }
-
-  Widget _buildErrorState(AuthState authState) {
+  Widget _buildScanStep() {
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: TwColors.red500.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: TwColors.red500.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        Expanded(
+          child: Stack(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: TwColors.red500.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.error_outline_rounded,
-                  color: TwColors.red500,
-                  size: 24,
-                ),
+              MobileScanner(
+                onDetect: (capture) {
+                  if (_checking) return;
+                  final code = capture.barcodes.firstOrNull?.rawValue;
+                  if (code != null && code.isNotEmpty) {
+                    _checkToken(code);
+                  }
+                },
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _t('error'),
-                      style: TextStyle(
-                        color: TwColors.red500,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      authState.errorMessage ?? _t('an_error_occurred'),
-                      style: TextStyle(
-                        color: TwColors.red500.withValues(alpha: 0.8),
-                        fontSize: 13,
-                        fontWeight: FontWeight.normal,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: () {
-                        ref.read(authNotifierProvider.notifier).clearError();
-                      },
-                      child: Text(
-                        _t('retry'),
-                        style: TextStyle(
-                          color: TwColors.red500,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                    ),
-                  ],
+              // Scan window overlay hint
+              Center(
+                child: Container(
+                  width: 240,
+                  height: 240,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: TwColors.brightGreen, width: 3),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        _buildNextButton(
-          onPressed: () {
-            ref.read(authNotifierProvider.notifier).clearError();
-          },
-          text: 'Try Again',
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Text(
+                'Scan the QR code your manager showed you',
+                style: TextStyle(
+                  color: TwColors.white.withValues(alpha: 0.8),
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              if (_error != null)
+                Text(
+                  _error!,
+                  style: const TextStyle(color: TwColors.red500, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildNextButton({
-    required VoidCallback onPressed,
-    required String text,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.brightGreen,
-          foregroundColor: TwColors.primaryBg,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+  // ── Step 1: confirm staff details ─────────────────────────────────────────
+
+  String _roleLabel(String? role) {
+    if (role == null || role.isEmpty) return 'Staff';
+    return role[0].toUpperCase() + role.substring(1).toLowerCase();
+  }
+
+  Widget _buildDetailsStep() {
+    final inv = _invitation!;
+    final org = inv['organization'] as Map<String, dynamic>?;
+    final branch = inv['branch'] as Map<String, dynamic>?;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Icon(Icons.badge_outlined, color: TwColors.brightGreen, size: 56),
+          const SizedBox(height: 16),
+          Text(
+            'You have been invited to join ${org?['name'] ?? 'the business'}',
+            style: const TextStyle(
+              color: TwColors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
           ),
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          minimumSize: const Size(double.infinity, 52),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+          const SizedBox(height: 24),
+          _detailCard('Staff Details', [
+            ('Name', inv['fullName'] ?? '—'),
+            ('Username', inv['username'] ?? '—'),
+            ('Role', _roleLabel(inv['role']?.toString())),
+            if (branch != null) ('Branch', branch['name'] ?? '—'),
+            ('Business', org?['name'] ?? '—'),
+          ]),
+          const SizedBox(height: 24),
+          _PrimaryButton(
+            label: 'Continue',
+            onPressed: () => setState(() => _step = 2),
           ),
+          const SizedBox(height: 12),
+          _SecondaryButton(
+            label: 'Scan a different code',
+            onPressed: () => setState(() {
+              _step = 0;
+              _invitation = null;
+              _token = null;
+              _error = null;
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 2: create password ───────────────────────────────────────────────
+
+  Widget _buildPasswordStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.lock_outline_rounded, color: TwColors.brightGreen, size: 48),
+            const SizedBox(height: 12),
+            const Text(
+              'Create your password',
+              style: TextStyle(
+                color: TwColors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Use it with your username to log in.',
+              style: TextStyle(
+                color: TwColors.white.withValues(alpha: 0.6),
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            _passwordField(_passwordCtrl, 'Password', _obscurePassword, () {
+              setState(() => _obscurePassword = !_obscurePassword);
+            }, (v) {
+              if (v == null || v.isEmpty) return 'Password is required.';
+              if (v.length < 8) return 'Password must be at least 8 characters.';
+              return null;
+            }),
+            const SizedBox(height: 16),
+            _passwordField(_confirmCtrl, 'Confirm password', _obscureConfirm, () {
+              setState(() => _obscureConfirm = !_obscureConfirm);
+            }, (v) {
+              if (v == null || v.isEmpty) return 'Please confirm your password.';
+              if (v != _passwordCtrl.text) return 'Passwords do not match.';
+              return null;
+            }),
+            if (_error != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                _error!,
+                style: const TextStyle(color: TwColors.red500, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            const SizedBox(height: 24),
+            _PrimaryButton(
+              label: 'Activate Account',
+              loading: _activating,
+              onPressed: _activate,
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildLoginLink() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          _t('already_have_account'),
-          style: TextStyle(
-            color: TwColors.slate400,
-            fontSize: 14,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
-            );
-          },
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-          ),
-          child: Text(
-            _t('login_now'),
+  Widget _detailCard(String title, List<(String, String)> rows) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: TwColors.slate700),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
             style: TextStyle(
-              color: TwColors.brightGreen,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+              color: TwColors.white.withValues(alpha: 0.55),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
             ),
           ),
+          const SizedBox(height: 10),
+          ...rows.map((row) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(
+                        row.$1,
+                        style: TextStyle(
+                          color: TwColors.white.withValues(alpha: 0.55),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        row.$2,
+                        style: const TextStyle(
+                          color: TwColors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _passwordField(
+    TextEditingController controller,
+    String label,
+    bool obscure,
+    VoidCallback toggle,
+    String? Function(String?) validator,
+  ) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscure,
+      validator: validator,
+      style: const TextStyle(color: TwColors.white, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: TwColors.white.withValues(alpha: 0.6)),
+        filled: true,
+        fillColor: Colors.black,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: TwColors.slate700),
         ),
-      ],
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: TwColors.slate700),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: TwColors.red500),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: TwColors.red500, width: 1.5),
+        ),
+        errorStyle: const TextStyle(color: TwColors.red500, fontSize: 11),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            color: TwColors.white.withValues(alpha: 0.5),
+            size: 20,
+          ),
+          onPressed: toggle,
+        ),
+      ),
     );
   }
 }
 
-extension StringExtension on String {
-  String capitalize() {
-    if (isEmpty) return this;
-    return substring(0, 1).toUpperCase() + substring(1).toLowerCase();
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  final bool loading;
+
+  const _PrimaryButton({
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: loading ? null : onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: TwColors.brightGreen,
+        foregroundColor: TwColors.primaryBg,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 0,
+      ),
+      child: loading
+          ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                color: TwColors.primaryBg,
+                strokeWidth: 2,
+              ),
+            )
+          : Text(label,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+class _SecondaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _SecondaryButton({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      child: Text(
+        label,
+        style: TextStyle(
+          color: TwColors.white.withValues(alpha: 0.6),
+          fontSize: 13,
+        ),
+      ),
+    );
   }
 }

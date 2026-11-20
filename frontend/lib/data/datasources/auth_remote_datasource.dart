@@ -160,11 +160,13 @@ class AuthRemoteDatasource {
   // ── Logout ────────────────────────────────────────────────────────────────
 
   Future<void> logout(String refreshToken) async {
-    final response = await client.post(
-      Uri.parse('${AppConstants.baseUrl}/auth/logout'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'refreshToken': refreshToken}),
-    );
+    final response = await client
+        .post(
+          Uri.parse('${AppConstants.baseUrl}/auth/logout'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refreshToken': refreshToken}),
+        )
+        .timeout(_timeout);
     // Best-effort — ignore server errors on logout
     debugPrint('[AuthDS] logout HTTP ${response.statusCode}');
   }
@@ -259,27 +261,27 @@ class AuthRemoteDatasource {
     }
   }
 
+  // ── Staff activation (QR invitation: scan → set password) ─────────────────
+
   Future<Map<String, dynamic>> activateInvitation({
-    String? token,
-    required String email,
-    required String otpCode,
-    required String fullName,
+    required String token,
     required String password,
+    required String confirmPassword,
   }) async {
     try {
       final response = await client.post(
         Uri.parse('${AppConstants.baseUrl}/auth/activate-invitation'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          if (token != null) 'token': token,
-          'email': email,
-          'otpCode': otpCode,
-          'fullName': fullName,
+          'token': token,
           'password': password,
+          'confirmPassword': confirmPassword,
         }),
       ).timeout(_timeout);
       _throwIfError(response, 'activateInvitation');
       return jsonDecode(response.body) as Map<String, dynamic>;
+    } on Exception catch (e) {
+      rethrow;
     } catch (e) {
       _handleConnectionError(e, 'activateInvitation');
       rethrow;
@@ -309,7 +311,7 @@ class AuthRemoteDatasource {
 
   Future<Map<String, dynamic>> addStaff(String accessToken, {
     required String fullName,
-    required String email,
+    required String username,
     required String role,
     String? branchId,
   }) async {
@@ -322,15 +324,82 @@ class AuthRemoteDatasource {
         },
         body: jsonEncode({
           'fullName': fullName,
-          'email': email,
+          'username': username,
           'role': role.toUpperCase(),
           if (branchId != null) 'branchId': branchId,
         }),
       ).timeout(_timeout);
       _throwIfError(response, 'addStaff', expectedStatus: 201);
       return jsonDecode(response.body) as Map<String, dynamic>;
+    } on Exception catch (e) {
+      rethrow;
     } catch (e) {
       _handleConnectionError(e, 'addStaff');
+      rethrow;
+    }
+  }
+
+  // ── QR invitation lifecycle (owner/manager) ───────────────────────────────
+
+  Future<List<dynamic>> listInvitations(String accessToken) async {
+    try {
+      final response = await client.get(
+        Uri.parse('${AppConstants.baseUrl}/auth/invitations'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(_timeout);
+      _throwIfError(response, 'listInvitations');
+      return jsonDecode(response.body) as List<dynamic>;
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'listInvitations');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> revokeInvitation(
+    String accessToken,
+    String invitationId,
+  ) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/invitations/$invitationId/revoke'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(_timeout);
+      _throwIfError(response, 'revokeInvitation');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'revokeInvitation');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> regenerateInvitation(
+    String accessToken,
+    String invitationId,
+  ) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/invitations/$invitationId/regenerate'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(_timeout);
+      _throwIfError(response, 'regenerateInvitation');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'regenerateInvitation');
       rethrow;
     }
   }

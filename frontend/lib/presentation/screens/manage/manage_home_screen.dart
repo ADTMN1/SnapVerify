@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../core/tailwind.dart';
+import '../../../domain/entities/report_summary.dart';
 import '../../../presentation/providers/auth_provider.dart';
+import '../../providers/reports_provider.dart';
 import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
 import 'payment_activity_screen.dart';
@@ -64,6 +67,10 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final role = authState.role;
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todaySummary = ref.watch(
+      reportSummaryProvider((from: today, to: today)),
+    );
 
     return Column(
       children: [
@@ -74,11 +81,11 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStatisticsGrid(),
+                _buildStatisticsGrid(todaySummary),
                 const SizedBox(height: 20),
                 _buildQuickActions(role),
                 const SizedBox(height: 20),
-                _buildRecentActivity(),
+                _buildRecentActivity(todaySummary),
                 const SizedBox(height: 20),
                 _buildLogoutButton(),
               ],
@@ -158,12 +165,12 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           }
         },
         style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.red500.withOpacity(0.1),
+          backgroundColor: TwColors.red500.withValues(alpha: 0.12),
           foregroundColor: TwColors.red500,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: TwColors.red500.withOpacity(0.3)),
+            side: BorderSide(color: TwColors.red500.withValues(alpha: 0.3)),
           ),
           elevation: 0,
         ),
@@ -175,9 +182,17 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     );
   }
 
-  Widget _buildStatisticsGrid() {
+  Widget _buildStatisticsGrid(AsyncValue<ReportSummary> todaySummary) {
     final onlineStaff = _staff.where((s) => s['status'] == 'active').length;
     final offlineStaff = _staff.length - onlineStaff;
+    final summary = todaySummary.valueOrNull?.summary;
+    final verifiedCount = summary == null
+        ? (todaySummary.isLoading ? '...' : '—')
+        : '${summary.verified}';
+    final currency = summary?.currency ?? 'ETB';
+    final verifiedAmount = summary == null
+        ? (todaySummary.isLoading ? '...' : '—')
+        : '${currency} ${summary.verifiedAmount.toStringAsFixed(2)}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,14 +221,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Online Staff',
               value: _isLoading ? '...' : onlineStaff.toString(),
               icon: Icons.wifi_rounded,
-              color: Colors.green,
+              color: TwColors.brightGreen,
             ),
             const SizedBox(width: 10),
             _StatItem(
               title: 'Offline Staff',
               value: _isLoading ? '...' : offlineStaff.toString(),
               icon: Icons.signal_wifi_off_rounded,
-              color: Colors.orange,
+              color: TwColors.amber500,
             ),
           ],
         ),
@@ -234,7 +249,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: TwColors.brightGreen.withOpacity(0.12),
+                  color: TwColors.brightGreen.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(
@@ -251,14 +266,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                     Text(
                       "Today's Verified Payments",
                       style: TextStyle(
-                        color: TwColors.white.withOpacity(0.65),
+                        color: TwColors.white.withValues(alpha: 0.65),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      "0 payments",
+                      '$verifiedCount payments',
                       style: const TextStyle(
                         color: TwColors.white,
                         fontSize: 20,
@@ -274,14 +289,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                   Text(
                     "Total Amount",
                     style: TextStyle(
-                      color: TwColors.white.withOpacity(0.5),
+                      color: TwColors.white.withValues(alpha: 0.5),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "ETB 0.00",
+                    verifiedAmount,
                     style: const TextStyle(
                       color: TwColors.brightGreen,
                       fontSize: 18,
@@ -348,7 +363,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.qr_code_2_rounded,
           label: 'QR',
-          color: Colors.purple,
+          color: TwColors.violet400,
           onTap: () => _navigateAndRefresh(const QRManagementScreen()),
         ),
       );
@@ -359,7 +374,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.bar_chart_rounded,
           label: 'Reports',
-          color: Colors.orange,
+          color: TwColors.amber500,
           onTap: () => _navigateAndRefresh(const ReportsScreen()),
         ),
       );
@@ -393,7 +408,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     );
   }
 
-  Widget _buildRecentActivity() {
+  Widget _buildRecentActivity(AsyncValue<ReportSummary> todaySummary) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -406,20 +421,146 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text(
-              'No recent activity',
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 14,
+        todaySummary.when(
+          data: (data) {
+            if (data.recent.isEmpty) {
+              return _emptyActivity('No recent activity');
+            }
+            return Column(
+              children: data.recent.take(3).map((p) {
+                final statusColor = _statusColor(p.status);
+                final time = DateFormat('h:mm a').format(p.createdAt);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: TwColors.slate700, width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.transactionId?.isNotEmpty == true
+                                  ? p.transactionId!
+                                  : p.id,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: TwColors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${p.status} · $time',
+                              style: TextStyle(
+                                color: TwColors.white.withValues(alpha: 0.5),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${p.currency} ${p.amount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: TwColors.brightGreen,
               ),
             ),
+          ),
+          error: (e, _) => _emptyActivity(
+            'Could not load activity: '
+            '${e.toString().replaceFirst('Exception: ', '')}',
+            onRetry: () {
+              final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+              ref.invalidate(
+                reportSummaryProvider((from: today, to: today)),
+              );
+            },
           ),
         ),
       ],
     );
+  }
+
+  Widget _emptyActivity(String message, {VoidCallback? onRetry}) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: TwColors.white.withValues(alpha: 0.5),
+                fontSize: 14,
+              ),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: TwColors.brightGreen,
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'VERIFIED':
+        return TwColors.brightGreen;
+      case 'FAILED':
+        return TwColors.red500;
+      case 'REJECTED':
+        return TwColors.amber500;
+      default:
+        return TwColors.slate400;
+    }
   }
 }
 

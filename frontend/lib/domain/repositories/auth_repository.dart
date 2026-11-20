@@ -50,11 +50,9 @@ abstract class AuthRepository {
   Future<List<dynamic>> getInvitations(String phone, String accessToken);
 
   Future<Map<String, dynamic>> activateInvitation({
-    String? token,
-    required String email,
-    required String otpCode,
-    required String fullName,
+    required String token,
     required String password,
+    required String confirmPassword,
   });
 
   /// Get current user and organization
@@ -63,10 +61,13 @@ abstract class AuthRepository {
   /// Staff Management
   Future<Map<String, dynamic>> addStaff(String accessToken, {
     required String fullName,
-    required String email,
+    required String username,
     required String role,
     String? branchId,
   });
+  Future<List<dynamic>> listInvitations(String accessToken);
+  Future<Map<String, dynamic>> revokeInvitation(String accessToken, String invitationId);
+  Future<Map<String, dynamic>> regenerateInvitation(String accessToken, String invitationId);
   Future<List<dynamic>> getStaff(String accessToken);
   Future<void> removeStaff(String accessToken, String staffId);
   Future<Map<String, dynamic>> updateStaff(String accessToken, String staffId, {
@@ -91,6 +92,13 @@ abstract class AuthRepository {
 
   /// Persist tokens to secure storage.
   Future<void> saveTokens(AuthTokens tokens);
+
+  /// "Remember me": when session-only, tokens are never persisted and any
+  /// stored session is dropped.
+  Future<void> setSessionOnly(bool value);
+  Future<void> saveRememberedLogin(String identifier);
+  Future<String?> getRememberedLogin();
+  Future<void> forgetRememberedLogin();
 
   /// Load tokens from secure storage. Returns null when not logged in.
   Future<AuthTokens?> getTokens();

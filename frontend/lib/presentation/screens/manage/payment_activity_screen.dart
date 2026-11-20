@@ -244,7 +244,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: TwColors.slate800,
+        color: Colors.black,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: TwColors.slate700, width: 1),
       ),
@@ -333,7 +333,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: TwColors.slate800,
+        color: Colors.black,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: TwColors.slate700, width: 1),
       ),

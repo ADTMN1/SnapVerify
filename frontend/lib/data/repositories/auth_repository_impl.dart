@@ -7,12 +7,18 @@ import '../datasources/auth_remote_datasource.dart';
 /// Storage keys — kept private to this file.
 const _kAccessToken = 'sv_access_token';
 const _kRefreshToken = 'sv_refresh_token';
+const _kRememberedLogin = 'sv_remembered_login';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDatasource remoteDatasource;
   final FlutterSecureStorage secureStorage;
 
-  const AuthRepositoryImpl({
+  // When true (user unchecked "Remember me"), tokens live only in the
+  // in-memory auth state and are never written to secure storage — a fresh
+  // app start lands on the login screen.
+  bool _sessionOnly = false;
+
+  AuthRepositoryImpl({
     required this.remoteDatasource,
     required this.secureStorage,
   });
@@ -134,24 +140,16 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Map<String, dynamic>> activateInvitation({
-    String? token,
-    required String email,
-    required String otpCode,
-    required String fullName,
+    required String token,
     required String password,
-  }) async {
-    final data = await remoteDatasource.activateInvitation(
+    required String confirmPassword,
+  }) {
+    // QR flow: no tokens are issued — staff logs in with username + password.
+    return remoteDatasource.activateInvitation(
       token: token,
-      email: email,
-      otpCode: otpCode,
-      fullName: fullName,
       password: password,
+      confirmPassword: confirmPassword,
     );
-    if (data['tokens'] != null) {
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      await saveTokens(tokens);
-    }
-    return data;
   }
 
   @override
@@ -164,17 +162,32 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Map<String, dynamic>> addStaff(String accessToken, {
     required String fullName,
-    required String email,
+    required String username,
     required String role,
     String? branchId,
   }) {
     return remoteDatasource.addStaff(
       accessToken,
       fullName: fullName,
-      email: email,
+      username: username,
       role: role,
       branchId: branchId,
     );
+  }
+
+  @override
+  Future<List<dynamic>> listInvitations(String accessToken) {
+    return remoteDatasource.listInvitations(accessToken);
+  }
+
+  @override
+  Future<Map<String, dynamic>> revokeInvitation(String accessToken, String invitationId) {
+    return remoteDatasource.revokeInvitation(accessToken, invitationId);
+  }
+
+  @override
+  Future<Map<String, dynamic>> regenerateInvitation(String accessToken, String invitationId) {
+    return remoteDatasource.regenerateInvitation(accessToken, invitationId);
   }
 
   @override
@@ -247,10 +260,36 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> saveTokens(AuthTokens tokens) async {
+    if (_sessionOnly) return; // "Remember me" unchecked — memory only.
     await Future.wait([
       secureStorage.write(key: _kAccessToken, value: tokens.accessToken),
       secureStorage.write(key: _kRefreshToken, value: tokens.refreshToken),
     ]);
+  }
+
+  @override
+  Future<void> setSessionOnly(bool value) async {
+    _sessionOnly = value;
+    // Switching to session-only should not silently keep a stale stored
+    // session: drop it so the next cold start requires login.
+    if (value) {
+      await clearTokens();
+    }
+  }
+
+  @override
+  Future<void> saveRememberedLogin(String identifier) async {
+    await secureStorage.write(key: _kRememberedLogin, value: identifier);
+  }
+
+  @override
+  Future<String?> getRememberedLogin() async {
+    return secureStorage.read(key: _kRememberedLogin);
+  }
+
+  @override
+  Future<void> forgetRememberedLogin() async {
+    await secureStorage.delete(key: _kRememberedLogin);
   }
 
   @override

@@ -8,7 +8,9 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/tailwind.dart';
 import '../../core/utils/ocr_parser.dart';
+import '../../core/utils/toast_service.dart';
 import '../../domain/entities/verification_result.dart';
+import '../../domain/entities/payment_account.dart';
 import '../providers/payment_provider.dart';
 
 class CameraTab extends ConsumerStatefulWidget {
@@ -115,11 +117,21 @@ class _CameraTabState extends ConsumerState<CameraTab> {
 
       if (!mounted) return;
       if (transaction != null) {
+        // Provider detection must be validated. If OCR is uncertain, ask the
+        // user to select instead of guessing — never fall back to another
+        // provider's registered account.
+        final detected = paymentProviderFromOcrLabel(transaction.provider);
+        PaymentProvider? selected = detected;
+        if (selected == null) {
+          selected = await _promptProviderSelection();
+          if (selected == null) return; // user cancelled
+        }
+        if (!mounted) return;
         ref.read(paymentProvider.notifier).reset();
         ref.read(paymentProvider.notifier).verifyReference(
               transaction.referenceId,
               amount: transaction.amount,
-              provider: transaction.provider,
+              provider: selected.name,
               suffix: transaction.suffix,
             );
         _showResultSheet(transaction);
@@ -129,15 +141,122 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     } catch (e, stackTrace) {
       debugPrint('[CameraTab] Error capturing/processing image: $e');
       debugPrint('[CameraTab] Stack trace: $stackTrace');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      ToastService.showError('Error: $e');
     } finally {
       sw.stop();
       if (mounted) setState(() => _processing = false);
     }
+  }
+
+  /// Ask the user to select the payment provider when OCR detection is
+  /// uncertain. Returns null when the user dismisses the sheet (no guessing).
+  Future<PaymentProvider?> _promptProviderSelection() {
+    return showModalBottomSheet<PaymentProvider>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: TwColors.primaryBg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: EdgeInsets.fromLTRB(
+            24,
+            16,
+            24,
+            24 + MediaQuery.of(sheetContext).padding.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: TwColors.slate600,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Select Payment Provider',
+                style: TextStyle(
+                  color: TwColors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'We could not confidently detect the provider from this receipt. '
+                'Choose the provider shown on the receipt.',
+                style: TextStyle(
+                  color: TwColors.white.withValues(alpha: 0.55),
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...PaymentProvider.values.map(
+                (provider) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => Navigator.of(sheetContext).pop(provider),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: TwColors.slate700,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.account_balance_rounded,
+                              color: TwColors.brightGreen,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                provider.label,
+                                style: TextStyle(
+                                  color: TwColors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: TwColors.slate500,
+                              size: 22,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showInvalidReceiptDialog() {
@@ -455,37 +574,85 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
       statusTitle = 'Verifying Transaction...';
       statusSubtitle = 'Checking with payment provider...';
     } else if (state.status == PaymentVerifyStatus.error) {
-      statusColor = TwColors.red500;
-      statusIcon = Icons.error_outline_rounded;
-      statusTitle = 'Verification Failed';
-      statusSubtitle = state.errorMessage ?? 'Unable to verify payment. Please check the details and try again.';
+      statusColor = TwColors.amber500;
+      statusIcon = Icons.cloud_off_rounded;
+      statusTitle = 'Verification Unavailable';
+      statusSubtitle = state.errorMessage ??
+          'Verification service is temporarily unavailable. Please try again in a few minutes.';
     } else if (state.result != null) {
       switch (state.result!.status) {
         case VerificationStatus.verified:
           statusColor = TwColors.brightGreen;
           statusIcon = Icons.check_circle_rounded;
           statusTitle = 'Verified ✅';
-          statusSubtitle = state.result!.message.isNotEmpty ? state.result!.message : 'Payment confirmed';
+          statusSubtitle = state.result!.message.isNotEmpty
+              ? state.result!.message
+              : 'Payment confirmed';
           break;
         case VerificationStatus.alreadyVerified:
           statusColor = TwColors.amber500;
           statusIcon = Icons.warning_amber_rounded;
           statusTitle = 'Already Used';
-          statusSubtitle = state.result!.message ?? 'This payment has already been verified';
+          statusSubtitle = state.result!.message ??
+              'This payment has already been verified';
           break;
         case VerificationStatus.failed:
           statusColor = TwColors.red500;
           statusIcon = Icons.cancel_rounded;
           statusTitle = 'Verification Failed';
-          statusSubtitle = state.result!.message ?? 'Unable to verify payment. Please check the details and try again.';
+          statusSubtitle = state.result!.message ??
+              'Unable to verify payment. Please check the details and try again.';
+          break;
+        case VerificationStatus.providerUnavailable:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.cloud_off_rounded;
+          statusTitle = 'Provider Unavailable';
+          statusSubtitle = state.result!.message ??
+              'Verification service is temporarily unavailable. Please try again in a few minutes.';
+          break;
+        case VerificationStatus.quotaExhausted:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.report_problem_rounded;
+          statusTitle = 'Verification Quota Exhausted';
+          statusSubtitle = state.result!.message ??
+              'Verification quota exhausted. Please contact your administrator.';
+          break;
+        case VerificationStatus.providerConfigError:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.settings_suggest_rounded;
+          statusTitle = 'Verification Misconfigured';
+          statusSubtitle = state.result!.message ??
+              'Payment verification is temporarily misconfigured. Please contact your administrator.';
+          break;
+        case VerificationStatus.paymentAccountNotConfigured:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.account_balance_wallet_outlined;
+          statusTitle = 'Payment Account Not Configured';
+          statusSubtitle = state.result!.message ??
+              'No receiving account is configured for this payment provider. Add it in settings, or verify against your registered bank account.';
+          break;
+        case VerificationStatus.providerUndetected:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.help_outline_rounded;
+          statusTitle = 'Provider Not Detected';
+          statusSubtitle = state.result!.message ??
+              'Could not determine the payment provider from this receipt. Please select the provider and try again.';
+          break;
+        case VerificationStatus.unsupportedProvider:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.block_rounded;
+          statusTitle = 'Unsupported Provider';
+          statusSubtitle = state.result!.message ??
+              'The selected payment provider is not supported.';
           break;
         case VerificationStatus.pending:
-        // Unknown/unrecognized backend verdicts land here too — they must
-        // never be presented as a definitive "Invalid Transaction".
+          // Unknown/unrecognized backend verdicts land here too — they must
+          // never be presented as a definitive "Invalid Transaction".
           statusColor = TwColors.sky500;
           statusIcon = Icons.hourglass_top_rounded;
           statusTitle = 'Pending Verification';
-          statusSubtitle = state.result!.message ?? 'Verification result could not be determined. Please check the history tab.';
+          statusSubtitle = state.result!.message ??
+              'Verification result could not be determined. Please check the history tab.';
           break;
       }
     } else {

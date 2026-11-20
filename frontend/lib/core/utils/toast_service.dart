@@ -28,7 +28,7 @@ class ToastService {
   static void showWarning(String message) {
     _showToast(
       message,
-      const Color(0xFFFF9800),
+      TwColors.amber500,
       Colors.white,
       Icons.warning_amber_outlined,
       duration: const Duration(seconds: 3),

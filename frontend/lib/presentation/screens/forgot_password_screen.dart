@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/tailwind.dart';
-import '../../core/locales.dart';
+import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
 
@@ -17,7 +18,6 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     with SingleTickerProviderStateMixin {
   // State
-  Language _selectedLanguage = Language.english;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
@@ -95,14 +95,6 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
     super.dispose();
-  }
-
-  String _t(String key) {
-    return LocaleStrings.strings[_selectedLanguage]?[key] ?? key;
-  }
-
-  void _toggleLanguage(Language lang) {
-    setState(() => _selectedLanguage = lang);
   }
 
   bool _otpSent = false;
@@ -266,6 +258,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
   }
 
   Widget _buildLanguageSwitcher() {
+    final selected = ref.watch(languageProvider);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -274,16 +267,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         border: Border.all(color: TwColors.white.withOpacity(0.08)),
       ),
       child: Row(
-        children: Language.values.map((lang) {
-          final isSelected = lang == _selectedLanguage;
+        children: AppLanguage.values.map((lang) {
+          final isSelected = lang == selected;
           return GestureDetector(
-            onTap: () => _toggleLanguage(lang),
+            onTap: () => ref.read(languageProvider.notifier).select(lang),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               margin: EdgeInsets.only(
-                right: lang == Language.values.last ? 0 : 4,
+                right: lang == AppLanguage.values.last ? 0 : 4,
               ),
               decoration: BoxDecoration(
                 color: isSelected
@@ -298,7 +291,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                     : null,
               ),
               child: Text(
-                LocaleStrings.languageNames[lang] ?? lang.name,
+                lang.shortName,
                 style: TextStyle(
                   color: isSelected ? TwColors.brightGreen : TwColors.slate400,
                   fontSize: 13,
@@ -414,7 +407,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           controller: _emailController,
           focusNode: _emailFocusNode,
           isFocused: _emailFocused,
-          label: _t('email'),
+          label: AppLocalizations.of(context)!.email,
           hint: 'you@example.com',
           icon: Icons.alternate_email_rounded,
           keyboardType: TextInputType.emailAddress,
@@ -444,7 +437,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           controller: _passwordController,
           focusNode: _passwordFocusNode,
           isFocused: _passwordFocused,
-          label: _t('password'),
+          label: AppLocalizations.of(context)!.password,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
           obscureText: _obscurePassword,
@@ -486,7 +479,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           controller: _confirmPasswordController,
           focusNode: _confirmPasswordFocusNode,
           isFocused: _confirmPasswordFocused,
-          label: _t('confirm_password'),
+          label: AppLocalizations.of(context)!.confirmPassword,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
           obscureText: _obscureConfirmPassword,
@@ -667,7 +660,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _t('error'),
+                      AppLocalizations.of(context)!.error,
                       style: TextStyle(
                         color: TwColors.red500,
                         fontSize: 14,
@@ -676,7 +669,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      authState.errorMessage ?? _t('an_error_occurred'),
+                      authState.errorMessage ?? AppLocalizations.of(context)!.anErrorOccurred,
                       style: TextStyle(
                         color: TwColors.red500.withOpacity(0.8),
                         fontSize: 13,
@@ -689,7 +682,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                         ref.read(authNotifierProvider.notifier).clearError();
                       },
                       child: Text(
-                        _t('retry'),
+                        AppLocalizations.of(context)!.retry,
                         style: TextStyle(
                           color: TwColors.red500,
                           fontSize: 13,
@@ -726,6 +719,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         style: ElevatedButton.styleFrom(
           backgroundColor: TwColors.brightGreen,
           foregroundColor: TwColors.primaryBg,
+          disabledBackgroundColor: TwColors.brightGreen,
+          disabledForegroundColor: TwColors.primaryBg,
           padding: const EdgeInsets.symmetric(horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -750,7 +745,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          _t('already_have_account'),
+          AppLocalizations.of(context)!.alreadyHaveAccount,
           style: TextStyle(
             color: TwColors.slate400,
             fontSize: 14,
@@ -768,7 +763,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
             padding: const EdgeInsets.symmetric(horizontal: 4),
           ),
           child: Text(
-            _t('login_now'),
+            AppLocalizations.of(context)!.loginNow,
             style: TextStyle(
               color: TwColors.brightGreen,
               fontSize: 14,

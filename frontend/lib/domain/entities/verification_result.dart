@@ -1,4 +1,15 @@
-enum VerificationStatus { verified, pending, failed, alreadyVerified }
+enum VerificationStatus {
+  verified,
+  pending,
+  failed,
+  alreadyVerified,
+  providerUnavailable,
+  quotaExhausted,
+  providerConfigError,
+  paymentAccountNotConfigured,
+  providerUndetected,
+  unsupportedProvider,
+}
 
 class VerificationResult {
   final bool verified;
@@ -25,16 +36,29 @@ class VerificationResult {
     required this.message,
   });
 
+  bool get isProviderOutage =>
+      status == VerificationStatus.providerUnavailable ||
+      status == VerificationStatus.quotaExhausted ||
+      status == VerificationStatus.providerConfigError;
+
   factory VerificationResult.fromJson(Map<String, dynamic> json) {
     final rawStatus = (json['status'] as String? ?? '').toUpperCase();
-    // Explicit backend-status mapping. Unknown statuses map to `pending`
-    // (NOT a failure): an unrecognized verdict must never be surfaced to the
-    // user as an "Invalid Transaction".
+    // Explicit backend-status mapping. Provider outages/quota/config errors are
+    // surfaced distinctly and must never be presented as an invalid receipt or
+    // invalid transaction. Unknown statuses map to `pending`.
     final status = switch (rawStatus) {
       'VERIFIED' => VerificationStatus.verified,
       'FAILED' => VerificationStatus.failed,
       'DUPLICATE_TRANSACTION' || 'ALREADY_VERIFIED' =>
         VerificationStatus.alreadyVerified,
+      'PROVIDER_UNAVAILABLE' || 'SERVICE_UNAVAILABLE' =>
+        VerificationStatus.providerUnavailable,
+      'QUOTA_EXHAUSTED' => VerificationStatus.quotaExhausted,
+      'PROVIDER_CONFIG_ERROR' => VerificationStatus.providerConfigError,
+      'PAYMENT_ACCOUNT_NOT_CONFIGURED' =>
+        VerificationStatus.paymentAccountNotConfigured,
+      'PAYMENT_PROVIDER_UNDETECTED' => VerificationStatus.providerUndetected,
+      'UNSUPPORTED_PAYMENT_PROVIDER' => VerificationStatus.unsupportedProvider,
       'PENDING' || _ => VerificationStatus.pending,
     };
 

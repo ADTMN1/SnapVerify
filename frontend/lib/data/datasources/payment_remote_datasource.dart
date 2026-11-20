@@ -11,8 +11,23 @@ import '../../domain/entities/payment_account.dart';
 class PaymentRemoteDatasource {
   final http.Client client;
 
-  // Must be > backend timeout (90s) + network margin
-  static const _timeout = Duration(seconds: 100);
+  // The backend retries a slow provider up to 3 times, so its worst-case
+  // response time is 3 × CHECK_ET_TIMEOUT_MS + backoff (~138s at the 45s
+  // default, ~363s at the 120s maximum). The client must stay above that
+  // worst case or it gives up while the backend is still legitimately working.
+  //
+  // Override when raising the backend timeout, e.g.:
+  //   --dart-define=VERIFY_TIMEOUT_SECONDS=370
+  static final Duration _timeout = Duration(seconds: _verifyTimeoutSeconds);
+
+  static int get _verifyTimeoutSeconds {
+    const fallback = 150;
+    final parsed = int.tryParse(
+      const String.fromEnvironment('VERIFY_TIMEOUT_SECONDS', defaultValue: ''),
+    );
+    if (parsed == null) return fallback;
+    return parsed.clamp(30, 600);
+  }
 
   PaymentRemoteDatasource({required this.client});
 
@@ -280,8 +295,10 @@ class PaymentRemoteDatasource {
     if (response.statusCode == 200 || response.statusCode == 201) return;
 
     String errorMsg;
+    String? statusCode;
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
+      statusCode = (body['status'] as String?)?.toUpperCase();
       final msg = body['message'];
       errorMsg = msg is List
           ? msg.join(', ')
@@ -290,6 +307,38 @@ class PaymentRemoteDatasource {
       errorMsg = 'HTTP ${response.statusCode}: ${response.body}';
     }
     debugPrint('[PaymentDS] error: $errorMsg');
+
+    // Provider detection/configuration errors are never "invalid receipt".
+    if (statusCode == 'PAYMENT_PROVIDER_UNDETECTED' ||
+        statusCode == 'UNSUPPORTED_PAYMENT_PROVIDER' ||
+        statusCode == 'PAYMENT_ACCOUNT_NOT_CONFIGURED') {
+      throw Exception(
+        errorMsg.isEmpty
+            ? 'Unable to verify this payment. Please check the receipt and try again.'
+            : errorMsg,
+      );
+    }
+
+    // Provider outages/connectivity failures must never be presented to users
+    // as an invalid receipt or invalid transaction.
+    if (response.statusCode == 503 ||
+        statusCode == 'PROVIDER_UNAVAILABLE' ||
+        statusCode == 'SERVICE_UNAVAILABLE') {
+      throw Exception(
+        'Verification service is temporarily unavailable. Please try again in a few minutes.',
+      );
+    }
+    if (statusCode == 'QUOTA_EXHAUSTED') {
+      throw Exception(
+        'Verification quota exhausted. Please contact your administrator.',
+      );
+    }
+    if (statusCode == 'PROVIDER_CONFIG_ERROR') {
+      throw Exception(
+        'Payment verification is temporarily misconfigured. Please contact your administrator.',
+      );
+    }
+
     throw Exception(errorMsg);
   }
 }

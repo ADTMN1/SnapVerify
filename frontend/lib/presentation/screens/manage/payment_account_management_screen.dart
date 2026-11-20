@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/tailwind.dart';
+import '../../../core/utils/toast_service.dart';
 import '../../../data/datasources/payment_remote_datasource.dart';
 import '../../../domain/entities/payment_account.dart';
 import '../../../presentation/providers/auth_provider.dart';
@@ -97,16 +98,7 @@ class _PaymentAccountManagementScreenState
       }
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Payment account saved successfully'),
-            backgroundColor: TwColors.brightGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        ToastService.showSuccess('Payment account saved successfully');
       }
       _loadAccounts();
 
@@ -117,16 +109,7 @@ class _PaymentAccountManagementScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: TwColors.red500,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        ToastService.showError('Error: ${e.toString()}');
       }
     }
   }
@@ -145,16 +128,7 @@ class _PaymentAccountManagementScreenState
       ).push(MaterialPageRoute(builder: (_) => QRDisplayScreen(account: info)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not load QR code: ${e.toString()}'),
-          backgroundColor: TwColors.red500,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+      ToastService.showError('Could not load QR code: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _qrLoadingId = null);
     }
@@ -202,30 +176,12 @@ class _PaymentAccountManagementScreenState
           provider: account.provider.name,
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Account deleted successfully'),
-              backgroundColor: TwColors.brightGreen,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          ToastService.showSuccess('Account deleted successfully');
         }
         _loadAccounts();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: TwColors.red500,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          ToastService.showError('Error: ${e.toString()}');
         }
       }
     }

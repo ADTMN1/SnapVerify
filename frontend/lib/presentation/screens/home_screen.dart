@@ -25,7 +25,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final canManage = authState.role.canManage;
 
     final children = <Widget>[
-      if (!isWaiter) const HomeTab(),
+      if (!isWaiter) HomeTab(onNavigate: _switchTab),
       const HistoryTab(),
       const CameraTab(),
       QRTab(isActive: _activeTabIndex == (isWaiter ? 2 : 3)),
@@ -83,6 +83,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
     );
+  }
+
+  void _switchTab(int index) {
+    setState(() {
+      _activeTabIndex = index;
+    });
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {

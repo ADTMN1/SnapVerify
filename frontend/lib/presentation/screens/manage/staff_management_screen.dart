@@ -1,16 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/tailwind.dart';
+import '../../../core/utils/toast_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/notifications_provider.dart';
 import '../../widgets/sv_status_badge.dart';
 
 class StaffManagementScreen extends ConsumerStatefulWidget {
   const StaffManagementScreen({super.key});
 
   @override
-  ConsumerState<StaffManagementScreen> createState() => _StaffManagementScreenState();
+  ConsumerState<StaffManagementScreen> createState() =>
+      _StaffManagementScreenState();
 }
 
 class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
@@ -47,11 +52,17 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final staff = await ref.read(authRepositoryProvider).getStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final staff = await ref
+            .read(authRepositoryProvider)
+            .getStaff(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _staff = staff;
@@ -66,25 +77,13 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
         }
       }
     } catch (e) {
-      print('Error loading staff: $e');
+      debugPrint('Error loading staff: $e');
       final authState = ref.read(authNotifierProvider);
-      print('User role: ${authState.role}');
-      print('User ID: ${authState.user?.id}');
-      print('Organization ID: ${authState.organization?.id}');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load staff: ${e.toString()}'),
-            backgroundColor: TwColors.red500,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        ToastService.showError('Failed to load staff: ${e.toString()}');
       }
     }
   }
@@ -107,149 +106,169 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                 backgroundColor: TwColors.slate800,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    _buildSearchAndFilters(),
-                    const SizedBox(height: 16),
-                    if (canAdd)
-                      GestureDetector(
-                        onTap: () => _showAddStaffSheet(context),
-                        child: Container(
-                          width: double.infinity,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: TwColors.brightGreen,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.person_add_rounded,
-                                  color: TwColors.slate900,
-                                  size: 22,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Add New Staff',
-                                  style: TextStyle(
+                      _buildSearchAndFilters(),
+                      const SizedBox(height: 16),
+                      if (canAdd)
+                        GestureDetector(
+                          onTap: () => _showAddStaffSheet(context),
+                          child: Container(
+                            width: double.infinity,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: TwColors.brightGreen,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.person_add_rounded,
                                     color: TwColors.slate900,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                                    size: 22,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Add New Staff',
+                                    style: TextStyle(
+                                      color: TwColors.slate900,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      if (_isLoading)
+                        const Center(
+                          child: CircularProgressIndicator(
+                            color: TwColors.brightGreen,
+                          ),
+                        )
+                      else if (_staff.isEmpty)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 60),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: TwColors.brightGreen.withValues(
+                                      alpha: 0.1,
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.people_outline_rounded,
+                                    size: 48,
+                                    color: TwColors.brightGreen,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Text(
+                                  'No staff added yet',
+                                  style: TextStyle(
+                                    color: TwColors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Pull down to refresh or add your first staff member',
+                                  style: TextStyle(
+                                    color: TwColors.slate400,
+                                    fontSize: 14,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 20),
+                                GestureDetector(
+                                  onTap: _loadStaff,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: TwColors.brightGreen.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: TwColors.brightGreen.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.refresh_rounded,
+                                          color: TwColors.brightGreen,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Refresh',
+                                          style: TextStyle(
+                                            color: TwColors.brightGreen,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                    const SizedBox(height: 16),
-                    if (_isLoading)
-                      const Center(child: CircularProgressIndicator(color: TwColors.brightGreen))
-                    else if (_staff.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 60),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(20),
-                                decoration: BoxDecoration(
-                                  color: TwColors.brightGreen.withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.people_outline_rounded,
+                      if (_filteredStaff.isNotEmpty)
+                        ..._filteredStaff.map(
+                          (staffMember) => _buildStaffCard(staffMember),
+                        ),
+                      if (_filteredStaff.isEmpty && _selectedFilter != 'All')
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.filter_list_off_rounded,
                                   size: 48,
-                                  color: TwColors.brightGreen,
+                                  color: TwColors.white.withValues(alpha: 0.3),
                                 ),
-                              ),
-                              const SizedBox(height: 20),
-                              Text(
-                                'No staff added yet',
-                                style: TextStyle(
-                                  color: TwColors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Pull down to refresh or add your first staff member',
-                                style: TextStyle(
-                                  color: TwColors.slate400,
-                                  fontSize: 14,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 20),
-                              GestureDetector(
-                                onTap: _loadStaff,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: TwColors.brightGreen.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: TwColors.brightGreen.withValues(alpha: 0.3),
-                                      width: 1,
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No $_selectedFilter staff found',
+                                  style: TextStyle(
+                                    color: TwColors.white.withValues(
+                                      alpha: 0.6,
                                     ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.refresh_rounded,
-                                        color: TwColors.brightGreen,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Refresh',
-                                        style: TextStyle(
-                                          color: TwColors.brightGreen,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    if (_filteredStaff.isNotEmpty)
-                      ..._filteredStaff.map((staffMember) => _buildStaffCard(staffMember)),
-                    if (_filteredStaff.isEmpty && _selectedFilter != 'All')
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 40),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.filter_list_off_rounded,
-                                size: 48,
-                                color: TwColors.white.withValues(alpha: 0.3),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No $_selectedFilter staff found',
-                                style: TextStyle(
-                                  color: TwColors.white.withValues(alpha: 0.6),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -266,12 +285,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: TwColors.slate800,
-            width: 1,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
       ),
       child: Row(
         children: [
@@ -283,10 +297,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
               decoration: BoxDecoration(
                 color: TwColors.white.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: TwColors.slate700,
-                  width: 1,
-                ),
+                border: Border.all(color: TwColors.slate700, width: 1),
               ),
               child: const Icon(
                 Icons.arrow_back_ios_new_rounded,
@@ -318,10 +329,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
           decoration: BoxDecoration(
             color: Colors.black,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: TwColors.slate700,
-              width: 1,
-            ),
+            border: Border.all(color: TwColors.slate700, width: 1),
           ),
           child: TextField(
             controller: _searchController,
@@ -390,9 +398,13 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                   child: Text(
                     filter,
                     style: TextStyle(
-                      color: isSelected ? TwColors.brightGreen : TwColors.white.withValues(alpha: 0.6),
+                      color: isSelected
+                          ? TwColors.brightGreen
+                          : TwColors.white.withValues(alpha: 0.6),
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                     ),
                   ),
                 ),
@@ -411,7 +423,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     if (_selectedFilter != 'All') {
       filtered = filtered.where((staffMember) {
         final role = staffMember['role']?.toLowerCase() ?? '';
-        
+
         switch (_selectedFilter) {
           case 'Owner':
             return role == 'owner';
@@ -446,9 +458,9 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
         final branch = (staffMember['branch']?['name'] ?? '').toLowerCase();
 
         return fullName.contains(_searchQuery) ||
-               phone.contains(_searchQuery) ||
-               role.contains(_searchQuery) ||
-               branch.contains(_searchQuery);
+            phone.contains(_searchQuery) ||
+            role.contains(_searchQuery) ||
+            branch.contains(_searchQuery);
       }).toList();
     }
 
@@ -549,10 +561,8 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _EditStaffSheet(
-        staffMember: staffMember,
-        onStaffUpdated: _loadStaff,
-      ),
+      builder: (context) =>
+          _EditStaffSheet(staffMember: staffMember, onStaffUpdated: _loadStaff),
     );
   }
 
@@ -600,9 +610,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
-                  color: TwColors.red500.withValues(alpha: 0.3),
-                ),
+                side: BorderSide(color: TwColors.red500.withValues(alpha: 0.3)),
               ),
             ),
             child: const Text(
@@ -624,36 +632,25 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        await ref.read(authRepositoryProvider).removeStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!, staffId);
+        await ref
+            .read(authRepositoryProvider)
+            .removeStaff(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+              staffId,
+            );
         _loadStaff();
-        
+
         // Show success message
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Staff member removed successfully'),
-              backgroundColor: TwColors.brightGreen,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          ToastService.showSuccess('Staff member removed successfully');
         }
       }
     } catch (e) {
       // Show error message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: TwColors.red500,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+        ToastService.showError('Error: ${e.toString()}');
       }
     }
   }
@@ -678,20 +675,13 @@ class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String value;
 
-  const _InfoRow({
-    required this.icon,
-    required this.value,
-  });
+  const _InfoRow({required this.icon, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 16,
-          color: TwColors.slate400,
-        ),
+        Icon(icon, size: 16, color: TwColors.slate400),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -723,7 +713,7 @@ class _ActionBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     final isRemove = label == 'Remove';
     final color = isRemove ? TwColors.red500 : TwColors.brightGreen;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -731,19 +721,12 @@ class _ActionBtn extends StatelessWidget {
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withValues(alpha: 0.3),
-            width: 1,
-          ),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: color,
-            ),
+            Icon(icon, size: 16, color: color),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -776,7 +759,7 @@ class _AddStaffSheet extends ConsumerStatefulWidget {
 class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
+  final _usernameCtrl = TextEditingController();
 
   String _selectedRole = 'cashier';
   String? _selectedBranchId;
@@ -797,7 +780,13 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -818,7 +807,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
   @override
   void dispose() {
     _fullNameCtrl.dispose();
-    _emailCtrl.dispose();
+    _usernameCtrl.dispose();
     super.dispose();
   }
 
@@ -830,31 +819,25 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
       try {
         final authState = ref.read(authNotifierProvider);
         if (authState.tokens?.accessToken != null) {
-          print('DEBUG: Adding staff with role=$_selectedRole, email=${_emailCtrl.text.trim()}');
-          final invitation = await ref.read(authRepositoryProvider).addStaff(
-            authState.tokens!.accessToken,
-            fullName: _fullNameCtrl.text.trim(),
-            email: _emailCtrl.text.trim().toLowerCase(),
-            role: _selectedRole,
-            branchId: _selectedBranchId,
-          );
+          final invitation = await ref
+              .read(authRepositoryProvider)
+              .addStaff(
+                authState.tokens!.accessToken,
+                fullName: _fullNameCtrl.text.trim(),
+                username: _usernameCtrl.text.trim().toLowerCase(),
+                role: _selectedRole,
+                branchId: _selectedBranchId,
+              );
           if (mounted) {
             Navigator.pop(context);
             widget.onStaffAdded();
+            ref.invalidate(notificationsProvider);
             // Show the invitation QR + share link so the owner can hand it over
             _showInvitationResult(invitation);
           }
         }
       } catch (e) {
-        print('DEBUG: Error adding staff: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        ToastService.showError('Error: ${e.toString()}');
       } finally {
         if (mounted) {
           setState(() {
@@ -870,6 +853,9 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
         ? (invitation['token']?.toString() ?? '')
         : '';
     if (token.isEmpty) return;
+    final invitationId = invitation is Map
+        ? (invitation['id']?.toString() ?? '')
+        : '';
     final joinLink = 'snapverify://staff/join?token=$token';
 
     showModalBottomSheet(
@@ -879,65 +865,10 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Invitation Created',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Staff can scan this QR (or share the link) to activate their account.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.7),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: QrImageView(
-                data: joinLink,
-                size: 200,
-                backgroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => Share.share(
-                  'Join our business on SnapVerify! Invitation code:\n$joinLink',
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: TwColors.brightGreen,
-                  foregroundColor: TwColors.primaryBg,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.share_rounded, size: 18),
-                label: const Text(
-                  'Share Invitation',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (ctx) => _InvitationQrSheet(
+        joinLink: joinLink,
+        invitationId: invitationId,
+        onRefresh: widget.onStaffAdded,
       ),
     );
   }
@@ -991,7 +922,11 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: TwColors.slate700, width: 1),
                       ),
-                      child: const Icon(Icons.close_rounded, color: TwColors.white, size: 18),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: TwColors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -1002,20 +937,19 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                 label: 'Full Name',
                 hint: 'e.g. David Mekonnen',
                 icon: Icons.person_outline_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               _FormField(
-                controller: _emailCtrl,
-                label: 'Email',
-                hint: 'staff@example.com',
-                icon: Icons.alternate_email_rounded,
-                keyboardType: TextInputType.emailAddress,
+                controller: _usernameCtrl,
+                label: 'Username (staff logs in with this)',
+                hint: 'e.g. david.cashier',
+                icon: Icons.badge_outlined,
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Required';
-                  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                      .hasMatch(v.trim())) {
-                    return 'Enter a valid email address';
+                  if (!RegExp(r'^[a-zA-Z0-9._-]{3,30}$').hasMatch(v.trim())) {
+                    return '3-30 characters: letters, numbers, dots, dashes, underscores';
                   }
                   return null;
                 },
@@ -1035,8 +969,15 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                     value: _selectedRole,
                     isExpanded: true,
                     dropdownColor: Colors.black,
-                    icon: Icon(Icons.keyboard_arrow_down_rounded, color: TwColors.white.withValues(alpha: 0.5)),
-                    style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                    icon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: TwColors.white.withValues(alpha: 0.5),
+                    ),
+                    style: const TextStyle(
+                      color: TwColors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                     items: _roles.map((role) {
                       return DropdownMenuItem(
                         value: role,
@@ -1052,7 +993,10 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
               const SizedBox(height: 8),
               _isLoadingBranches
                   ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black,
                         borderRadius: BorderRadius.circular(12),
@@ -1063,77 +1007,94 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                           SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(color: TwColors.brightGreen, strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              color: TwColors.brightGreen,
+                              strokeWidth: 2,
+                            ),
                           ),
                           SizedBox(width: 10),
                           Text(
                             'Loading branches...',
-                            style: TextStyle(color: TwColors.white, fontSize: 14),
+                            style: TextStyle(
+                              color: TwColors.white,
+                              fontSize: 14,
+                            ),
                           ),
                         ],
                       ),
                     )
                   : _branches.isEmpty
-                      ? Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: TwColors.slate700, width: 1),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'No branches yet',
-                                style: TextStyle(
-                                  color: TwColors.white.withValues(alpha: 0.8),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Add a branch first to assign staff to it',
-                                style: TextStyle(
-                                  color: TwColors.white.withValues(alpha: 0.45),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: TwColors.slate700, width: 1),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String?>(
-                              value: _selectedBranchId,
-                              isExpanded: true,
-                              dropdownColor: Colors.black,
-                              icon: Icon(Icons.keyboard_arrow_down_rounded, color: TwColors.white.withValues(alpha: 0.5)),
-                              style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Text('No Branch'),
-                                ),
-                                ..._branches.map((branch) {
-                                  return DropdownMenuItem<String?>(
-                                    value: branch['id'],
-                                    child: Text(branch['name']),
-                                  );
-                                }),
-                              ],
-                              onChanged: (v) => setState(() => _selectedBranchId = v),
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: TwColors.slate700, width: 1),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'No branches yet',
+                            style: TextStyle(
+                              color: TwColors.white.withValues(alpha: 0.8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Add a branch first to assign staff to it',
+                            style: TextStyle(
+                              color: TwColors.white.withValues(alpha: 0.45),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: TwColors.slate700, width: 1),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedBranchId,
+                          isExpanded: true,
+                          dropdownColor: Colors.black,
+                          icon: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: TwColors.white.withValues(alpha: 0.5),
+                          ),
+                          style: const TextStyle(
+                            color: TwColors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('No Branch'),
+                            ),
+                            ..._branches.map((branch) {
+                              return DropdownMenuItem<String?>(
+                                value: branch['id'],
+                                child: Text(branch['name']),
+                              );
+                            }),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedBranchId = v),
                         ),
+                      ),
+                    ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -1154,7 +1115,10 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: TwColors.primaryBg, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: TwColors.primaryBg,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1163,7 +1127,10 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                             SizedBox(width: 8),
                             Text(
                               'Send Invitation',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),
@@ -1215,14 +1182,28 @@ class _FormField extends StatelessWidget {
           keyboardType: keyboardType,
           validator: validator,
           obscureText: obscureText,
-          style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            color: TwColors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: TwColors.white.withValues(alpha: 0.3), fontSize: 14),
-            prefixIcon: Icon(icon, color: TwColors.white.withValues(alpha: 0.5), size: 18),
+            hintStyle: TextStyle(
+              color: TwColors.white.withValues(alpha: 0.3),
+              fontSize: 14,
+            ),
+            prefixIcon: Icon(
+              icon,
+              color: TwColors.white.withValues(alpha: 0.5),
+              size: 18,
+            ),
             filled: true,
             fillColor: Colors.black,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: TwColors.slate700, width: 1),
@@ -1233,7 +1214,10 @@ class _FormField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
+              borderSide: const BorderSide(
+                color: TwColors.brightGreen,
+                width: 1.5,
+              ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -1268,7 +1252,6 @@ class _SheetLabel extends StatelessWidget {
   }
 }
 
-
 class _EditStaffSheet extends ConsumerStatefulWidget {
   final dynamic staffMember;
   final VoidCallback onStaffUpdated;
@@ -1285,7 +1268,7 @@ class _EditStaffSheet extends ConsumerStatefulWidget {
 class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _fullNameCtrl;
-  
+
   late String _selectedRole;
   String? _selectedBranchId;
   List<dynamic> _branches = [];
@@ -1309,7 +1292,13 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -1338,44 +1327,28 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
       setState(() {
         _isSubmitting = true;
       });
-      
+
       try {
         final authState = ref.read(authNotifierProvider);
         if (authState.tokens?.accessToken != null) {
-          await ref.read(authRepositoryProvider).updateStaff(
-            authState.tokens!.accessToken,
-            widget.staffMember['id'],
-            fullName: _fullNameCtrl.text.trim(),
-            role: _selectedRole,
-            branchId: _selectedBranchId,
-          );
+          await ref
+              .read(authRepositoryProvider)
+              .updateStaff(
+                authState.tokens!.accessToken,
+                widget.staffMember['id'],
+                fullName: _fullNameCtrl.text.trim(),
+                role: _selectedRole,
+                branchId: _selectedBranchId,
+              );
           if (mounted) {
             Navigator.pop(context);
             widget.onStaffUpdated();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Staff member updated successfully'),
-                backgroundColor: TwColors.brightGreen,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            );
+            ToastService.showSuccess('Staff member updated successfully');
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: TwColors.red500,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
+          ToastService.showError('Error: ${e.toString()}');
         }
       } finally {
         if (mounted) {
@@ -1385,83 +1358,6 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
         }
       }
     }
-  }
-
-  void _showInvitationResult(dynamic invitation) {
-    final token = invitation is Map
-        ? (invitation['token']?.toString() ?? '')
-        : '';
-    if (token.isEmpty) return;
-    final joinLink = 'snapverify://staff/join?token=$token';
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: TwColors.primaryBg,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Invitation Created',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Staff can scan this QR (or share the link) to activate their account.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.7),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: QrImageView(
-                data: joinLink,
-                size: 200,
-                backgroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => Share.share(
-                  'Join our business on SnapVerify! Invitation code:\n$joinLink',
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: TwColors.brightGreen,
-                  foregroundColor: TwColors.primaryBg,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.share_rounded, size: 18),
-                label: const Text(
-                  'Share Invitation',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -1514,7 +1410,11 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: TwColors.slate700, width: 1),
                       ),
-                      child: const Icon(Icons.close_rounded, color: TwColors.white, size: 18),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: TwColors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -1525,7 +1425,8 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                 label: 'Full Name',
                 hint: 'e.g. David Mekonnen',
                 icon: Icons.person_outline_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               // Phone number (readonly)
@@ -1538,7 +1439,11 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.phone_rounded, color: TwColors.white.withValues(alpha: 0.3), size: 18),
+                    Icon(
+                      Icons.phone_rounded,
+                      color: TwColors.white.withValues(alpha: 0.3),
+                      size: 18,
+                    ),
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1580,8 +1485,15 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                     value: _selectedRole,
                     isExpanded: true,
                     dropdownColor: Colors.black,
-                    icon: Icon(Icons.keyboard_arrow_down_rounded, color: TwColors.white.withValues(alpha: 0.5)),
-                    style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                    icon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: TwColors.white.withValues(alpha: 0.5),
+                    ),
+                    style: const TextStyle(
+                      color: TwColors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                     items: _roles.map((role) {
                       return DropdownMenuItem(
                         value: role,
@@ -1597,7 +1509,10 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
               const SizedBox(height: 8),
               _isLoadingBranches
                   ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black,
                         borderRadius: BorderRadius.circular(12),
@@ -1608,77 +1523,94 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                           SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(color: TwColors.brightGreen, strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              color: TwColors.brightGreen,
+                              strokeWidth: 2,
+                            ),
                           ),
                           SizedBox(width: 10),
                           Text(
                             'Loading branches...',
-                            style: TextStyle(color: TwColors.white, fontSize: 14),
+                            style: TextStyle(
+                              color: TwColors.white,
+                              fontSize: 14,
+                            ),
                           ),
                         ],
                       ),
                     )
                   : _branches.isEmpty
-                      ? Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: TwColors.slate700, width: 1),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'No branches yet',
-                                style: TextStyle(
-                                  color: TwColors.white.withValues(alpha: 0.8),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Add a branch first to assign staff to it',
-                                style: TextStyle(
-                                  color: TwColors.white.withValues(alpha: 0.45),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: TwColors.slate700, width: 1),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String?>(
-                              value: _selectedBranchId,
-                              isExpanded: true,
-                              dropdownColor: Colors.black,
-                              icon: Icon(Icons.keyboard_arrow_down_rounded, color: TwColors.white.withValues(alpha: 0.5)),
-                              style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Text('No Branch'),
-                                ),
-                                ..._branches.map((branch) {
-                                  return DropdownMenuItem<String?>(
-                                    value: branch['id'],
-                                    child: Text(branch['name']),
-                                  );
-                                }),
-                              ],
-                              onChanged: (v) => setState(() => _selectedBranchId = v),
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: TwColors.slate700, width: 1),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'No branches yet',
+                            style: TextStyle(
+                              color: TwColors.white.withValues(alpha: 0.8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Add a branch first to assign staff to it',
+                            style: TextStyle(
+                              color: TwColors.white.withValues(alpha: 0.45),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: TwColors.slate700, width: 1),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedBranchId,
+                          isExpanded: true,
+                          dropdownColor: Colors.black,
+                          icon: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: TwColors.white.withValues(alpha: 0.5),
+                          ),
+                          style: const TextStyle(
+                            color: TwColors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('No Branch'),
+                            ),
+                            ..._branches.map((branch) {
+                              return DropdownMenuItem<String?>(
+                                value: branch['id'],
+                                child: Text(branch['name']),
+                              );
+                            }),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedBranchId = v),
                         ),
+                      ),
+                    ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -1699,7 +1631,10 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: TwColors.primaryBg, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: TwColors.primaryBg,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1708,7 +1643,10 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                             SizedBox(width: 8),
                             Text(
                               'Update Staff',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),
@@ -1717,6 +1655,217 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Full-screen QR handover sheet with a 10-minute expiry countdown and
+/// revoke/regenerate actions. Shown right after creating a staff invitation.
+class _InvitationQrSheet extends ConsumerStatefulWidget {
+  final String joinLink;
+  final String invitationId;
+  final VoidCallback onRefresh;
+
+  const _InvitationQrSheet({
+    required this.joinLink,
+    required this.invitationId,
+    required this.onRefresh,
+  });
+
+  @override
+  ConsumerState<_InvitationQrSheet> createState() => _InvitationQrSheetState();
+}
+
+class _InvitationQrSheetState extends ConsumerState<_InvitationQrSheet> {
+  Timer? _timer;
+  int _secondsLeft = 10 * 60;
+  String _currentLink = '';
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentLink = widget.joinLink;
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _secondsLeft = 10 * 60;
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      if (_secondsLeft <= 1) {
+        t.cancel();
+      }
+      setState(() => _secondsLeft = _secondsLeft > 0 ? _secondsLeft - 1 : 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _countdown {
+    final m = (_secondsLeft ~/ 60).toString().padLeft(2, '0');
+    final s = (_secondsLeft % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Future<void> _regenerate() async {
+    if (widget.invitationId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final authState = ref.read(authNotifierProvider);
+      final token = await ref
+          .read(authNotifierProvider.notifier)
+          .ensureFreshAccessToken();
+      final inv = await ref
+          .read(authRepositoryProvider)
+          .regenerateInvitation(token!, widget.invitationId);
+      final newToken = inv['token']?.toString() ?? '';
+      if (mounted && newToken.isNotEmpty) {
+        setState(() {
+          _currentLink = 'snapverify://staff/join?token=$newToken';
+        });
+        _startTimer();
+      }
+    } catch (e) {
+      if (mounted) {
+        ToastService.showError('Error: ${e.toString()}');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _revoke() async {
+    if (widget.invitationId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final token = await ref
+          .read(authNotifierProvider.notifier)
+          .ensureFreshAccessToken();
+      await ref
+          .read(authRepositoryProvider)
+          .revokeInvitation(token!, widget.invitationId);
+      widget.onRefresh();
+      ref.invalidate(notificationsProvider);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ToastService.showError('Error: ${e.toString()}');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expired = _secondsLeft <= 0;
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'QR Invitation',
+            style: TextStyle(
+              color: TwColors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Show this QR to the staff member. It expires in $_countdown '
+            'and works only once.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: TwColors.white.withValues(alpha: 0.7),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (expired) ...[
+            Container(
+              width: 200,
+              height: 200,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: TwColors.slate800,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Text(
+                'QR expired',
+                style: TextStyle(
+                  color: TwColors.red500,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: QrImageView(
+                data: _currentLink,
+                size: 200,
+                backgroundColor: Colors.white,
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _revoke,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: TwColors.red500,
+                    side: BorderSide(
+                      color: TwColors.red500.withValues(alpha: 0.4),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.block_rounded, size: 18),
+                  label: const Text(
+                    'Revoke',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _busy ? null : _regenerate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: TwColors.brightGreen,
+                    foregroundColor: TwColors.primaryBg,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: Text(
+                    expired ? 'New QR' : 'Regenerate',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
