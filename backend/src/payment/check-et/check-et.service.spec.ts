@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentProvider } from '@prisma/client';
-import { CheckEtService } from './check-et.service';
+import {
+  CheckEtService,
+  checkEtBackoffDelayMs,
+  resolveCheckEtTimeoutMs,
+} from './check-et.service';
 import { CheckEtError } from './check-et-error';
 import { ProviderErrorType } from '../provider-error';
 
@@ -40,7 +44,10 @@ const jsonResponse = (body: unknown, status = 200) => ({
   text: () => Promise.resolve(JSON.stringify(body)),
 });
 
-async function build(baseUrl?: string) {
+async function build(
+  baseUrl?: string,
+  overrides: Record<string, unknown> = {},
+) {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       CheckEtService,
@@ -48,6 +55,7 @@ async function build(baseUrl?: string) {
         provide: ConfigService,
         useValue: {
           get: (key: string, defaultValue?: unknown) => {
+            if (key in overrides) return overrides[key];
             if (key === 'CHECK_ET_API_KEY')
               return 'chk_test_key_for_unit_tests';
             if (key === 'CHECK_ET_BASE_URL')
@@ -61,8 +69,37 @@ async function build(baseUrl?: string) {
   return module.get<CheckEtService>(CheckEtService);
 }
 
+const advance = async (ms: number) => {
+  await Promise.resolve();
+  await jest.advanceTimersByTimeAsync(ms);
+};
+
 beforeEach(() => {
   mockFetch.mockReset();
+});
+
+describe('CheckEtService timeout/retry configuration', () => {
+  it('uses a safe 45s default timeout', () => {
+    expect(resolveCheckEtTimeoutMs(undefined)).toBe(45000);
+    expect(resolveCheckEtTimeoutMs('')).toBe(45000);
+  });
+
+  it('clamps timeout to sensible bounds', () => {
+    expect(resolveCheckEtTimeoutMs(100)).toBe(5000);
+    expect(resolveCheckEtTimeoutMs(5000)).toBe(5000);
+    expect(resolveCheckEtTimeoutMs(45000)).toBe(45000);
+    expect(resolveCheckEtTimeoutMs(200000)).toBe(120000);
+    expect(resolveCheckEtTimeoutMs('not-a-number')).toBe(45000);
+  });
+
+  it('computes bounded exponential backoff with jitter', () => {
+    expect(checkEtBackoffDelayMs(1, () => 0)).toBe(500);
+    expect(checkEtBackoffDelayMs(1, () => 1)).toBe(1000);
+    expect(checkEtBackoffDelayMs(2, () => 0)).toBe(1000);
+    expect(checkEtBackoffDelayMs(2, () => 1)).toBe(2000);
+    expect(checkEtBackoffDelayMs(3, () => 0)).toBe(2000);
+    expect(checkEtBackoffDelayMs(5, () => 1)).toBe(8000);
+  });
 });
 
 describe('CheckEtService configuration', () => {
@@ -150,11 +187,11 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('actually cancels the request on timeout via the AbortController signal', async () => {
+  it('retries retryable timeout/network failures up to 3 attempts with bounded backoff, then fails closed', async () => {
     jest.useFakeTimers();
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
     try {
-      const svc = await build();
-      // Simulate node-fetch honoring the signal: reject on abort.
+      const svc = await build(undefined, { CHECK_ET_TIMEOUT_MS: 5000 });
       mockFetch.mockImplementation(
         (_url: string, init: any) =>
           new Promise((_resolve, reject) => {
@@ -163,25 +200,77 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
               err.name = 'AbortError';
               reject(err);
             });
-            // never resolves otherwise
           }),
       );
 
       const pending = svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
       const assertion = expect(pending).rejects.toMatchObject({
         type: ProviderErrorType.NETWORK_ERROR,
-        message: 'check.et request timed out',
+        isRetryable: true,
+        message: expect.stringContaining(
+          'check.et request timed out after 5000ms',
+        ),
       });
 
-      // Attempt 1 aborts at 30s, bounded retry sleeps 1.5s, attempt 2 aborts
-      // again at 30s — then the failure propagates.
-      await jest.advanceTimersByTimeAsync(30_000);
-      await jest.advanceTimersByTimeAsync(1_500);
-      await jest.advanceTimersByTimeAsync(30_000);
+      // attempt 1 timeout + 500ms backoff + attempt 2 timeout + 1000ms backoff + attempt 3 timeout
+      await advance(5000);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await advance(500);
+      await advance(5000);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      await advance(1000);
+      await advance(5000);
       await assertion;
-      // No hanging work remains: all pending timers consumed.
+      expect(mockFetch).toHaveBeenCalledTimes(3);
       expect(jest.getTimerCount()).toBe(0);
     } finally {
+      randomSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries retryable 5xx responses with backoff and returns on a later success', async () => {
+    jest.useFakeTimers();
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const svc = await build(undefined, { CHECK_ET_TIMEOUT_MS: 5000 });
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ message: 'boom' }, 503))
+        .mockResolvedValueOnce(jsonResponse({ message: 'boom' }, 503))
+        .mockResolvedValueOnce(jsonResponse(baseVerifyBody, 200));
+
+      const pending = svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
+      await advance(0);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await advance(500);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      await advance(1000);
+      const result = await pending;
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    } finally {
+      randomSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries retryable 429 responses with backoff', async () => {
+    jest.useFakeTimers();
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const svc = await build(undefined, { CHECK_ET_TIMEOUT_MS: 5000 });
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ message: 'Too many requests' }, 429))
+        .mockResolvedValueOnce(jsonResponse(baseVerifyBody, 200));
+
+      const pending = svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
+      await advance(0);
+      await advance(500);
+      const result = await pending;
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      randomSpy.mockRestore();
       jest.useRealTimers();
     }
   });
@@ -262,51 +351,47 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
     }
   });
 
-  it('propagates provider error statuses as typed CheckEtErrors', async () => {
-    const svc = await build();
-    const cases: [number, unknown, ProviderErrorType, boolean][] = [
-      [
-        401,
-        { message: 'Unauthenticated.' },
-        ProviderErrorType.AUTH_ERROR,
-        false,
-      ],
-      [
-        402,
-        {
-          message:
-            'Monthly verification limit reached. Please upgrade your plan.',
-        },
-        ProviderErrorType.QUOTA_EXHAUSTED,
-        false,
-      ],
-      [
-        429,
-        { message: 'Too many requests' },
-        ProviderErrorType.RATE_LIMITED,
-        true,
-      ],
-      [500, { message: 'boom' }, ProviderErrorType.SERVER_ERROR, true],
-      [
-        422,
-        { message: 'The given data was invalid.' },
-        ProviderErrorType.VALIDATION_ERROR,
-        false,
-      ],
-    ];
-    for (const [status, body, type, retryable] of cases) {
-      mockFetch.mockResolvedValue(jsonResponse(body, status));
-      await expect(
-        svc.verifyReference(PaymentProvider.CBE, 'FT123', null),
-      ).rejects.toMatchObject({
-        type,
-        isRetryable: retryable,
-        httpStatus: status,
-      });
+  it('propagates provider error statuses as typed CheckEtErrors with correct retry behavior', async () => {
+    jest.useFakeTimers();
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const svc = await build(undefined, { CHECK_ET_TIMEOUT_MS: 5000 });
+      const cases: [number, unknown, ProviderErrorType, boolean, number][] = [
+        [401, { message: 'Unauthenticated.' }, ProviderErrorType.AUTH_ERROR, false, 1],
+        [
+          402,
+          { message: 'Monthly verification limit reached. Please upgrade your plan.' },
+          ProviderErrorType.QUOTA_EXHAUSTED,
+          false,
+          1,
+        ],
+        [429, { message: 'Too many requests' }, ProviderErrorType.RATE_LIMITED, true, 3],
+        [500, { message: 'boom' }, ProviderErrorType.SERVER_ERROR, true, 3],
+        [422, { message: 'The given data was invalid.' }, ProviderErrorType.VALIDATION_ERROR, false, 1],
+      ];
+      for (const [status, body, type, retryable, expectedCalls] of cases) {
+        mockFetch.mockReset();
+        mockFetch.mockImplementation(async () => jsonResponse(body, status));
+        const pending = svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
+        const assertion = expect(pending).rejects.toMatchObject({
+          type,
+          isRetryable: retryable,
+          httpStatus: status,
+        });
+        // Drain bounded backoff windows for retryable cases (3 attempts).
+        await advance(0);
+        await advance(500);
+        await advance(1000);
+        await assertion;
+        expect(mockFetch).toHaveBeenCalledTimes(expectedCalls);
+      }
+    } finally {
+      randomSpy.mockRestore();
+      jest.useRealTimers();
     }
   });
 
-  it('returns a 404 envelope as an authoritative negative verification', async () => {
+  it('does not retry authoritative negative (404 envelope) responses', async () => {
     const svc = await build();
     mockFetch.mockResolvedValue(
       jsonResponse(
@@ -321,13 +406,9 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
       ),
     );
 
-    const result = await svc.verifyReference(
-      PaymentProvider.CBE,
-      'FT123',
-      null,
-    );
+    const result = await svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
     expect(result.success).toBe(false);
-    expect(result.message).toBe('Transaction not found.');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('normalizes the provider response into the internal shape', async () => {

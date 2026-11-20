@@ -20,7 +20,7 @@
  * Severity classes:
  *   - RETRYABLE (infrastructure): the verification service itself could not
  *     produce an answer. These must NEVER persist a FAILED payment — the
- *     caller raises SERVICE_UNAVAILABLE so the user retries.
+ *     caller fails closed with PROVIDER_UNAVAILABLE so the user retries.
  *   - CONFIG: SnapVerify's own credentials/configuration are wrong. Same
  *     fail-closed treatment as RETRYABLE plus an operational alert.
  *   - NEGATIVE: the provider authoritatively answered "this transaction is

@@ -173,7 +173,6 @@ export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
   /** Identity of the ACTIVE verification vendor, recorded on new rows. */
   private readonly verificationProvider = 'check_et';
-  private readonly skipPrimaryVerification: boolean;
   private readonly isProduction: boolean;
   private readonly accountHashSecret: string;
 
@@ -187,21 +186,6 @@ export class PaymentService {
       process.env.NODE_ENV ?? 'development',
     );
     this.isProduction = nodeEnv === 'production';
-
-    // SKIP_PRIMARY_VERIFICATION bypasses the upstream Check.et API and
-    // would approve fraudulent payments. It is a fraud vector and is rejected
-    // outright in production. Client requests can never influence this value —
-    // it is read once, from server configuration.
-    const configuredSkip = this.config.get<boolean>(
-      'SKIP_PRIMARY_VERIFICATION',
-      false,
-    );
-    if (configuredSkip && this.isProduction) {
-      throw new Error(
-        'FATAL: SKIP_PRIMARY_VERIFICATION=true is not permitted in production. Upstream payment verification must always run. Remove the override or set NODE_ENV to a non-production value.',
-      );
-    }
-    this.skipPrimaryVerification = configuredSkip === true;
 
     // Stage 1 review fix: dedicated server-side secret for HMAC account
     // hashing. Required in production; missing secrets fail fast so that
@@ -221,12 +205,6 @@ export class PaymentService {
 
     this.logger.log(`=== PaymentService ready ===`);
     this.logger.log(`  verificationProvider: ${this.verificationProvider}`);
-    this.logger.log(
-      `  skipPrimaryVerification: ${this.skipPrimaryVerification}` +
-        (this.skipPrimaryVerification
-          ? ' (DEV-ONLY mock mode — upstream API is NOT called)'
-          : ''),
-    );
   }
 
   // Helper to get provider from raw response or reference type
@@ -504,6 +482,7 @@ export class PaymentService {
     amount?: number,
     provider?: string,
     _extractedSuffix?: string,
+    userBranchId?: string | null,
   ) {
     // Stage 1: the client-supplied suffix is deliberately ignored. All
     // receiving-account data used for upstream calls and match decisions is
@@ -548,64 +527,60 @@ export class PaymentService {
       where: { organizationId, isActive: true },
     });
 
-    if (paymentAccounts.length === 0) {
-      const raw = {
-        success: false,
-        reason:
-          'No payment accounts configured. Please add your business payment account in settings before verifying payments.',
-      };
-      return this._saveAndReturn(
-        raw,
-        organizationId,
-        userId,
-        { method: 'REFERENCE', transactionId: referenceNumber },
-        null,
+    // Payment-provider detection is validated independently on the server.
+    // The provider MUST have been detected from the receipt (or explicitly
+    // chosen by the user) and must map to a Prisma PaymentProvider. SnapVerify
+    // never guesses and never falls back to a different provider's account.
+    const detectedProvider = provider
+      ?.trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
+    if (!detectedProvider) {
+      throw new HttpException(
+        {
+          verified: false,
+          status: 'PAYMENT_PROVIDER_UNDETECTED',
+          message:
+            'Could not determine the payment provider from this receipt. Please select the payment provider and try again.',
+        },
+        HttpStatus.BAD_REQUEST,
       );
     }
-
-    // Use the client-selected bank ONLY as a hint to narrow which registered
-    // accounts are probed. It can never widen matching or inject evidence —
-    // receiver matching still runs against REGISTERED accounts only. A hint
-    // with no matching account fails fast with a clear message instead of
-    // burning 60s+ on unrelated (often slow) bank upstreams.
-    const hintedProvider = provider?.toUpperCase() as
-      | PaymentProvider
-      | undefined;
-    let candidateAccounts = paymentAccounts;
     if (
-      hintedProvider &&
-      Object.values(PaymentProvider).includes(hintedProvider)
+      !Object.values(PaymentProvider).includes(
+        detectedProvider as PaymentProvider,
+      )
     ) {
-      const matching = paymentAccounts.filter(
-        (a) => a.provider === hintedProvider,
+      throw new HttpException(
+        {
+          verified: false,
+          status: 'UNSUPPORTED_PAYMENT_PROVIDER',
+          message: `The payment provider "${provider}" is not supported.`,
+        },
+        HttpStatus.BAD_REQUEST,
       );
-      if (matching.length === 0) {
-        const raw = {
-          success: false,
-          reason: `You don't have a ${hintedProvider.replace(/_/g, ' ')} receiving account registered. Add it in settings, or verify against your registered bank account.`,
-        };
-        return this._saveAndReturn(
-          raw,
-          organizationId,
-          userId,
-          { method: 'REFERENCE', transactionId: referenceNumber },
-          null,
-        );
-      }
-      candidateAccounts = matching;
     }
+    const verifiedProvider = detectedProvider as PaymentProvider;
 
-    if (this.skipPrimaryVerification) {
-      // DEV-ONLY mock mode. Constructor rejects this in production.
-      this.logger.warn(
-        `[verifyByReference] SKIP_PRIMARY_VERIFICATION active (dev-only mock) — upstream API is NOT being called`,
+    // Match an ACTIVE receiving account for the authenticated organization
+    // AND the detected provider (and the caller's branch when applicable).
+    // Inactive accounts and other providers are never probed.
+    let candidateAccounts = paymentAccounts.filter(
+      (a) => a.provider === verifiedProvider,
+    );
+    if (userBranchId) {
+      candidateAccounts = candidateAccounts.filter(
+        (a) => a.branchId === null || a.branchId === userBranchId,
       );
-      return this._mockApproved(
-        organizationId,
-        userId,
-        { method: 'REFERENCE', transactionId: referenceNumber },
-        paymentAccounts[0],
-        amount,
+    }
+    if (candidateAccounts.length === 0) {
+      throw new HttpException(
+        {
+          verified: false,
+          status: 'PAYMENT_ACCOUNT_NOT_CONFIGURED',
+          message: `No active ${verifiedProvider.replace(/_/g, ' ')} receiving account is configured for your business. Add it in settings, or verify against your registered bank account.`,
+        },
+        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -691,7 +666,7 @@ export class PaymentService {
     if (!hadAnyApiSuccess) {
       if (validationRejectionCount > 0 && otherContinuableFailureCount === 0) {
         // Provider responded authoritatively (business validation rejection),
-        // so this is not an infrastructure/service-unavailable condition.
+        // so this is not an infrastructure/provider-unavailable condition.
         const rejectionRaw = {
           success: false,
           reason:
@@ -714,7 +689,7 @@ export class PaymentService {
       throw new HttpException(
         {
           verified: false,
-          status: 'SERVICE_UNAVAILABLE',
+          status: 'PROVIDER_UNAVAILABLE',
           message: msg,
           detail: lastUpstreamError,
           retryAfterMs: 60_000,
@@ -849,7 +824,7 @@ export class PaymentService {
       return new HttpException(
         {
           verified: false,
-          status: 'SERVICE_UNAVAILABLE',
+          status: 'PROVIDER_UNAVAILABLE',
           message:
             'Verification service is temporarily unavailable. Please try again in a few minutes.',
           detail: upstreamErrorDetail(e),
@@ -927,12 +902,6 @@ export class PaymentService {
   }
 
   /**
-   * DEV-ONLY synthetic approval path.
-   *
-   * Unreachable in production because the constructor rejects
-   * SKIP_PRIMARY_VERIFICATION when NODE_ENV=production.
-   */
-  /**
    * Verify by receipt file (PDF) or image + on-device OCR text.
    *
    * Check.et workflow (official docs):
@@ -972,19 +941,6 @@ export class PaymentService {
         userId,
         { method: 'IMAGE_OCR', transactionId: `OCR-${Date.now()}` },
         null,
-      );
-    }
-
-    if (this.skipPrimaryVerification) {
-      // DEV-ONLY mock mode. Constructor rejects this in production.
-      this.logger.warn(
-        `[verifyByImage] SKIP_PRIMARY_VERIFICATION active (dev-only mock) — upstream API is NOT being called`,
-      );
-      return this._mockApproved(
-        organizationId,
-        userId,
-        { method: 'IMAGE_OCR', transactionId: `OCR-${Date.now()}` },
-        paymentAccounts[0],
       );
     }
 
@@ -1270,42 +1226,6 @@ export class PaymentService {
           : 'Unable to verify payment. Please check the details and try again.'),
       raw: this._sanitizeRawForClient(raw),
     };
-  }
-
-  /**
-   * DEV-ONLY synthetic approval path.
-   *
-   * Unreachable in production because constructor rejects
-   * SKIP_PRIMARY_VERIFICATION when NODE_ENV=production.
-   */
-  private _mockApproved(
-    organizationId: string,
-    userId: string,
-    meta: { method: string; transactionId: string },
-    matchedAccount: PaymentAccount | null,
-    amount?: number,
-  ) {
-    const raw = {
-      success: true,
-      // The dev-only mock simulates a trusted upstream response; it must carry
-      // the same complete financial evidence required of the real upstream,
-      // otherwise the Stage 1 financial gate would (correctly) reject it.
-      amount: amount ?? 0,
-      currency: SUPPORTED_CURRENCY,
-      reference: meta.transactionId,
-      receiver: matchedAccount?.accountHolderName ?? null,
-      suffix: matchedAccount?.suffix ?? null,
-    };
-    this.logger.warn(
-      `[_mockApproved] DEV-ONLY mock approval for ${meta.method} transactionId=${meta.transactionId}`,
-    );
-    return this._saveAndReturn(
-      raw,
-      organizationId,
-      userId,
-      meta,
-      matchedAccount,
-    );
   }
 
   async getVerificationHistory(

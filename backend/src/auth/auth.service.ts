@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -213,10 +214,17 @@ export class AuthService {
   // ── Password Login (email, with legacy phone fallback) ─────────────────────
   async login(identifier: string, password: string, organizationId?: string) {
     const isEmail = EMAIL_RE.test(identifier);
+    const normalized = identifier.trim().toLowerCase();
+    // Resolution order: email → username → legacy phone. Username is only
+    // tried when the identifier can't be an email or phone number, so owner
+    // login behavior is unchanged.
+    const isPhoneLike = /^\+?\d[\d\s-]{6,}$/.test(identifier.trim());
     const user = await this.prisma.user.findFirst({
       where: isEmail
-        ? { email: identifier.trim().toLowerCase() }
-        : { phone: identifier },
+        ? { email: normalized }
+        : !isPhoneLike
+          ? { username: normalized }
+          : { phone: identifier.trim() },
       include: {
         userAssignments: {
           include: { organization: true },
@@ -442,18 +450,25 @@ export class AuthService {
     return { message: 'Password reset successfully' };
   }
 
-  // ── Staff invitation (owner/manager creates invite; QR/deep link) ──────────
+  // ── Staff invitation (QR flow: owner creates a staff profile and hands
+  // over a single-use, 10-minute QR code) ────────────────────────────────────
   async addStaff(
     organizationId: string,
     fullName: string,
-    email: string | undefined,
-    phone: string | undefined,
+    username: string,
     role: Role,
     branchId?: string,
   ) {
-    if (!email && !phone) {
+    const normalizedUsername = username.trim().toLowerCase();
+    if (!/^[a-z0-9._-]{3,30}$/.test(normalizedUsername)) {
       throw new BadRequestException(
-        'Email (or legacy phone number) is required to invite staff.',
+        'Username must be 3-30 characters: letters, numbers, dots, dashes or underscores.',
+      );
+    }
+
+    if (role === Role.OWNER) {
+      throw new BadRequestException(
+        'Cannot assign OWNER role through staff invitation. Please create a new business instead.',
       );
     }
 
@@ -468,97 +483,109 @@ export class AuthService {
       }
     }
 
-    if (role === Role.OWNER) {
-      throw new BadRequestException(
-        'Cannot assign OWNER role through staff invitation. Please create a new business instead.',
+    // Username must be free across users AND pending invitations of any org.
+    const [existingUser, existingInvitation] = await Promise.all([
+      this.prisma.user.findUnique({ where: { username: normalizedUsername } }),
+      this.prisma.invitation.findFirst({
+        where: { username: normalizedUsername, status: 'PENDING' },
+      }),
+    ]);
+    if (existingUser || existingInvitation) {
+      throw new ConflictException(
+        'This username is already taken. Please choose another one.',
       );
     }
 
-    // If a verified user with this email exists, add them to the org directly
-    if (email) {
-      const normalized = email.trim().toLowerCase();
-      const user = await this.prisma.user.findUnique({
-        where: { email: normalized },
-        include: { userAssignments: true },
-      });
-
-      if (user && user.emailVerified) {
-        const existingAssignment = user.userAssignments.find(
-          (a) => a.organizationId === organizationId,
-        );
-
-        if (existingAssignment) {
-          throw new BadRequestException(
-            'This user is already a member of your organization.',
-          );
-        }
-
-        await this.prisma.userBusinessAssignment.create({
-          data: {
-            userId: user.id,
-            organizationId,
-            role,
-            branchId: branchId || null,
-          },
-        });
-
-        this.logger.log(
-          `Existing user added to org: id=${user.id} role=${role} org=${organizationId}`,
-        );
-
-        return {
-          ...user,
-          organizationId,
-          branchId,
-          role,
-        };
-      }
-    }
-
-    // Invitation-only flow: staff receives a QR/deep-link invitation and
-    // completes registration (email + password + email OTP verification).
+    // Single-use QR invitation, valid for 10 minutes.
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     const invitation = await this.prisma.invitation.create({
       data: {
         token,
-        email: email?.trim().toLowerCase() ?? null,
-        phone: phone ?? null,
+        fullName: fullName.trim(),
+        username: normalizedUsername,
         organizationId,
         role,
         branchId: branchId || null,
+        status: 'PENDING',
         expiresAt,
       },
     });
 
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-    });
-
     this.logger.log(
-      `Invitation created: id=${invitation.id} role=${role} expires=${expiresAt.toISOString()}`,
+      `QR invitation created: id=${invitation.id} role=${role} expires=${expiresAt.toISOString()}`,
     );
 
-    // Notify via email when available; legacy SMS invitations still work
-    if (email) {
-      await this.emailService.sendStaffInvitationEmail(
-        email.trim().toLowerCase(),
-        role,
-        organization?.name,
-        token,
-      );
-    } else if (phone) {
-      // Legacy phone invitation — notify via SMS (non-OTP, kept for backwards compatibility)
-      const formattedPhone = phone.replace(/^0/, '251');
-      await this.smsService.sendInvitationSms(
-        formattedPhone,
-        role,
-        organization?.name,
+    return invitation;
+  }
+
+  // ── List invitations for the organization (owner/manager) ─────────────────
+  async listInvitations(organizationId: string) {
+    const now = new Date();
+    // Expire stale PENDING rows lazily so the UI always reflects reality.
+    await this.prisma.invitation.updateMany({
+      where: {
+        organizationId,
+        status: 'PENDING',
+        expiresAt: { lt: now },
+      },
+      data: { status: 'EXPIRED' },
+    });
+
+    return this.prisma.invitation.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      include: { branch: { select: { id: true, name: true } } },
+    });
+  }
+
+  // ── Revoke a pending invitation (owner/manager) ───────────────────────────
+  async revokeInvitation(invitationId: string, organizationId: string) {
+    const invitation = await this.prisma.invitation.findFirst({
+      where: { id: invitationId, organizationId },
+    });
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found.');
+    }
+    if (invitation.status === 'ACTIVATED') {
+      throw new BadRequestException('This invitation was already activated.');
+    }
+    if (invitation.status === 'REVOKED') {
+      throw new BadRequestException('This invitation is already revoked.');
+    }
+
+    return this.prisma.invitation.update({
+      where: { id: invitationId },
+      data: { status: 'REVOKED', revokedAt: new Date() },
+    });
+  }
+
+  // ── Regenerate a QR invitation (new token, fresh 10-minute expiry) ────────
+  async regenerateInvitation(invitationId: string, organizationId: string) {
+    const invitation = await this.prisma.invitation.findFirst({
+      where: { id: invitationId, organizationId },
+    });
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found.');
+    }
+    if (invitation.status === 'ACTIVATED') {
+      throw new BadRequestException(
+        'This invitation was already activated and cannot be regenerated.',
       );
     }
 
-    return invitation;
+    const token = crypto.randomBytes(32).toString('hex');
+    return this.prisma.invitation.update({
+      where: { id: invitationId },
+      data: {
+        token,
+        status: 'PENDING',
+        revokedAt: null,
+        usedAt: null,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
   }
 
   // ── Get Invitation (Authenticated only — JWT guarded) ────────────────────
@@ -629,6 +656,8 @@ export class AuthService {
     return invitations.map((inv) => ({
       id: inv.id,
       role: inv.role,
+      fullName: inv.fullName,
+      username: inv.username,
       email: inv.email,
       branchId: inv.branchId,
       branch: inv.branch,
@@ -666,72 +695,70 @@ export class AuthService {
     };
   }
 
-  // ── Activate Invitation (consume email OTP → create staff account) ────────
+  // ── Activate Invitation (QR flow: validate token → staff sets password) ───
   async activateInvitation(dto: {
-    token?: string;
-    email: string;
-    otpCode: string;
-    fullName: string;
+    token: string;
     password: string;
   }) {
-    const email = dto.email.trim().toLowerCase();
-    await this.otpService.verifyOtp(
-      email,
-      dto.otpCode,
-      OTP_PURPOSES.STAFF_ACTIVATION,
-    );
-
     const now = new Date();
+
+    // Single-use activation: the updateMany guard below fails if two devices
+    // scan the same QR concurrently — only the first wins.
     const invitation = await this.prisma.invitation.findFirst({
       where: {
+        token: dto.token,
         status: 'PENDING',
         expiresAt: { gt: now },
-        ...(dto.token ? { token: dto.token } : { email }),
       },
-      include: { organization: true },
+      include: { organization: true, branch: true },
     });
 
     if (!invitation) {
+      // Distinguish the common cases for a clear UX message.
+      const anyMatch = await this.prisma.invitation.findFirst({
+        where: { token: dto.token },
+      });
+      if (!anyMatch) {
+        throw new BadRequestException('Invalid invitation. Please scan the QR code again.');
+      }
+      if (anyMatch.status === 'ACTIVATED') {
+        throw new BadRequestException('This invitation was already activated. Please log in instead.');
+      }
+      if (anyMatch.status === 'REVOKED') {
+        throw new BadRequestException('This invitation was revoked. Please ask your manager for a new one.');
+      }
+      throw new BadRequestException('This invitation has expired. Please ask your manager to regenerate it.');
+    }
+
+    const username = invitation.username?.trim().toLowerCase();
+    if (!username) {
       throw new BadRequestException(
-        'Invitation not found or expired. Please request a new invitation.',
+        'This invitation has no assigned username. Please ask your manager to regenerate it.',
       );
     }
 
-    // Verify organization still exists
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: invitation.organizationId },
+    // Username must not collide with an existing account.
+    const existingUser = await this.prisma.user.findUnique({
+      where: { username },
     });
-    if (!organization) {
-      throw new BadRequestException(
-        'Organization not found. Please check the details.',
+    if (existingUser) {
+      throw new ConflictException(
+        'This username is already taken. Please ask your manager for assistance.',
       );
     }
-
-    let user = await this.prisma.user.findUnique({
-      where: { email },
-    });
 
     const passwordHash = await this.passwordService.hash(dto.password);
 
-    if (!user) {
-      user = await this.prisma.user.create({
-        data: {
-          email,
-          fullName: dto.fullName,
-          passwordHash,
-          emailVerified: true,
-        },
-      });
-    } else {
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          fullName: dto.fullName,
-          passwordHash,
-          emailVerified: true,
-        },
-      });
-    }
+    const user = await this.prisma.user.create({
+      data: {
+        username,
+        fullName: invitation.fullName,
+        email: invitation.email,
+        phone: invitation.phone,
+        passwordHash,
+        emailVerified: true,
+      },
+    });
 
     // Owner assigned the branch + role on the invitation
     await this.prisma.userBusinessAssignment.create({
@@ -745,28 +772,23 @@ export class AuthService {
 
     await this.prisma.invitation.update({
       where: { id: invitation.id },
-      data: { status: 'ACTIVE' },
+      data: { status: 'ACTIVATED', usedAt: now },
     });
 
     this.logger.log(
       `Invitation activated: user id=${user.id} org=${invitation.organizationId} role=${invitation.role}`,
     );
 
-    const tokens = await this.jwtService.generateTokens(
-      user.id,
-      invitation.organizationId,
-      invitation.role,
-    );
+    // Staff logs in with username + password afterwards; do NOT issue
+    // tokens here so credentials are only ever entered on the login screen.
     return {
-      tokens,
-      user: this.sanitizeUser(user),
-      roles: [
-        {
-          businessId: invitation.organizationId,
-          branchId: invitation.branchId,
-          role: invitation.role,
-        },
-      ],
+      message: 'Account activated successfully. You can now log in.',
+      username,
+      organization: invitation.organization
+        ? { id: invitation.organization.id, name: invitation.organization.name }
+        : null,
+      role: invitation.role,
+      branch: invitation.branch ? { id: invitation.branch.id, name: invitation.branch.name } : null,
     };
   }
 

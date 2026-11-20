@@ -1,4 +1,14 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "scripts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "scripts",
+    // Prisma CLI configuration only — never part of the NestJS runtime. Being
+    // compiled here widened the implicit rootDir to the repository root and
+    // pushed the entry point to dist/src/main.js.
+    "prisma.config.ts"
+  ]
 }

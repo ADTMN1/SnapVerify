@@ -3,7 +3,6 @@ import {
   IsEnum,
   IsOptional,
   IsNotEmpty,
-  IsEmail,
   Matches,
 } from 'class-validator';
 import { Role } from '@prisma/client';
@@ -13,16 +12,14 @@ export class AddStaffDto {
   @IsNotEmpty({ message: 'Full name is required.' })
   fullName: string;
 
-  @IsOptional()
-  @IsEmail({}, { message: 'Please enter a valid email address.' })
-  email?: string;
-
-  @IsOptional()
+  // Staff log in with username + password after QR activation.
   @IsString()
-  @Matches(/^(\+?251|0)?9\d{8}$/, {
-    message: 'Please enter a valid Ethiopian phone number.',
+  @IsNotEmpty({ message: 'Username is required.' })
+  @Matches(/^[a-zA-Z0-9._-]{3,30}$/, {
+    message:
+      'Username must be 3-30 characters: letters, numbers, dots, dashes or underscores.',
   })
-  phone?: string;
+  username: string;
 
   @IsEnum(Role, { message: 'Please select a valid role.' })
   role: Role;

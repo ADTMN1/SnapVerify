@@ -79,22 +79,27 @@ model Organization {
 }
 
 model User {
-  id               String                   @id @default(uuid())
-  fullName         String?
+  id                  String                   @id @default(uuid())
+  fullName            String?
+  // Staff log in with username + password; owners use email.
+  username            String?                  @unique
   // Phone is optional since authentication moved to email; retained for
   // legacy users and non-auth metadata.
-  phone            String?                  @unique
-  email            String?                  @unique
-  emailVerified    Boolean                  @default(false)
-  passwordHash     String?
-  status           String                   @default("active")
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
-  activityLogs     ActivityLog[]
-  payments         Payment[]
-  refreshTokens    RefreshToken[]
-  userAssignments  UserBusinessAssignment[]
-  verificationLogs VerificationLog[]
+  phone               String?                  @unique
+  email               String?                  @unique
+  emailVerified       Boolean                  @default(false)
+  passwordHash        String?
+  status              String                   @default("active")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  // Timestamp of the most recent "mark all as read" action. Notification
+  // feed items created at or before this time are considered read.
+  notificationsReadAt DateTime?
+  activityLogs        ActivityLog[]
+  payments            Payment[]
+  refreshTokens       RefreshToken[]
+  userAssignments     UserBusinessAssignment[]
+  verificationLogs    VerificationLog[]
 
   @@map("users")
 }
@@ -119,21 +124,32 @@ model UserBusinessAssignment {
 
 model Invitation {
   id             String       @id @default(uuid())
-  // Email is the primary contact for new (email-based) invitations; phone is
-  // retained for legacy SMS invitations.
+  // QR invitation flow: the owner creates a staff PROFILE (fullName +
+  // username + role + branch) and hands over a single-use QR code. Email is
+  // optional metadata; phone retained for legacy SMS invitations.
+  fullName       String?
+  username       String?
   email          String?
   phone          String?
   organizationId String
   branchId       String?
   role           Role
+  // PENDING → ACTIVATED | EXPIRED | REVOKED
   status         String       @default("PENDING")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   token          String       @unique
+  // QR invitations are short-lived (10 minutes); regenerate issues a new
+  // token and resets this.
   expiresAt      DateTime
+  // Set when the staff member completes activation (single-use guard).
+  usedAt         DateTime?
+  // Set when an owner/manager revokes the invitation.
+  revokedAt      DateTime?
   branch         Branch?      @relation(fields: [branchId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId, status])
   @@map("invitations")
 }
 

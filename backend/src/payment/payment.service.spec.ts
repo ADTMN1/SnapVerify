@@ -40,7 +40,6 @@ const mockCheckEt = {
 const baseConfig = (overrides: Record<string, unknown> = {}) => ({
   get: jest.fn((key: string, defaultValue?: unknown) => {
     const config: Record<string, unknown> = {
-      SKIP_PRIMARY_VERIFICATION: false,
       NODE_ENV: 'development',
       ...overrides,
     };
@@ -113,12 +112,6 @@ describe('PaymentService security (Check.et provider)', () => {
     service = await build();
   });
 
-  it('rejects SKIP_PRIMARY_VERIFICATION in production at startup', async () => {
-    await expect(
-      build({ NODE_ENV: 'production', SKIP_PRIMARY_VERIFICATION: true }),
-    ).rejects.toThrow(/SKIP_PRIMARY_VERIFICATION/);
-  });
-
   it('fails closed when the provider is unreachable', async () => {
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
@@ -131,8 +124,8 @@ describe('PaymentService security (Check.et provider)', () => {
     );
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
-    ).rejects.toMatchObject({ response: { status: 'SERVICE_UNAVAILABLE' } });
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
+    ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
@@ -148,7 +141,7 @@ describe('PaymentService security (Check.et provider)', () => {
     );
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
     ).rejects.toMatchObject({ response: { status: 'QUOTA_EXHAUSTED' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
@@ -161,26 +154,9 @@ describe('PaymentService security (Check.et provider)', () => {
     );
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
     ).rejects.toMatchObject({ response: { status: 'PROVIDER_CONFIG_ERROR' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
-  });
-
-  it('allows dev-only skip to use mock approval without a provider call', async () => {
-    const devService = await build({
-      NODE_ENV: 'development',
-      SKIP_PRIMARY_VERIFICATION: true,
-    });
-    mockPrisma.payment.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
-    mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
-    mockPrisma.verificationLog.create.mockResolvedValue({});
-
-    const result = await devService.verifyByReference('FT123', 'org-1', 'user-1', 100);
-
-    expect(result.verified).toBe(true);
-    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
-    expect(mockPrisma.payment.create).toHaveBeenCalled();
   });
 
   it('rejects duplicate transactions without calling the provider', async () => {
@@ -193,7 +169,7 @@ describe('PaymentService security (Check.et provider)', () => {
       riskScore: 0,
     });
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
     expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
@@ -206,7 +182,7 @@ describe('PaymentService security (Check.et provider)', () => {
       validNormalized({ duplicate: true }),
     );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
@@ -251,12 +227,12 @@ describe('verifyByReference validation rejection classification', () => {
     mockPrisma.verificationLog.create.mockResolvedValue({});
   });
 
-  it('returns a clear rejection (not SERVICE_UNAVAILABLE) when one account returns VALIDATION_ERROR', async () => {
+  it('returns a clear rejection (not PROVIDER_UNAVAILABLE) when one account returns VALIDATION_ERROR', async () => {
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockRejectedValue(receivingAccountRejected());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
@@ -276,7 +252,7 @@ describe('verifyByReference validation rejection classification', () => {
     ]);
     mockCheckEt.verifyReference.mockRejectedValue(receivingAccountRejected());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
@@ -298,7 +274,7 @@ describe('verifyByReference validation rejection classification', () => {
         validNormalized({ receiverAccount: '1000999999999' }),
       );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     expect(result.verified).toBe(true);
     expect(mockPrisma.payment.create).toHaveBeenCalledWith(
@@ -308,7 +284,7 @@ describe('verifyByReference validation rejection classification', () => {
     );
   });
 
-  it('fails closed with SERVICE_UNAVAILABLE when one account returns VALIDATION_ERROR and another returns an infrastructure error', async () => {
+  it('fails closed with PROVIDER_UNAVAILABLE when one account returns VALIDATION_ERROR and another returns an infrastructure error', async () => {
     const second = { ...registeredAccount, id: 'account-2', accountNumber: '1000999999999' };
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount, second]);
@@ -319,12 +295,12 @@ describe('verifyByReference validation rejection classification', () => {
       );
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
-    ).rejects.toMatchObject({ response: { status: 'SERVICE_UNAVAILABLE' } });
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
+    ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
-  it('fails closed with SERVICE_UNAVAILABLE when all accounts return infrastructure errors', async () => {
+  it('fails closed with PROVIDER_UNAVAILABLE when all accounts return infrastructure errors', async () => {
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([
       registeredAccount,
@@ -335,8 +311,8 @@ describe('verifyByReference validation rejection classification', () => {
     );
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
-    ).rejects.toMatchObject({ response: { status: 'SERVICE_UNAVAILABLE' } });
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
+    ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
@@ -345,7 +321,7 @@ describe('verifyByReference validation rejection classification', () => {
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockRejectedValue(receivingAccountRejected());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     expect(result.verified).toBe(false);
     expect(result.status).not.toBe(PaymentStatus.VERIFIED);
@@ -358,7 +334,7 @@ describe('verifyByReference validation rejection classification', () => {
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     expect(result.verified).toBe(true);
     expect(Number(result.amount)).toBe(100);
@@ -454,7 +430,7 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
     const svc = await buildWithAccount();
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(true);
     expect(Number(result.amount)).toBe(100);
   });
@@ -475,7 +451,7 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
       validNormalized(overrides as Partial<NormalizedVerification>),
     );
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalledWith(
@@ -496,7 +472,7 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
       validNormalized(overrides as Partial<NormalizedVerification>),
     );
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
   });
@@ -510,7 +486,7 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
       }),
     );
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalled();
@@ -528,7 +504,7 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
       }),
     );
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
   });
@@ -759,7 +735,7 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
-  it('provider retryable errors cannot result in VERIFIED payments (fail closed)', async () => {
+  it('provider retryable errors cannot result in VERIFIED payments (fail closed, PROVIDER_UNAVAILABLE)', async () => {
     const svc = await buildWithAccount();
     mockCheckEt.verifyReceiptFile.mockRejectedValue(
       new CheckEtError(ProviderErrorType.NETWORK_ERROR, 503, 'timeout'),
@@ -773,7 +749,7 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
         'user-1',
         'CBE FT123',
       ),
-    ).rejects.toBeInstanceOf(HttpException);
+    ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
@@ -835,7 +811,7 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
     const svc = await buildWithAccount();
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    await svc.verifyByReference('FT123', 'org-1', 'user-1');
+    await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     const args = mockPrisma.payment.create.mock.calls[0][0];
     expect(args.data.verificationProvider).toBe('check_et');
   });
@@ -879,7 +855,7 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1');
+    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1', undefined, 'TELEBIRR');
 
     expect(result.verified).toBe(true);
     expect(result.status).toBe(PaymentStatus.VERIFIED);
@@ -894,7 +870,7 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1');
+    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1', undefined, 'TELEBIRR');
     expect(result.verified).toBe(true);
   });
 
@@ -907,14 +883,14 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1');
+    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1', undefined, 'TELEBIRR');
     expect(result.verified).toBe(false);
     expect(result.message).toMatch(/different account/i);
   });
 
   it('does NOT forward account_number to Check.et for Telebirr (docs contract)', async () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
-    await service.verifyByReference('TB123', 'org-1', 'user-1');
+    await service.verifyByReference('TB123', 'org-1', 'user-1', undefined, 'TELEBIRR');
     expect(mockCheckEt.verifyReference).toHaveBeenCalledWith(
       PaymentProvider.TELEBIRR,
       'TB123',
@@ -933,7 +909,7 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1', undefined, 'TELEBIRR');
     expect(result.verified).toBe(true);
   });
 
@@ -946,7 +922,7 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1', undefined, 'TELEBIRR');
     expect(result.verified).toBe(false);
     expect(result.message).toMatch(/different account/i);
   });
@@ -975,52 +951,87 @@ describe('verifyByReference failure-message selection across multiple banks', ()
     mockPrisma.verificationLog.create.mockResolvedValue({});
   });
 
-  it('surfaces the provider-confirmed "different account" verdict, not the CBE "not found" message', async () => {
-    // Probe order: CBE (negative), Telebirr (confirmed but other wallet).
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([cbeAccount, telebirrAccount]);
-    mockCheckEt.verifyReference.mockImplementation(
-      async (provider: PaymentProvider) => {
-        if (provider === PaymentProvider.CBE) {
-          return validNormalized({
-            success: false,
-            exists: false,
-            provider: PaymentProvider.CBE,
-            checkEtBank: 'cbe',
-            message: 'No CBE payment with this reference was found for this receiving account.',
-            receipt: {},
-          });
-        }
-        return validNormalized({
-          provider: PaymentProvider.TELEBIRR,
-          checkEtBank: 'telebirr',
-          receiverAccount: '25****17',
-        });
-      },
-    );
+  it('probes only the detected provider account and surfaces a confirmed different-account verdict', async () => {
+    const secondCbe = {
+      ...registeredAccount,
+      id: 'account-cbe-2',
+      accountNumber: '1000999999999',
+      suffix: '9999',
+      accountHolderName: 'Other Business',
+    };
+    // Both CBE and Telebirr accounts exist; only the detected CBE accounts
+    // may be probed — never the Telebirr account.
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([
+      cbeAccount,
+      telebirrAccount,
+      secondCbe,
+    ]);
+    mockCheckEt.verifyReference
+      .mockResolvedValueOnce(
+        validNormalized({
+          success: false,
 
-    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+          provider: PaymentProvider.CBE,
+          checkEtBank: 'cbe',
+          message: 'Transaction not found.',
+
+        }),
+      )
+      .mockResolvedValueOnce(
+        validNormalized({
+          provider: PaymentProvider.CBE,
+          checkEtBank: 'cbe',
+          receiverAccount: '25****17',
+          receiver: 'Test Business',
+        }),
+      );
+
+    const result = await service.verifyByReference(
+      'DJV9JIVHMR',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.message).toMatch(/different account/i);
-    expect(result.message).not.toMatch(/No CBE payment/);
+    // No Telebirr probe ever happens.
+    expect(mockCheckEt.verifyReference).toHaveBeenCalledTimes(2);
+    for (const call of mockCheckEt.verifyReference.mock.calls) {
+      expect(call[0]).toBe(PaymentProvider.CBE);
+    }
   });
 
-  it('uses a neutral aggregated message when several banks answer "not found"', async () => {
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([cbeAccount, telebirrAccount]);
-    mockCheckEt.verifyReference.mockImplementation(async (provider: PaymentProvider) =>
+  it('preserves the transaction-not-found result for the detected provider', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([
+      cbeAccount,
+      telebirrAccount,
+    ]);
+    mockCheckEt.verifyReference.mockResolvedValue(
       validNormalized({
         success: false,
-        exists: false,
-        provider,
-        checkEtBank: provider === PaymentProvider.CBE ? 'cbe' : 'telebirr',
+
+        provider: PaymentProvider.CBE,
+        checkEtBank: 'cbe',
         message: 'Transaction not found.',
-        receipt: {},
+
       }),
     );
 
-    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1');
+    const result = await service.verifyByReference(
+      'DJV9JIVHMR',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
-    expect(result.message).toMatch(/could not be verified against your registered accounts/i);
+    expect(result.message).toMatch(/transaction not found/i);
     expect(result.message).not.toMatch(/No CBE payment/);
+    expect(mockCheckEt.verifyReference).toHaveBeenCalledTimes(1);
+    expect(mockCheckEt.verifyReference.mock.calls[0][0]).toBe(
+      PaymentProvider.CBE,
+    );
   });
 });
 
@@ -1041,7 +1052,7 @@ describe('CBE and BOA verification compatibility after canonicalization', () => 
     mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
     mockPrisma.verificationLog.create.mockResolvedValue({});
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(true);
   });
 
@@ -1069,7 +1080,280 @@ describe('CBE and BOA verification compatibility after canonicalization', () => 
     mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
     mockPrisma.verificationLog.create.mockResolvedValue({});
 
-    const result = await service.verifyByReference('BOA123456789', 'org-1', 'user-1');
+    const result = await service.verifyByReference('BOA123456789', 'org-1', 'user-1', undefined, 'ABYSSINIA');
     expect(result.verified).toBe(true);
+  });
+});
+
+describe('payment-provider detection and account matching (strict, no fallback)', () => {
+  let service: PaymentService;
+
+  const telebirrAccount = {
+    ...registeredAccount,
+    id: 'account-tb',
+    provider: PaymentProvider.TELEBIRR,
+    accountNumber: '0986006897',
+    suffix: null,
+    accountHolderName: null,
+  };
+  const cbeBirrAccount = {
+    ...registeredAccount,
+    id: 'account-cbe-birr',
+    provider: PaymentProvider.CBEBIRR,
+    accountNumber: null,
+    suffix: null,
+    accountHolderName: null,
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    service = await build();
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+  });
+
+  it('verifies a Telebirr receipt with a registered Telebirr account (regression)', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([telebirrAccount]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        receiverAccount: '25****97',
+      }),
+    );
+
+    const result = await service.verifyByReference(
+      'DJV9JIVHMR',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(mockCheckEt.verifyReference).toHaveBeenCalledTimes(1);
+    expect(mockCheckEt.verifyReference.mock.calls[0][0]).toBe(
+      PaymentProvider.TELEBIRR,
+    );
+  });
+
+  it('returns PAYMENT_ACCOUNT_NOT_CONFIGURED for a CBE Birr receipt when only Telebirr is registered (no fallback)', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([telebirrAccount]);
+
+    await expect(
+      service.verifyByReference(
+        'FT123456789',
+        'org-1',
+        'user-1',
+        undefined,
+        'CBEBIRR',
+      ),
+    ).rejects.toMatchObject({
+      response: { status: 'PAYMENT_ACCOUNT_NOT_CONFIGURED' },
+    });
+
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('uses only the detected provider when both CBE Birr and Telebirr are registered', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([
+      cbeBirrAccount,
+      telebirrAccount,
+    ]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.CBEBIRR,
+        checkEtBank: 'cbebirr',
+        receiverAccount: null,
+      }),
+    );
+
+    const result = await service.verifyByReference(
+      'FT123456789',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBEBIRR',
+    );
+
+    // No receiver evidence -> not approved (fail closed), but the correct
+    // provider was used and Telebirr was never probed.
+    expect(result.verified).toBe(false);
+    expect(mockCheckEt.verifyReference).toHaveBeenCalledTimes(1);
+    expect(mockCheckEt.verifyReference.mock.calls[0][0]).toBe(
+      PaymentProvider.CBEBIRR,
+    );
+    for (const call of mockCheckEt.verifyReference.mock.calls) {
+      expect(call[0]).not.toBe(PaymentProvider.TELEBIRR);
+    }
+  });
+
+  it('returns PAYMENT_PROVIDER_UNDETECTED when no provider is supplied', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([telebirrAccount]);
+
+    await expect(
+      service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1'),
+    ).rejects.toMatchObject({
+      response: { status: 'PAYMENT_PROVIDER_UNDETECTED' },
+    });
+
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('returns UNSUPPORTED_PAYMENT_PROVIDER for an unknown provider', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([telebirrAccount]);
+
+    await expect(
+      service.verifyByReference(
+        'DJV9JIVHMR',
+        'org-1',
+        'user-1',
+        undefined,
+        'WECHAT',
+      ),
+    ).rejects.toMatchObject({
+      response: { status: 'UNSUPPORTED_PAYMENT_PROVIDER' },
+    });
+
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+  });
+
+  it('returns PAYMENT_ACCOUNT_NOT_CONFIGURED when the matching account is inactive', async () => {
+    // The query only returns active accounts; an inactive-only org yields [].
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.verifyByReference(
+        'FT123456789',
+        'org-1',
+        'user-1',
+        undefined,
+        'CBEBIRR',
+      ),
+    ).rejects.toMatchObject({
+      response: { status: 'PAYMENT_ACCOUNT_NOT_CONFIGURED' },
+    });
+
+    expect(mockPrisma.paymentAccount.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', isActive: true },
+    });
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with PROVIDER_UNAVAILABLE when the provider times out', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([cbeBirrAccount]);
+    mockCheckEt.verifyReference.mockRejectedValue(
+      new CheckEtError(
+        ProviderErrorType.NETWORK_ERROR,
+        null,
+        'check.et request timed out',
+      ),
+    );
+
+    await expect(
+      service.verifyByReference(
+        'FT123456789',
+        'org-1',
+        'user-1',
+        undefined,
+        'CBEBIRR',
+      ),
+    ).rejects.toMatchObject({
+      response: { status: 'PROVIDER_UNAVAILABLE' },
+    });
+
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('preserves an authoritative transaction-not-found result', async () => {
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([telebirrAccount]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        success: false,
+
+        provider: PaymentProvider.TELEBIRR,
+        checkEtBank: 'telebirr',
+        message: 'Transaction not found.',
+        amount: null,
+        currency: null,
+        receiverAccount: null,
+      }),
+    );
+    mockPrisma.payment.create.mockImplementation(async (args: any) => ({
+      ...mockVerifiedPayment(),
+      amount: args.data.amount,
+      status: args.data.status,
+    }));
+
+    const result = await service.verifyByReference(
+      'DJV9JIVHMR',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
+
+    expect(result.verified).toBe(false);
+    expect(result.status).toBe(PaymentStatus.FAILED);
+    expect(result.message).toMatch(/transaction not found/i);
+  });
+
+  it('enforces cross-organization account isolation', async () => {
+    // No org-2 account exists; the query is org-scoped and must fail closed.
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.verifyByReference(
+        'FT123456789',
+        'org-2',
+        'user-1',
+        undefined,
+        'CBEBIRR',
+      ),
+    ).rejects.toMatchObject({
+      response: { status: 'PAYMENT_ACCOUNT_NOT_CONFIGURED' },
+    });
+
+    expect(mockPrisma.paymentAccount.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-2', isActive: true },
+    });
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('normalizes provider separators (M-Pesa) before matching', async () => {
+    const mpesaAccount = {
+      ...registeredAccount,
+      id: 'account-mpesa',
+      provider: PaymentProvider.M_PESA,
+      accountNumber: '0911223344',
+      suffix: null,
+      accountHolderName: null,
+    };
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([mpesaAccount]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({
+        provider: PaymentProvider.M_PESA,
+        checkEtBank: 'mpesa',
+        receiverAccount: '0911223344',
+      }),
+    );
+
+    const result = await service.verifyByReference(
+      'MP123456789',
+      'org-1',
+      'user-1',
+      undefined,
+      'M-Pesa',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(mockCheckEt.verifyReference.mock.calls[0][0]).toBe(
+      PaymentProvider.M_PESA,
+    );
   });
 });

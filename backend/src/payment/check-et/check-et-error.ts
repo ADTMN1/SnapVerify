@@ -173,11 +173,19 @@ export function classifyCheckEtResponse(
  * are BOTH temporary upstream failures — neither is ever a business answer —
  * but their messages are distinguishable for diagnostics.
  */
-export function classifyCheckEtNetworkFailure(err: unknown): CheckEtError {
+export function classifyCheckEtNetworkFailure(
+  err: unknown,
+  timeoutMs?: number,
+  attempt?: number,
+): CheckEtError {
   const e = err as { name?: string; type?: string } | null;
   const isTimeout = e?.name === 'AbortError' || e?.type === 'abort';
+  const timeoutDetail =
+    isTimeout && typeof timeoutMs === 'number' ? ` after ${timeoutMs}ms` : '';
+  const attemptDetail =
+    isTimeout && typeof attempt === 'number' ? ` (attempt ${attempt})` : '';
   const message = isTimeout
-    ? 'check.et request timed out'
+    ? `check.et request timed out${timeoutDetail}${attemptDetail}`
     : `Network error: ${err instanceof Error ? err.message : String(err)}`;
   return new CheckEtError(ProviderErrorType.NETWORK_ERROR, null, message);
 }

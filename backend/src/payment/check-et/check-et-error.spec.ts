@@ -82,6 +82,16 @@ describe('Check.et error classification (official API semantics)', () => {
     expect(net.isRetryable).toBe(true);
   });
 
+  it('includes timeout detail for aborted requests without changing classification', () => {
+    const abortErr: any = new Error('aborted');
+    abortErr.name = 'AbortError';
+    const net = classifyCheckEtNetworkFailure(abortErr, 45000, 2);
+    expect(net.type).toBe(ProviderErrorType.NETWORK_ERROR);
+    expect(net.isRetryable).toBe(true);
+    expect(net.message).toContain('timed out after 45000ms');
+    expect(net.message).toContain('(attempt 2)');
+  });
+
   it('returns null for non-error statuses', () => {
     expect(classifyCheckEtResponse({ success: true }, 200)).toBeNull();
   });

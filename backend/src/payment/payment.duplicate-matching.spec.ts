@@ -125,12 +125,19 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
 
   it('persists a deterministic normalizedTransactionId on create', async () => {
     mockPrisma.payment.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([]);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
+    mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     jest
       .spyOn(service as any, '_saveAndReturn')
       .mockResolvedValue({ verified: false });
 
-    await service.verifyByReference('  ft 1234-5678 ', 'org-1', 'user-1');
+    await service.verifyByReference(
+      '  ft 1234-5678 ',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     // normalized reference stored alongside the original (raw reference is
     // preserved verbatim; no destructive rewriting of client data)
@@ -162,7 +169,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       meta: { target: ['organizationId', 'normalizedTransactionId'] },
     });
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
     expect(result.paymentId).toBe('winner-1');
@@ -179,7 +186,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       meta: { target: ['organizationId', 'normalizedTransactionId'] },
     });
 
-    await service.verifyByReference('FT123', 'org-2', 'user-1');
+    await service.verifyByReference('FT123', 'org-2', 'user-1', undefined, 'CBE');
 
     const winnerLookup = mockPrisma.payment.findFirst.mock.calls[1][0];
     expect(winnerLookup.where.organizationId).toBe('org-2');
@@ -195,7 +202,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     });
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
     ).rejects.toBeInstanceOf(HttpException);
   });
 
@@ -206,7 +213,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     mockPrisma.payment.create.mockRejectedValue({ code: 'P2025' });
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
     ).rejects.toThrow(/Database error/);
   });
 
@@ -223,7 +230,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     });
 
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
     ).rejects.toThrow(/Database error/);
     // No duplicate outcome was returned and no winner lookup ran.
     expect(mockPrisma.payment.findFirst).toHaveBeenCalledTimes(1);
@@ -242,7 +249,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       },
     });
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
   });
 });
@@ -456,7 +463,7 @@ describe('Stage 1 — response data minimization', () => {
       validNormalized({ receiverAccount: '1000516323381' }),
     );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     expect(JSON.stringify(result.raw)).not.toContain('1000516323381');
   });
@@ -475,7 +482,7 @@ describe('Stage 1 — response data minimization', () => {
     mockPrisma.verificationLog.create.mockResolvedValue({});
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    await service.verifyByReference('FT123', 'org-1', 'user-1');
+    await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
 
     const logArgs = mockPrisma.verificationLog.create.mock.calls[0][0];
     expect(logArgs.data.matchedAccountNumber).not.toBe('1000516323381');
@@ -496,12 +503,12 @@ describe('Stage 1 — provider failures never persist as rejected payments', () 
   it.each([
     ['network failure', new CheckEtError(ProviderErrorType.NETWORK_ERROR, null, 'connect ECONNREFUSED')],
     ['rate limiting (429)', new CheckEtError(ProviderErrorType.RATE_LIMITED, 429, 'Too many requests')],
-  ])('returns SERVICE_UNAVAILABLE on %s (fail-closed)', async (_label, err) => {
+  ])('returns PROVIDER_UNAVAILABLE on %s (fail-closed)', async (_label, err) => {
     mockCheckEt.verifyReference.mockRejectedValue(err);
     // Retryable provider failures must prevent persistence.
     await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1'),
-    ).rejects.toBeInstanceOf(HttpException);
+      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
+    ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
@@ -527,7 +534,7 @@ describe('Stage 1 — provider failures never persist as rejected payments', () 
       }),
     );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1');
+    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalled();

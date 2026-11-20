@@ -87,24 +87,18 @@ export class StaffActivationOtpDto {
 }
 
 export class ActivateInvitationDto {
-  @IsOptional()
+  // QR invitation token scanned by the staff member.
   @IsString()
-  token?: string;
-
-  @IsEmail({}, { message: 'Please enter a valid email address.' })
-  email: string;
-
-  @IsString()
-  @IsNotEmpty({ message: 'Verification code is required.' })
-  @Matches(/^\d{6}$/, { message: 'Verification code must be 6 digits.' })
-  otpCode: string;
-
-  @IsString()
-  @IsNotEmpty({ message: 'Full name is required.' })
-  fullName: string;
+  @IsNotEmpty({ message: 'Invitation token is required.' })
+  token: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Password is required.' })
   @MinLength(8, { message: 'Password must be at least 8 characters.' })
   password: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Please confirm your password.' })
+  @MinLength(8, { message: 'Password confirmation must be at least 8 characters.' })
+  confirmPassword: string;
 }

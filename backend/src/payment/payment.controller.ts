@@ -48,7 +48,8 @@ export class PaymentController {
   })
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER)
   async verifyByReference(@Body() dto: VerifyReferenceDto, @Req() req: any) {
-    const { sub: userId, organizationId } = req.user;
+    const { sub: userId, organizationId, role, branchId } = req.user;
+    const userBranchId = role === 'OWNER' ? undefined : branchId ?? undefined;
     return this.paymentService.verifyByReference(
       dto.referenceNumber,
       organizationId,
@@ -56,6 +57,7 @@ export class PaymentController {
       dto.amount,
       dto.provider,
       dto.suffix,
+      userBranchId,
     );
   }
 

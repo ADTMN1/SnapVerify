@@ -25,10 +25,43 @@ import {
 import { ProviderErrorType } from '../provider-error';
 import { UpstreamVerificationUnavailableError } from '../payment-provider-errors';
 
-// Official docs: "Fast enough to block a checkout in real time. Most
-// verifications complete in 1–3 seconds." 30s gives generous headroom while
-// staying responsive enough to block a checkout.
-const CHECK_ET_TIMEOUT_MS = 30_000;
+// Official docs: most verifications complete in 1–3 seconds, but bank-backed
+// lookups can stall. The timeout is configurable (CHECK_ET_TIMEOUT_MS) with a
+// safe default of 45s and bounded to avoid hangs or excessively short budgets.
+const CHECK_ET_TIMEOUT_DEFAULT_MS = 45_000;
+const CHECK_ET_TIMEOUT_MIN_MS = 5_000;
+const CHECK_ET_TIMEOUT_MAX_MS = 120_000;
+
+// Retryable transport/upstream failures (network/timeout/5xx/429) get bounded
+// exponential backoff with jitter: up to 3 attempts total.
+const CHECK_ET_MAX_ATTEMPTS = 3;
+const CHECK_ET_BACKOFF_BASE_MS = 1_000;
+const CHECK_ET_BACKOFF_CAP_MS = 8_000;
+
+export function resolveCheckEtTimeoutMs(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') {
+    return CHECK_ET_TIMEOUT_DEFAULT_MS;
+  }
+  const n = typeof raw === 'number' ? raw : Number(String(raw));
+  if (!Number.isFinite(n)) return CHECK_ET_TIMEOUT_DEFAULT_MS;
+  return Math.min(
+    CHECK_ET_TIMEOUT_MAX_MS,
+    Math.max(CHECK_ET_TIMEOUT_MIN_MS, Math.trunc(n)),
+  );
+}
+
+export function checkEtBackoffDelayMs(
+  attempt: number,
+  random: () => number = Math.random,
+): number {
+  // attempt is 1-based for the completed failed attempt; delay precedes the next try.
+  const exp = Math.min(
+    CHECK_ET_BACKOFF_CAP_MS,
+    CHECK_ET_BACKOFF_BASE_MS * 2 ** Math.max(0, attempt - 1),
+  );
+  // Equal jitter in [exp/2, exp] to spread retries while staying bounded.
+  return Math.max(0, Math.trunc(exp / 2 + random() * (exp / 2)));
+}
 
 /** Per official docs: PDF, JPG, JPEG, PNG, WEBP — max 10 MB. */
 export const CHECK_ET_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -192,18 +225,24 @@ export class CheckEtService {
   private readonly logger = new Logger(CheckEtService.name);
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly timeoutMs: number;
 
   constructor(config: ConfigService) {
     this.apiKey = config.get<string>('CHECK_ET_API_KEY', '');
     this.baseUrl = (
       config.get<string>('CHECK_ET_BASE_URL', 'https://api.check.et') ?? ''
     ).replace(/\/+$/, '');
+    this.timeoutMs = resolveCheckEtTimeoutMs(
+      config.get<string | number>('CHECK_ET_TIMEOUT_MS'),
+    );
     if (!this.apiKey) {
       this.logger.warn(
         'CHECK_ET_API_KEY is empty — payment verification calls will fail until the key is configured.',
       );
     }
-    this.logger.log(`=== CheckEtService ready === apiBase: ${this._apiBase()}`);
+    this.logger.log(
+      `=== CheckEtService ready === apiBase: ${this._apiBase()} timeoutMs=${this.timeoutMs} maxAttempts=${CHECK_ET_MAX_ATTEMPTS}`,
+    );
   }
 
   /**
@@ -382,13 +421,19 @@ export class CheckEtService {
   }
 
   /**
-   * Execute a provider request under a hard 30s deadline.
+   * Execute a provider request under a hard, configurable deadline.
    *
-   * The AbortController is created HERE, its signal is passed to fetch, and
-   * the timer is always cleared in a finally block — so a timeout genuinely
-   * cancels the underlying socket and no request can hang past the deadline.
-   * Aborts are classified as NETWORK_ERROR (temporary upstream failure) —
-   * they must NEVER be interpreted as a negative verification answer.
+   * The AbortController is created HERE per attempt, its signal is passed to
+   * fetch, and the timer is always cleared in a finally block — so a timeout
+   * genuinely cancels the underlying socket and no request can hang past the
+   * deadline. Aborts are classified as NETWORK_ERROR (temporary upstream
+   * failure) — they must NEVER be interpreted as a negative verification
+   * answer.
+   *
+   * Retryable infrastructure failures (network/timeout, 5xx, 429) are retried
+   * with bounded exponential backoff + jitter, up to CHECK_ET_MAX_ATTEMPTS.
+   * Authoritative business answers and non-retryable errors (auth/quota/
+   * validation) are never retried.
    *
    * Only the HTTP status and safe classifications are logged; response bodies,
    * request bodies, authorization headers, receipt text, and raw provider
@@ -397,23 +442,19 @@ export class CheckEtService {
   private async _request(
     doFetch: (signal: AbortSignal) => Promise<any>,
   ): Promise<NormalizedVerification> {
-    // One bounded retry for RETRYABLE infrastructure failures (network /
-    // 5xx). Check.et's bank-specific upstreams (especially Telebirr) are
-    // intermittently slow or unreachable; without a retry a single transient
-    // failure fails the whole verification even when a second attempt
-    // succeeds. Authoritative business answers are never retried.
     let lastError: CheckEtError | null = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= CHECK_ET_MAX_ATTEMPTS; attempt++) {
       try {
-        return await this._requestOnce(doFetch);
+        return await this._requestOnce(doFetch, attempt);
       } catch (e) {
         if (!(e instanceof CheckEtError) || !e.isRetryable) throw e;
         lastError = e;
-        if (attempt < 2) {
+        if (attempt < CHECK_ET_MAX_ATTEMPTS) {
+          const delayMs = checkEtBackoffDelayMs(attempt);
           this.logger.warn(
-            `[CheckEt] retryable failure (${e.type}, HTTP ${e.httpStatus}) — retrying once in 1.5s`,
+            `[CheckEt] retryable failure attempt ${attempt}/${CHECK_ET_MAX_ATTEMPTS} (${e.type}, HTTP ${e.httpStatus}) — backing off ${delayMs}ms`,
           );
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, delayMs));
         }
       }
     }
@@ -422,9 +463,10 @@ export class CheckEtService {
 
   private async _requestOnce(
     doFetch: (signal: AbortSignal) => Promise<any>,
+    attempt: number,
   ): Promise<NormalizedVerification> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CHECK_ET_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
     let rawText: string;
     let httpStatus: number;
@@ -435,9 +477,9 @@ export class CheckEtService {
       httpStatus = res.status;
       rawText = await res.text();
     } catch (err: unknown) {
-      const net = classifyCheckEtNetworkFailure(err);
+      const net = classifyCheckEtNetworkFailure(err, this.timeoutMs, attempt);
       this.logger.warn(
-        `[CheckEt] transport failure (${net.type}): ${net.message}`,
+        `[CheckEt] transport failure attempt ${attempt}/${CHECK_ET_MAX_ATTEMPTS} (${net.type}): ${net.message}`,
       );
       throw net;
     } finally {

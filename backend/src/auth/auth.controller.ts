@@ -205,11 +205,42 @@ export class AuthController {
     return this.authService.addStaff(
       req.user.organizationId,
       dto.fullName,
-      dto.email,
-      dto.phone,
+      dto.username,
       dto.role,
       dto.branchId,
     );
+  }
+
+  // ── QR invitation lifecycle (owner/manager) ────────────────────────────────
+
+  @Get('invitations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async listInvitations(@Request() req: { user: JwtPayload }) {
+    return this.authService.listInvitations(req.user.organizationId);
+  }
+
+  @Post('invitations/:id/revoke')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async revokeInvitation(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+  ) {
+    return this.authService.revokeInvitation(id, req.user.organizationId);
+  }
+
+  @Post('invitations/:id/regenerate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async regenerateInvitation(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+  ) {
+    return this.authService.regenerateInvitation(id, req.user.organizationId);
   }
 
   @Get('staff')
