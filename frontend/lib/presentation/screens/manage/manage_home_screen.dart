@@ -9,6 +9,7 @@ import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
 import 'payment_activity_screen.dart';
 import 'reports_screen.dart';
+import '../../widgets/sv_loader.dart';
 import 'payment_account_management_screen.dart';
 
 class ManageHomeScreen extends ConsumerStatefulWidget {
@@ -33,8 +34,20 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
-        final staff = await ref.read(authRepositoryProvider).getStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
+        final staff = await ref
+            .read(authRepositoryProvider)
+            .getStaff(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -54,11 +67,9 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   }
 
   Future<void> _navigateAndRefresh(Widget screen) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => screen,
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => screen));
     _loadData();
   }
 
@@ -103,12 +114,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: TwColors.slate800,
-            width: 1,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,10 +130,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           const SizedBox(height: 2),
           const Text(
             'Overview of your business performance',
-            style: TextStyle(
-              color: TwColors.slate400,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: TwColors.slate400, fontSize: 13),
           ),
         ],
       ),
@@ -137,23 +140,35 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Widget _buildLogoutButton() {
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
+      child: OutlinedButton.icon(
         onPressed: () async {
           // Show confirmation dialog
           final shouldLogout = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
               backgroundColor: TwColors.slate900,
-              title: const Text('Logout', style: TextStyle(color: TwColors.white)),
-              content: const Text('Are you sure you want to logout?', style: TextStyle(color: TwColors.slate400)),
+              title: const Text(
+                'Logout',
+                style: TextStyle(color: TwColors.white),
+              ),
+              content: const Text(
+                'Are you sure you want to logout?',
+                style: TextStyle(color: TwColors.slate400),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel', style: TextStyle(color: TwColors.slate400)),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: TwColors.slate400),
+                  ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Logout', style: TextStyle(color: TwColors.red500)),
+                  child: const Text(
+                    'Logout',
+                    style: TextStyle(color: TwColors.red500),
+                  ),
                 ),
               ],
             ),
@@ -163,19 +178,20 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             await ref.read(authNotifierProvider.notifier).logout();
           }
         },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.red500.withValues(alpha: 0.12),
-          foregroundColor: TwColors.red500,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: TwColors.cardBg,
+          foregroundColor: TwColors.slate300,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: TwColors.red500.withValues(alpha: 0.3)),
+            borderRadius: BorderRadius.circular(14),
           ),
+          side: const BorderSide(color: TwColors.slate700),
           elevation: 0,
         ),
-        child: const Text(
+        icon: const Icon(Icons.logout_rounded, size: 18),
+        label: const Text(
           'Logout',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -237,10 +253,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           decoration: BoxDecoration(
             color: Colors.black,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: TwColors.slate700,
-              width: 1,
-            ),
+            border: Border.all(color: TwColors.slate700, width: 1),
           ),
           child: Row(
             children: [
@@ -342,7 +355,8 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           icon: Icons.account_balance_rounded,
           label: 'Accounts',
           color: TwColors.sky500,
-          onTap: () => _navigateAndRefresh(const PaymentAccountManagementScreen()),
+          onTap: () =>
+              _navigateAndRefresh(const PaymentAccountManagementScreen()),
         ),
       );
     }
@@ -420,8 +434,10 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                 final time = DateFormat('h:mm a').format(p.createdAt);
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black,
                     borderRadius: BorderRadius.circular(12),
@@ -482,10 +498,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           loading: () => const Center(
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: TwColors.brightGreen,
-              ),
+              child: SvLoader.page(),
             ),
           ),
           error: (e, _) => _emptyActivity(
@@ -493,9 +506,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             '${e.toString().replaceFirst('Exception: ', '')}',
             onRetry: () {
               final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-              ref.invalidate(
-                reportSummaryProvider((from: today, to: today)),
-              );
+              ref.invalidate(reportSummaryProvider((from: today, to: today)));
             },
           ),
         ),
@@ -573,10 +584,7 @@ class _StatItem extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: TwColors.slate700,
-            width: 1,
-          ),
+          border: Border.all(color: TwColors.slate700, width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -590,11 +598,7 @@ class _StatItem extends StatelessWidget {
                     color: color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 20,
-                  ),
+                  child: Icon(icon, color: color, size: 20),
                 ),
               ],
             ),
@@ -645,10 +649,7 @@ class _QuickAction extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: TwColors.slate700,
-            width: 1,
-          ),
+          border: Border.all(color: TwColors.slate700, width: 1),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -660,11 +661,7 @@ class _QuickAction extends StatelessWidget {
                 color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 22,
-              ),
+              child: Icon(icon, color: color, size: 22),
             ),
             const SizedBox(height: 12),
             Text(

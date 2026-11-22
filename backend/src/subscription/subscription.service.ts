@@ -2,20 +2,43 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  HttpException,
+  HttpStatus,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
   CheckoutStatus,
   PaymentProvider,
+  Prisma,
   SubscriptionStatus,
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { CheckEtService } from '../payment/check-et/check-et.service';
+import {
+  CheckEtService,
+  isStrictCheckEtSuccess,
+  NormalizedVerification,
+} from '../payment/check-et/check-et.service';
+import { UpstreamVerificationUnavailableError } from '../payment/payment-provider-errors';
+import {
+  ProviderError,
+  RETRYABLE_PROVIDER_ERRORS,
+} from '../payment/provider-error';
 import { subscriptionDto, usagePeriodStart } from './subscription-usage';
 
 const CHECKOUT_TTL_MINUTES = 30;
+const VERIFY_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const VERIFY_RATE_LIMIT_MAX = 10;
+
+function normalizeVendorReference(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function maskReference(value: string): string {
+  if (value.length <= 4) return '****';
+  return `${value.slice(0, 2)}****${value.slice(-2)}`;
+}
 
 const PLANS = [
   {
@@ -172,48 +195,31 @@ export class SubscriptionService {
     id: string,
     referenceNumber: string,
   ) {
-    const checkout = await this.prisma.subscriptionCheckout.findFirst({
-      where: { id, organizationId, userId },
-    });
-    if (!checkout) throw new NotFoundException('Checkout not found');
-
+    const checkout = await this.loadCheckout(userId, organizationId, id);
     if (checkout.status === CheckoutStatus.PAID) {
-      return {
-        status: 'PAID',
-        subscription: await this.getCurrent(organizationId),
-      };
+      return this.paidResult(organizationId);
     }
-    if (checkout.status !== CheckoutStatus.PENDING) {
-      throw new BadRequestException('This checkout is no longer pending');
-    }
-    if (checkout.expiresAt.getTime() < Date.now()) {
-      await this.prisma.subscriptionCheckout.update({
-        where: { id: checkout.id },
-        data: { status: CheckoutStatus.EXPIRED },
-      });
-      throw new BadRequestException('Checkout expired. Please start again.');
-    }
+
+    await this.assertVerificationRateLimit(
+      userId,
+      organizationId,
+      checkout.id,
+      'reference',
+    );
 
     const account = await this.platformAccount();
-    const normalizedReference = referenceNumber.trim().toUpperCase();
-    const reused = await this.prisma.subscriptionCheckout.findFirst({
-      where: {
-        vendorReference: normalizedReference,
-        id: { not: checkout.id },
-      },
-    });
-    if (reused) {
-      await this.markFailed(checkout.id);
+    const vendorReference = normalizeVendorReference(referenceNumber);
+    if (vendorReference !== normalizeVendorReference(checkout.reference)) {
       throw new BadRequestException(
-        'This transaction reference was already used',
+        'Use the payment reference shown for this checkout.',
       );
     }
 
-    let verification;
+    let verification: NormalizedVerification;
     try {
       verification = await this.checkEt.verifyReference(
         PaymentProvider.TELEBIRR,
-        normalizedReference,
+        vendorReference,
         account.accountNumber,
       );
     } catch (error) {
@@ -225,45 +231,207 @@ export class SubscriptionService {
       );
     }
 
-    if (!verification.success) {
-      await this.markFailed(checkout.id, normalizedReference);
+    return this.completeVerification(
+      checkout,
+      userId,
+      organizationId,
+      account,
+      verification,
+      vendorReference,
+    );
+  }
+
+  async verifyCheckoutByImage(
+    userId: string,
+    organizationId: string,
+    id: string,
+    file: Express.Multer.File,
+    receiptText?: string,
+  ) {
+    const checkout = await this.loadCheckout(userId, organizationId, id);
+    if (checkout.status === CheckoutStatus.PAID) {
+      return this.paidResult(organizationId);
+    }
+
+    await this.assertVerificationRateLimit(
+      userId,
+      organizationId,
+      checkout.id,
+      'image',
+    );
+
+    const account = await this.platformAccount();
+    const normalizedMime = (file.mimetype || '').toLowerCase();
+
+    let verification: NormalizedVerification;
+    try {
+      verification = await this.checkEt.verifyReceiptFile({
+        file: file.buffer,
+        filename: file.originalname || 'receipt.jpg',
+        contentType: normalizedMime || 'image/jpeg',
+        receiptText: receiptText?.slice(0, 50_000),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.warn(
+        `Subscription receipt verification failed for checkout ${checkout.id}: ${message}`,
+      );
+      if (
+        error instanceof ProviderError &&
+        RETRYABLE_PROVIDER_ERRORS.has(error.type)
+      ) {
+        throw new BadGatewayException(
+          'Payment verification is unavailable right now. Try again shortly.',
+        );
+      }
+      if (error instanceof UpstreamVerificationUnavailableError) {
+        throw new BadRequestException(error.message);
+      }
       throw new BadRequestException(
-        verification.message || 'Payment could not be verified',
+        'The receipt could not be verified. Make sure the full receipt is visible and readable.',
+      );
+    }
+
+    const vendorReference = normalizeVendorReference(
+      verification.transactionNumber ?? verification.verificationId ?? '',
+    );
+
+    return this.completeVerification(
+      checkout,
+      userId,
+      organizationId,
+      account,
+      verification,
+      vendorReference,
+    );
+  }
+
+  private async loadCheckout(
+    userId: string,
+    organizationId: string,
+    id: string,
+  ) {
+    const checkout = await this.prisma.subscriptionCheckout.findFirst({
+      where: { id, organizationId, userId },
+    });
+    if (!checkout) throw new NotFoundException('Checkout not found');
+
+    if (checkout.status === CheckoutStatus.PAID) return checkout;
+    if (checkout.status !== CheckoutStatus.PENDING) {
+      throw new BadRequestException('This checkout is no longer pending');
+    }
+    if (checkout.expiresAt.getTime() < Date.now()) {
+      await this.prisma.subscriptionCheckout.update({
+        where: { id: checkout.id },
+        data: { status: CheckoutStatus.EXPIRED },
+      });
+      throw new BadRequestException('Checkout expired. Please start again.');
+    }
+    return checkout;
+  }
+
+  private async paidResult(organizationId: string) {
+    return {
+      status: 'PAID',
+      subscription: await this.getCurrent(organizationId),
+    };
+  }
+
+  private async completeVerification(
+    checkout: {
+      id: string;
+      status: CheckoutStatus;
+      currency: string;
+      amount: number;
+      planName: string;
+      reference: string;
+    },
+    userId: string,
+    organizationId: string,
+    account: { accountNumber: string; accountName: string | null },
+    verification: NormalizedVerification,
+    vendorReference: string,
+  ) {
+    const receiptReference = normalizeVendorReference(
+      verification.transactionNumber ??
+        verification.verificationId ??
+        vendorReference,
+    );
+    if (verification.duplicate) {
+      await this.markFailed(checkout.id);
+      throw new BadRequestException('This receipt has already been used');
+    }
+    if (!verification.success || !isStrictCheckEtSuccess(verification.raw)) {
+      await this.markFailed(checkout.id);
+      throw new BadRequestException(
+        verification.message ||
+          'Payment is not confirmed as successful. Use a completed Telebirr receipt.',
+      );
+    }
+    if (!receiptReference) {
+      await this.markFailed(checkout.id);
+      throw new BadRequestException(
+        'Receipt reference could not be read. Use a clearer screenshot.',
       );
     }
     if (
       verification.provider &&
       verification.provider !== PaymentProvider.TELEBIRR
     ) {
-      await this.markFailed(checkout.id, normalizedReference);
+      await this.markFailed(checkout.id);
       throw new BadRequestException('Payment must be made with Telebirr');
     }
     if (
       verification.currency &&
       verification.currency.toUpperCase() !== checkout.currency.toUpperCase()
     ) {
-      await this.markFailed(checkout.id, normalizedReference);
+      await this.markFailed(checkout.id);
       throw new BadRequestException('Payment currency does not match the plan');
     }
 
     const paidAmount = this.parseAmount(verification.amount);
     if (paidAmount === null || paidAmount !== checkout.amount) {
-      await this.markFailed(checkout.id, normalizedReference);
+      await this.markFailed(checkout.id);
       throw new BadRequestException(
         `Payment amount must be ${checkout.amount} ${checkout.currency}`,
       );
     }
 
-    if (
-      !this.matchesPlatformAccount(
-        verification.receiverAccount,
-        verification.receiver,
-        account,
-      )
-    ) {
-      await this.markFailed(checkout.id, normalizedReference);
+    const accountMatch = this.matchesPlatformAccount(
+      verification.receiverAccount,
+      verification.receiver,
+      account,
+    );
+    if (accountMatch === 'mismatch') {
+      await this.markFailed(checkout.id);
       throw new BadRequestException(
         'Payment was not sent to the SnapVerify subscription account',
+      );
+    }
+    if (accountMatch === 'needs_review') {
+      await this.markFailed(checkout.id);
+      await this.logVerificationEvent(
+        organizationId,
+        userId,
+        'SUBSCRIPTION_PAYMENT_NEEDS_REVIEW',
+        checkout.id,
+        receiptReference,
+      );
+      throw new BadRequestException(
+        'Payment needs manual review. Contact support with your receipt.',
+      );
+    }
+
+    const reused = await this.prisma.subscriptionCheckout.findFirst({
+      where: {
+        vendorReference: receiptReference,
+        id: { not: checkout.id },
+      },
+    });
+    if (reused) {
+      await this.markFailed(checkout.id);
+      throw new BadRequestException(
+        'This transaction reference was already used',
       );
     }
 
@@ -276,41 +444,70 @@ export class SubscriptionService {
         ? null
         : new Date(now.getTime() + plan.durationDays * 86_400_000);
 
-    await this.prisma.$transaction([
-      this.prisma.subscription.updateMany({
-        where: { organizationId, status: SubscriptionStatus.ACTIVE },
-        data: { status: SubscriptionStatus.EXPIRED },
-      }),
-      this.prisma.subscription.create({
-        data: {
-          organizationId,
-          planName: plan.id,
-          status: SubscriptionStatus.ACTIVE,
-          startDate: now,
-          endDate,
-          maxUsers: plan.maxUsers,
-          maxDevices: plan.maxDevices,
-          verificationLimit: plan.verificationLimit,
-        },
-      }),
-      this.prisma.organization.update({
-        where: { id: organizationId },
-        data: { subscriptionPlan: plan.id },
-      }),
-      this.prisma.subscriptionCheckout.update({
-        where: { id: checkout.id },
-        data: {
-          status: CheckoutStatus.PAID,
-          paidAt: now,
-          vendorReference: normalizedReference,
-        },
-      }),
-    ]);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.paymentReceiptUsage.create({
+          data: {
+            provider: PaymentProvider.TELEBIRR,
+            normalizedReference: receiptReference,
+            source: 'subscription_checkout',
+            organizationId,
+            checkoutId: checkout.id,
+          },
+        });
+        await tx.subscription.updateMany({
+          where: { organizationId, status: SubscriptionStatus.ACTIVE },
+          data: { status: SubscriptionStatus.EXPIRED },
+        });
+        await tx.subscription.create({
+          data: {
+            organizationId,
+            planName: plan.id,
+            status: SubscriptionStatus.ACTIVE,
+            startDate: now,
+            endDate,
+            maxUsers: plan.maxUsers,
+            maxDevices: plan.maxDevices,
+            verificationLimit: plan.verificationLimit,
+          },
+        });
+        await tx.organization.update({
+          where: { id: organizationId },
+          data: { subscriptionPlan: plan.id },
+        });
+        await tx.subscriptionCheckout.update({
+          where: { id: checkout.id },
+          data: {
+            status: CheckoutStatus.PAID,
+            paidAt: now,
+            vendorReference: receiptReference,
+          },
+        });
+        await tx.activityLog.create({
+          data: {
+            organizationId,
+            userId,
+            action: 'SUBSCRIPTION_PAYMENT_VERIFIED',
+            metadata: {
+              checkoutId: checkout.id,
+              planName: plan.id,
+              reference: maskReference(receiptReference),
+            },
+          },
+        });
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        await this.markFailed(checkout.id);
+        throw new BadRequestException('This receipt has already been used');
+      }
+      throw error;
+    }
 
-    return {
-      status: 'PAID',
-      subscription: await this.getCurrent(organizationId),
-    };
+    return this.paidResult(organizationId);
   }
 
   private async platformAccount() {
@@ -359,13 +556,10 @@ export class SubscriptionService {
     };
   }
 
-  private async markFailed(id: string, vendorReference?: string) {
+  private async markFailed(id: string) {
     await this.prisma.subscriptionCheckout.updateMany({
       where: { id, status: CheckoutStatus.PENDING },
-      data: {
-        status: CheckoutStatus.FAILED,
-        ...(vendorReference ? { vendorReference } : {}),
-      },
+      data: { status: CheckoutStatus.FAILED },
     });
   }
 
@@ -375,29 +569,88 @@ export class SubscriptionService {
     return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : null;
   }
 
+  private async assertVerificationRateLimit(
+    userId: string,
+    organizationId: string,
+    checkoutId: string,
+    method: 'reference' | 'image',
+  ) {
+    const since = new Date(Date.now() - VERIFY_RATE_LIMIT_WINDOW_MS);
+    const attempts = await this.prisma.activityLog.count({
+      where: {
+        organizationId,
+        userId,
+        action: 'SUBSCRIPTION_PAYMENT_VERIFY_ATTEMPT',
+        createdAt: { gte: since },
+      },
+    });
+    if (attempts >= VERIFY_RATE_LIMIT_MAX) {
+      throw new HttpException(
+        'Too many verification attempts. Try again in a few minutes.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    await this.logVerificationEvent(
+      organizationId,
+      userId,
+      'SUBSCRIPTION_PAYMENT_VERIFY_ATTEMPT',
+      checkoutId,
+      undefined,
+      { method },
+    );
+  }
+
+  private async logVerificationEvent(
+    organizationId: string,
+    userId: string,
+    action: string,
+    checkoutId: string,
+    reference?: string,
+    extra: Record<string, unknown> = {},
+  ) {
+    await this.prisma.activityLog.create({
+      data: {
+        organizationId,
+        userId,
+        action,
+        metadata: {
+          checkoutId,
+          ...(reference ? { reference: maskReference(reference) } : {}),
+          ...extra,
+        },
+      },
+    });
+  }
+
   private matchesPlatformAccount(
     receiverAccount: string | null,
     receiverName: string | null,
     account: { accountNumber: string; accountName: string | null },
-  ): boolean {
-    const raw = receiverAccount?.replace(/\s/g, '') ?? '';
-    const tail = raw.match(/\*+(\d+)$/)?.[1];
-    if (tail) {
-      const stored = account.accountNumber.replace(/\s/g, '');
-      const candidates = [stored];
-      const local = stored.match(/^0([97]\d{8})$/);
-      if (local) candidates.push(`251${stored.slice(1)}`);
-      const international = stored.match(/^251([97]\d{8})$/);
-      if (international) candidates.push(`0${international[1]}`);
-      return candidates.some((candidate) => candidate.endsWith(tail));
-    }
+  ): 'matched' | 'needs_review' | 'mismatch' {
+    const canonical = (value: string) =>
+      value.toLowerCase().trim().replace(/\s+/g, ' ');
+    const phone = (value: string) => {
+      const digits = value.replace(/\D/g, '');
+      if (/^0[97]\d{8}$/.test(digits)) return `251${digits.slice(1)}`;
+      return digits;
+    };
 
-    if (account.accountName && receiverName) {
-      const canonical = (value: string) =>
-        value.toLowerCase().trim().replace(/\s+/g, ' ');
-      return canonical(receiverName) === canonical(account.accountName);
-    }
+    const stored = phone(account.accountNumber);
+    const receiver = receiverAccount ? phone(receiverAccount) : '';
+    const maskedTail = receiverAccount?.match(/\*+(\d{3,})$/)?.[1];
+    const nameMatches = Boolean(
+      account.accountName &&
+        receiverName &&
+        canonical(account.accountName) === canonical(receiverName),
+    );
 
-    return false;
+    if (receiver && receiver === stored) return 'matched';
+    if (maskedTail) {
+      return stored.endsWith(maskedTail) && nameMatches
+        ? 'matched'
+        : 'mismatch';
+    }
+    if (receiver || (receiverName && nameMatches)) return 'needs_review';
+    return 'mismatch';
   }
 }

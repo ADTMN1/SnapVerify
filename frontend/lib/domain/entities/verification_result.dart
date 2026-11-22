@@ -3,6 +3,7 @@ enum VerificationStatus {
   pending,
   failed,
   alreadyVerified,
+  needsReview,
   providerUnavailable,
   quotaExhausted,
   providerConfigError,
@@ -49,10 +50,11 @@ class VerificationResult {
     final status = switch (rawStatus) {
       'VERIFIED' => VerificationStatus.verified,
       'FAILED' => VerificationStatus.failed,
-      'DUPLICATE_TRANSACTION' || 'ALREADY_VERIFIED' =>
-        VerificationStatus.alreadyVerified,
-      'PROVIDER_UNAVAILABLE' || 'SERVICE_UNAVAILABLE' =>
-        VerificationStatus.providerUnavailable,
+      'DUPLICATE_TRANSACTION' ||
+      'ALREADY_VERIFIED' => VerificationStatus.alreadyVerified,
+      'NEEDS_REVIEW' || 'MANUAL_REVIEW' => VerificationStatus.needsReview,
+      'PROVIDER_UNAVAILABLE' ||
+      'SERVICE_UNAVAILABLE' => VerificationStatus.providerUnavailable,
       'QUOTA_EXHAUSTED' => VerificationStatus.quotaExhausted,
       'PROVIDER_CONFIG_ERROR' => VerificationStatus.providerConfigError,
       'PAYMENT_ACCOUNT_NOT_CONFIGURED' =>

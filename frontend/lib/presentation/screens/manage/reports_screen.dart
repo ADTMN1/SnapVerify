@@ -11,6 +11,7 @@ import '../../../core/utils/toast_service.dart';
 import '../../../domain/entities/report_summary.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/reports_provider.dart';
+import '../../widgets/sv_loader.dart';
 
 enum _ReportType { payments, staff, verification, fraud }
 
@@ -82,8 +83,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             _buildHeader(),
             Expanded(
               child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -95,11 +98,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       data: (data) => _buildData(context, data),
                       loading: () => const Padding(
                         padding: EdgeInsets.symmetric(vertical: 48),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: TwColors.brightGreen,
-                          ),
-                        ),
+                        child: Center(child: SvLoader.page()),
                       ),
                       error: (e, _) => _buildError(context, e),
                     ),
@@ -118,9 +117,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: TwColors.slate800, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
       ),
       child: Row(
         children: [
@@ -291,8 +288,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               label: 'Verification',
               icon: Icons.verified_rounded,
               selected: _selected == _ReportType.verification,
-              onTap: () =>
-                  setState(() => _selected = _ReportType.verification),
+              onTap: () => setState(() => _selected = _ReportType.verification),
             ),
             const SizedBox(width: 10),
             _TypeCard(
@@ -342,36 +338,32 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         );
       case _ReportType.verification:
         final s = data.summary;
-        return _buildBreakdownSection(
-          'Verification outcomes',
-          currency,
-          [
-            _BreakdownItem(
-              label: 'Verified',
-              count: s.verified,
-              amount: s.verifiedAmount,
-              color: TwColors.brightGreen,
-            ),
-            _BreakdownItem(
-              label: 'Failed',
-              count: s.failed,
-              amount: 0,
-              color: TwColors.red500,
-            ),
-            _BreakdownItem(
-              label: 'Rejected',
-              count: s.rejected,
-              amount: 0,
-              color: TwColors.amber500,
-            ),
-            _BreakdownItem(
-              label: 'Pending',
-              count: s.pending,
-              amount: 0,
-              color: TwColors.slate400,
-            ),
-          ],
-        );
+        return _buildBreakdownSection('Verification outcomes', currency, [
+          _BreakdownItem(
+            label: 'Verified',
+            count: s.verified,
+            amount: s.verifiedAmount,
+            color: TwColors.brightGreen,
+          ),
+          _BreakdownItem(
+            label: 'Failed',
+            count: s.failed,
+            amount: 0,
+            color: TwColors.red500,
+          ),
+          _BreakdownItem(
+            label: 'Rejected',
+            count: s.rejected,
+            amount: 0,
+            color: TwColors.amber500,
+          ),
+          _BreakdownItem(
+            label: 'Pending',
+            count: s.pending,
+            amount: 0,
+            color: TwColors.slate400,
+          ),
+        ]);
       case _ReportType.fraud:
         final s = data.summary;
         final items = <_BreakdownItem>[
@@ -548,10 +540,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   BoxDecoration _cardDecoration() => BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700, width: 1),
-      );
+    color: Colors.black,
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: TwColors.slate700, width: 1),
+  );
 }
 
 class _HeaderIconButton extends StatelessWidget {

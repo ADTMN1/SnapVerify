@@ -7,6 +7,7 @@ import '../../domain/entities/notification_item.dart';
 import '../providers/auth_provider.dart';
 import '../providers/notifications_provider.dart';
 import 'manage/payment_activity_screen.dart';
+import '../widgets/sv_loader.dart';
 import 'manage/staff_management_screen.dart';
 
 /// Professional notification feed backed by real activity.
@@ -26,11 +27,7 @@ class NotificationsScreen extends ConsumerWidget {
             Expanded(
               child: asyncData.when(
                 data: (data) => _buildList(context, ref, data),
-                loading: () => const Center(
-                  child: CircularProgressIndicator(
-                    color: TwColors.brightGreen,
-                  ),
-                ),
+                loading: () => const Center(child: SvLoader.page()),
                 error: (e, _) => _buildError(context, ref, e),
               ),
             ),
@@ -51,9 +48,7 @@ class NotificationsScreen extends ConsumerWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: TwColors.slate800, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
       ),
       child: Row(
         children: [
@@ -77,10 +72,7 @@ class NotificationsScreen extends ConsumerWidget {
                 SizedBox(height: 2),
                 Text(
                   'Updates from your business',
-                  style: TextStyle(
-                    color: TwColors.slate400,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: TwColors.slate400, fontSize: 12),
                 ),
               ],
             ),
@@ -173,13 +165,13 @@ class NotificationsScreen extends ConsumerWidget {
 
   void _open(BuildContext context, NotificationItem item) {
     if (item.isPayment) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const PaymentActivityScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const PaymentActivityScreen()));
     } else {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const StaffManagementScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const StaffManagementScreen()));
     }
   }
 
@@ -434,8 +426,10 @@ class _EmptyState extends StatelessWidget {
                 backgroundColor: TwColors.brightGreen,
                 foregroundColor: TwColors.slate900,
                 elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

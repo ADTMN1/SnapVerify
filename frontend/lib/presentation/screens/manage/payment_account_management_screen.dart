@@ -6,14 +6,12 @@ import '../../../core/utils/toast_service.dart';
 import '../../../data/datasources/payment_remote_datasource.dart';
 import '../../../domain/entities/payment_account.dart';
 import '../../../presentation/providers/auth_provider.dart';
+import '../../widgets/sv_loader.dart';
 
 class PaymentAccountManagementScreen extends ConsumerStatefulWidget {
   final bool isTab;
 
-  const PaymentAccountManagementScreen({
-    super.key,
-    this.isTab = false,
-  });
+  const PaymentAccountManagementScreen({super.key, this.isTab = false});
 
   @override
   ConsumerState<PaymentAccountManagementScreen> createState() =>
@@ -223,11 +221,7 @@ class _PaymentAccountManagementScreenState
                         ),
                       const SizedBox(height: 16),
                       if (_loading)
-                        const Center(
-                          child: CircularProgressIndicator(
-                            color: TwColors.brightGreen,
-                          ),
-                        )
+                        const Center(child: SvLoader.page())
                       else if (_error != null)
                         Center(
                           child: Padding(
@@ -889,14 +883,7 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
                     minimumSize: const Size(double.infinity, 52),
                   ),
                   child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: TwColors.primaryBg,
-                            strokeWidth: 2,
-                          ),
-                        )
+                      ? const SvLoader.button()
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

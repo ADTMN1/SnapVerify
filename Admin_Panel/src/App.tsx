@@ -4,6 +4,8 @@ import { AdminLayout } from './admin/components/layout/AdminLayout';
 import { PageLoader } from './admin/components/ui/LoadingSkeleton';
 
 import LoginPage           from './admin/pages/LoginPage';
+import ForgotPasswordPage  from './admin/pages/ForgotPasswordPage';
+import ResetPasswordPage   from './admin/pages/ResetPasswordPage';
 import DashboardPage       from './admin/pages/DashboardPage';
 import TransactionsPage    from './admin/pages/TransactionsPage';
 import LiveMonitorPage     from './admin/pages/LiveMonitorPage';
@@ -54,6 +56,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
 
       <Route path="/admin"                element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
       <Route path="/admin/transactions"   element={<ProtectedRoute><TransactionsPage /></ProtectedRoute>} />

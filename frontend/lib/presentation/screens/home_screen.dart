@@ -18,17 +18,33 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _activeTabIndex = 0;
+  bool _initialPlanCheckDone = false;
+  bool _planSheetOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybeShowInitialPlanSheet(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
+    ref.listen(authNotifierProvider, (_, _) => _maybeShowInitialPlanSheet());
     final isWaiter = authState.role == UserRole.waiter;
     final canManage = authState.role.canManage;
+    final cameraIdx = isWaiter ? 1 : 2;
 
     final children = <Widget>[
-      if (!isWaiter) HomeTab(onNavigate: _switchTab),
+      if (!isWaiter)
+        HomeTab(
+          onNavigate: _switchTab,
+          onScan: () => _handleCameraTap(cameraIdx),
+        ),
       const HistoryTab(),
-      const CameraTab(),
+      CameraTab(isActive: _activeTabIndex == cameraIdx),
       const PaymentAccountManagementScreen(isTab: true),
       if (canManage) const ManageTab(),
     ];
@@ -41,14 +57,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       backgroundColor: TwColors.slate950,
       body: SafeArea(
-        child: IndexedStack(
-          index: _activeTabIndex,
-          children: children,
-        ),
+        child: IndexedStack(index: _activeTabIndex, children: children),
       ),
       bottomNavigationBar: _buildBottomNavBar(
         isWaiter: isWaiter,
         canManage: canManage,
+        cameraIdx: cameraIdx,
       ),
     );
   }
@@ -56,20 +70,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildBottomNavBar({
     required bool isWaiter,
     required bool canManage,
+    required int cameraIdx,
   }) {
     // Waiter layout: History, Camera, Accounts
     // Other roles: Home, History, Camera, Accounts, [Manage]
     final int historyIdx = isWaiter ? 0 : 1;
-    final int cameraIdx = isWaiter ? 1 : 2;
     final int accountsIdx = isWaiter ? 2 : 3;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
         color: TwColors.slate900,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(32),
-        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -109,14 +121,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         children: [
           Icon(
             icon,
-            color: isActive ? TwColors.brightGreen : TwColors.white.withOpacity(0.5),
+            color: isActive
+                ? TwColors.brightGreen
+                : TwColors.white.withOpacity(0.5),
             size: 28,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isActive ? TwColors.brightGreen : TwColors.white.withOpacity(0.5),
+              color: isActive
+                  ? TwColors.brightGreen
+                  : TwColors.white.withOpacity(0.5),
               fontSize: 12,
               fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
             ),
@@ -126,26 +142,71 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  void _maybeShowInitialPlanSheet() {
+    if (!mounted || _initialPlanCheckDone || _planSheetOpen) return;
+    final authState = ref.read(authNotifierProvider);
+    if (!authState.isAuthenticated || authState.role == UserRole.unknown) {
+      return;
+    }
+    _initialPlanCheckDone = true;
+    if (authState.role != UserRole.owner || authState.subscription != null) {
+      return;
+    }
+    _showPlanSheet(requireSelection: true);
+  }
+
   void _handleCameraTap(int cameraIdx) {
     if (!mounted) return;
+    final subscription = ref.read(authNotifierProvider).subscription;
+    if (subscription != null &&
+        subscription.isActive &&
+        !subscription.isQuotaExceeded) {
+      _switchTab(cameraIdx);
+      return;
+    }
+    _showPlanSheet(cameraIdx: cameraIdx, requireSelection: false);
+  }
+
+  Future<void> _showPlanSheet({
+    required bool requireSelection,
+    bool startOnPlanList = false,
+    int? cameraIdx,
+  }) async {
+    if (_planSheetOpen || !mounted) return;
+    _planSheetOpen = true;
     final container = ProviderScope.containerOf(context);
-    showModalBottomSheet<bool>(
+    final canOpenCamera = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       useRootNavigator: true,
+      isDismissible: !requireSelection,
+      enableDrag: !requireSelection,
       builder: (_) => ProviderScope(
         parent: container,
-        child: const SubscriptionSheet(),
+        child: SubscriptionSheet(
+          requireSelection: requireSelection,
+          startOnPlanList: startOnPlanList,
+        ),
       ),
-    ).then((canOpenCamera) {
-      ref.read(authNotifierProvider.notifier).refreshSubscription();
-      if (canOpenCamera == true && mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _switchTab(cameraIdx);
-        });
-      }
-    });
+    );
+    _planSheetOpen = false;
+    if (!mounted) return;
+
+    await ref.read(authNotifierProvider.notifier).refreshSubscription();
+    if (requireSelection &&
+        ref.read(authNotifierProvider).subscription == null) {
+      _initialPlanCheckDone = false;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _maybeShowInitialPlanSheet(),
+      );
+      return;
+    }
+    if (canOpenCamera == true && cameraIdx != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _switchTab(cameraIdx);
+      });
+    }
   }
 
   Widget _buildCameraButton(int cameraIdx) {

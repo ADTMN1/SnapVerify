@@ -296,7 +296,7 @@ model SubscriptionCheckout {
   currency        String          @default("ETB")
   provider        PaymentProvider @default(TELEBIRR)
   reference       String          @unique
-  vendorReference String?
+  vendorReference String?         @unique
   status          CheckoutStatus  @default(PENDING)
   expiresAt       DateTime
   paidAt          DateTime?
@@ -306,6 +306,19 @@ model SubscriptionCheckout {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("subscription_checkouts")
+}
+
+model PaymentReceiptUsage {
+  id                  String          @id @default(uuid())
+  provider            PaymentProvider
+  normalizedReference String
+  source              String
+  organizationId      String?
+  checkoutId          String?
+  createdAt           DateTime        @default(now())
+
+  @@unique([provider, normalizedReference])
+  @@map("payment_receipt_usages")
 }
 
 model PlatformPaymentAccount {

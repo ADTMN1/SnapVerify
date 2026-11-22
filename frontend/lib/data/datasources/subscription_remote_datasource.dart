@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import '../../core/constants/app_constants.dart';
 import '../../domain/entities/subscription_checkout.dart';
 import '../../domain/entities/subscription_plan.dart';
@@ -14,9 +17,9 @@ class SubscriptionRemoteDatasource {
   static const Duration _timeout = Duration(seconds: 150);
 
   Map<String, String> _headers(String accessToken) => {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      };
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $accessToken',
+  };
 
   Future<dynamic> _request(
     String method,
@@ -56,7 +59,9 @@ class SubscriptionRemoteDatasource {
     final data = await _request('GET', '/subscriptions/plans', accessToken);
     final list = (data as List<dynamic>?) ?? const <dynamic>[];
     return list
-        .map((item) => SubscriptionPlan.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => SubscriptionPlan.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList();
   }
 
@@ -107,6 +112,69 @@ class SubscriptionRemoteDatasource {
       body: {'referenceNumber': referenceNumber.trim()},
     );
     return true;
+  }
+
+  Future<bool> verifyCheckoutByImage(
+    String accessToken,
+    String checkoutId,
+    Uint8List imageBytes, {
+    String mimeType = 'image/jpeg',
+    String? ocrText,
+  }) async {
+    final uri = Uri.parse(
+      '${AppConstants.baseUrl}/subscriptions/checkout/$checkoutId/verify-image',
+    );
+    final compressed = await _compress(imageBytes);
+    final parts = mimeType.split('/');
+    final contentType = parts.length == 2
+        ? MediaType(parts[0], parts[1])
+        : MediaType('image', 'jpeg');
+
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer $accessToken'
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          compressed,
+          filename: 'receipt.jpg',
+          contentType: contentType,
+        ),
+      );
+    if (ocrText != null && ocrText.trim().isNotEmpty) {
+      request.fields['receiptText'] = ocrText;
+    }
+
+    late final http.Response response;
+    try {
+      final streamed = await request.send().timeout(_timeout);
+      response = await http.Response.fromStream(streamed);
+    } catch (e) {
+      throw ApiException('Could not reach the server. Check your connection.');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        _errorMessage(decoded, response.statusCode),
+        statusCode: response.statusCode,
+      );
+    }
+    return true;
+  }
+
+  Future<Uint8List> _compress(Uint8List bytes) async {
+    try {
+      final compressed = await FlutterImageCompress.compressWithList(
+        bytes,
+        minWidth: 1280,
+        minHeight: 1280,
+        quality: 80,
+        format: CompressFormat.jpeg,
+      );
+      return compressed.isEmpty ? bytes : Uint8List.fromList(compressed);
+    } catch (_) {
+      return bytes;
+    }
   }
 
   String _errorMessage(dynamic decoded, int statusCode) {

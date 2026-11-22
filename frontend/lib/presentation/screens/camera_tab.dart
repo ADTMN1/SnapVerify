@@ -6,33 +6,50 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/tailwind.dart';
 import '../../core/utils/ocr_parser.dart';
 import '../../core/utils/toast_service.dart';
 import '../../domain/entities/verification_result.dart';
 import '../../domain/entities/payment_account.dart';
 import '../providers/payment_provider.dart';
+import '../widgets/sv_loader.dart';
 
 class CameraTab extends ConsumerStatefulWidget {
-  const CameraTab({super.key});
+  const CameraTab({super.key, this.isActive = true});
+
+  final bool isActive;
 
   @override
   ConsumerState<CameraTab> createState() => _CameraTabState();
 }
 
 class _CameraTabState extends ConsumerState<CameraTab> {
+  static const _cameraPermissionAskedKey = 'snapverify.camera_permission_asked';
+
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
   bool _initialized = false;
   bool _torchOn = false;
   bool _processing = false;
+  bool _checkingPermission = false;
   String? _initError;
-  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  final TextRecognizer _textRecognizer = TextRecognizer(
+    script: TextRecognitionScript.latin,
+  );
 
   @override
   void initState() {
     super.initState();
-    _initCamera();
+    if (widget.isActive) _initCamera();
+  }
+
+  @override
+  void didUpdateWidget(covariant CameraTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive && !_initialized) {
+      _initCamera();
+    }
   }
 
   @override
@@ -43,20 +60,32 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   }
 
   Future<void> _initCamera() async {
+    if (_checkingPermission || _initialized) return;
+    _checkingPermission = true;
     debugPrint('[CameraTab] Initializing camera...');
     try {
-      debugPrint('[CameraTab] Requesting camera permission...');
-      final status = await Permission.camera.request();
+      final prefs = await SharedPreferences.getInstance();
+      PermissionStatus status = await Permission.camera.status;
+      final askedBefore = prefs.getBool(_cameraPermissionAskedKey) ?? false;
+
       if (!status.isGranted) {
-        debugPrint('[CameraTab] Camera permission denied!');
-        if (mounted) setState(() => _initError = 'Camera permission is required');
+        if (askedBefore) {
+          _setPermissionError(status);
+          return;
+        }
+        await prefs.setBool(_cameraPermissionAskedKey, true);
+        status = await Permission.camera.request();
+      }
+      if (!status.isGranted) {
+        _setPermissionError(status);
         return;
       }
 
       _cameras = await availableCameras();
       if (_cameras.isEmpty) {
         debugPrint('[CameraTab] No cameras found');
-        if (mounted) setState(() => _initError = 'No camera found on this device');
+        if (mounted)
+          setState(() => _initError = 'No camera found on this device');
         return;
       }
 
@@ -85,7 +114,25 @@ class _CameraTabState extends ConsumerState<CameraTab> {
       debugPrint('[CameraTab] Camera initialization error: $e');
       debugPrint('[CameraTab] Stack trace: $stackTrace');
       if (mounted) setState(() => _initError = 'Camera error: $e');
+    } finally {
+      _checkingPermission = false;
     }
+  }
+
+  void _setPermissionError(PermissionStatus status) {
+    final permanent = status.isPermanentlyDenied;
+    if (mounted) {
+      setState(() {
+        _initError = permanent
+            ? 'Camera access is blocked. Open app settings to allow it.'
+            : 'Camera permission is needed to scan receipts. Open app settings to allow it.';
+      });
+    }
+  }
+
+  Future<void> _openCameraSettings() async {
+    await openAppSettings();
+    if (mounted) _initCamera();
   }
 
   Future<void> _captureAndProcess() async {
@@ -102,18 +149,26 @@ class _CameraTabState extends ConsumerState<CameraTab> {
 
       final inputImage = InputImage.fromFilePath(imageFile.path);
       debugPrint('[CameraTab] Starting OCR processing...');
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+      final RecognizedText recognizedText = await _textRecognizer.processImage(
+        inputImage,
+      );
       final ocrText = recognizedText.text;
-      debugPrint('[CameraTab] OCR complete in ${sw.elapsedMilliseconds}ms. Text length: ${ocrText.length}');
+      debugPrint(
+        '[CameraTab] OCR complete in ${sw.elapsedMilliseconds}ms. Text length: ${ocrText.length}',
+      );
       if (ocrText.isNotEmpty) {
         // Sanitized diagnostics: digit runs of 4+ are masked so payer names,
         // account/phone numbers and full references never reach the logs.
-        debugPrint('[CameraTab] OCR Text (sanitized): '
-            '${ocrText.replaceAll('\n', ' | ').replaceAll(RegExp(r'\d{4,}'), '####')}');
+        debugPrint(
+          '[CameraTab] OCR Text (sanitized): '
+          '${ocrText.replaceAll('\n', ' | ').replaceAll(RegExp(r'\d{4,}'), '####')}',
+        );
       }
 
       final transaction = OcrParser.extractTransaction(recognizedText);
-      debugPrint('[CameraTab] Extracted transaction at ${sw.elapsedMilliseconds}ms: ref=${OcrParser.maskReference(transaction?.referenceId)}, suffix=${transaction?.suffix == null ? null : 'present'}, amount=${transaction?.amount}, provider=${transaction?.provider}');
+      debugPrint(
+        '[CameraTab] Extracted transaction at ${sw.elapsedMilliseconds}ms: ref=${OcrParser.maskReference(transaction?.referenceId)}, suffix=${transaction?.suffix == null ? null : 'present'}, amount=${transaction?.amount}, provider=${transaction?.provider}',
+      );
 
       if (!mounted) return;
       if (transaction != null) {
@@ -128,7 +183,9 @@ class _CameraTabState extends ConsumerState<CameraTab> {
         }
         if (!mounted) return;
         ref.read(paymentProvider.notifier).reset();
-        ref.read(paymentProvider.notifier).verifyReference(
+        ref
+            .read(paymentProvider.notifier)
+            .verifyReference(
               transaction.referenceId,
               amount: transaction.amount,
               provider: selected.name,
@@ -355,10 +412,14 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: _initError != null
-          ? _ErrorView(message: _initError!, onRetry: _initCamera)
+          ? _ErrorView(
+              message: _initError!,
+              onRetry: _initCamera,
+              onOpenSettings: _openCameraSettings,
+            )
           : !_initialized
-              ? const Center(child: CircularProgressIndicator(color: TwColors.brightGreen))
-              : _buildScanner(),
+          ? const Center(child: SvLoader.page())
+          : _buildScanner(),
     );
   }
 
@@ -390,7 +451,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(color: TwColors.brightGreen),
+                    SvLoader.page(),
                     SizedBox(height: 16),
                     Text(
                       'Reading receipt…',
@@ -406,57 +467,84 @@ class _CameraTabState extends ConsumerState<CameraTab> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [TwColors.brightGreen, TwColors.lime400],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                    Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [TwColors.brightGreen, TwColors.lime400],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          borderRadius: BorderRadius.circular(10),
+                          child: const Icon(
+                            Icons.verified_rounded,
+                            color: Colors.black,
+                            size: 18,
+                          ),
                         ),
-                        child: const Icon(Icons.verified_rounded, color: Colors.black, size: 18),
-                      ),
-                      const SizedBox(width: 10),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SnapVerify',
-                            style: TextStyle(color: TwColors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5),
-                          ),
-                          Text(
-                            'Capture receipt to verify',
-                            style: TextStyle(color: TwColors.slate400, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ]),
+                        const SizedBox(width: 10),
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'SnapVerify',
+                              style: TextStyle(
+                                color: TwColors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            Text(
+                              'Capture receipt to verify',
+                              style: TextStyle(
+                                color: TwColors.slate400,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                     GestureDetector(
                       onTap: () async {
-                        await ctrl.setFlashMode(_torchOn ? FlashMode.off : FlashMode.torch);
+                        await ctrl.setFlashMode(
+                          _torchOn ? FlashMode.off : FlashMode.torch,
+                        );
                         setState(() => _torchOn = !_torchOn);
                       },
                       child: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: _torchOn ? TwColors.brightGreen.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+                          color: _torchOn
+                              ? TwColors.brightGreen.withOpacity(0.2)
+                              : Colors.white.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _torchOn ? TwColors.brightGreen.withOpacity(0.5) : Colors.white.withOpacity(0.15),
+                            color: _torchOn
+                                ? TwColors.brightGreen.withOpacity(0.5)
+                                : Colors.white.withOpacity(0.15),
                             width: 1,
                           ),
                         ),
                         child: Icon(
-                          _torchOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
-                          color: _torchOn ? TwColors.brightGreen : TwColors.white,
+                          _torchOn
+                              ? Icons.flashlight_on_rounded
+                              : Icons.flashlight_off_rounded,
+                          color: _torchOn
+                              ? TwColors.brightGreen
+                              : TwColors.white,
                           size: 20,
                         ),
                       ),
@@ -468,7 +556,10 @@ class _CameraTabState extends ConsumerState<CameraTab> {
               const Spacer(),
 
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 32,
+                ),
                 child: GestureDetector(
                   onTap: _processing ? null : _captureAndProcess,
                   child: Container(
@@ -505,8 +596,13 @@ class _CameraTabState extends ConsumerState<CameraTab> {
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
+  final VoidCallback onOpenSettings;
 
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+    required this.onOpenSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -523,21 +619,42 @@ class _ErrorView extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: TwColors.red500.withOpacity(0.3)),
               ),
-              child: const Icon(Icons.no_photography_rounded, color: TwColors.red500, size: 40),
+              child: const Icon(
+                Icons.no_photography_rounded,
+                color: TwColors.red500,
+                size: 40,
+              ),
             ),
             const SizedBox(height: 20),
-            Text(message,
-                style: TextStyle(color: TwColors.white.withOpacity(0.7), fontSize: 14),
-                textAlign: TextAlign.center),
+            Text(
+              message,
+              style: TextStyle(
+                color: TwColors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(
                 backgroundColor: TwColors.brightGreen,
                 foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Retry',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: onOpenSettings,
+              icon: const Icon(Icons.settings_rounded, size: 16),
+              label: const Text('Open Settings'),
+              style: TextButton.styleFrom(foregroundColor: TwColors.slate300),
             ),
           ],
         ),
@@ -577,7 +694,8 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
       statusColor = TwColors.amber500;
       statusIcon = Icons.cloud_off_rounded;
       statusTitle = 'Verification Unavailable';
-      statusSubtitle = state.errorMessage ??
+      statusSubtitle =
+          state.errorMessage ??
           'Verification service is temporarily unavailable. Please try again in a few minutes.';
     } else if (state.result != null) {
       switch (state.result!.status) {
@@ -593,56 +711,71 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           statusColor = TwColors.amber500;
           statusIcon = Icons.warning_amber_rounded;
           statusTitle = 'Already Used';
-          statusSubtitle = state.result!.message ??
-              'This payment has already been verified';
+          statusSubtitle =
+              state.result!.message ?? 'This payment has already been verified';
+          break;
+        case VerificationStatus.needsReview:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.rate_review_rounded;
+          statusTitle = 'Needs Review';
+          statusSubtitle = state.result!.message.isNotEmpty
+              ? state.result!.message
+              : 'This receipt needs manual review. Contact support with your receipt.';
           break;
         case VerificationStatus.failed:
           statusColor = TwColors.red500;
           statusIcon = Icons.cancel_rounded;
           statusTitle = 'Verification Failed';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'Unable to verify payment. Please check the details and try again.';
           break;
         case VerificationStatus.providerUnavailable:
           statusColor = TwColors.amber500;
           statusIcon = Icons.cloud_off_rounded;
           statusTitle = 'Provider Unavailable';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'Verification service is temporarily unavailable. Please try again in a few minutes.';
           break;
         case VerificationStatus.quotaExhausted:
           statusColor = TwColors.amber500;
           statusIcon = Icons.report_problem_rounded;
           statusTitle = 'Verification Quota Exhausted';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'Verification quota exhausted. Please contact your administrator.';
           break;
         case VerificationStatus.providerConfigError:
           statusColor = TwColors.amber500;
           statusIcon = Icons.settings_suggest_rounded;
           statusTitle = 'Verification Misconfigured';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'Payment verification is temporarily misconfigured. Please contact your administrator.';
           break;
         case VerificationStatus.paymentAccountNotConfigured:
           statusColor = TwColors.amber500;
           statusIcon = Icons.account_balance_wallet_outlined;
           statusTitle = 'Payment Account Not Configured';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'No receiving account is configured for this payment provider. Add it in settings, or verify against your registered bank account.';
           break;
         case VerificationStatus.providerUndetected:
           statusColor = TwColors.amber500;
           statusIcon = Icons.help_outline_rounded;
           statusTitle = 'Provider Not Detected';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'Could not determine the payment provider from this receipt. Please select the provider and try again.';
           break;
         case VerificationStatus.unsupportedProvider:
           statusColor = TwColors.amber500;
           statusIcon = Icons.block_rounded;
           statusTitle = 'Unsupported Provider';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'The selected payment provider is not supported.';
           break;
         case VerificationStatus.pending:
@@ -651,7 +784,8 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           statusColor = TwColors.sky500;
           statusIcon = Icons.hourglass_top_rounded;
           statusTitle = 'Pending Verification';
-          statusSubtitle = state.result!.message ??
+          statusSubtitle =
+              state.result!.message ??
               'Verification result could not be determined. Please check the history tab.';
           break;
       }
@@ -667,23 +801,27 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
         color: TwColors.primaryBg,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.of(context).padding.bottom),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        16,
+        24,
+        24 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: TwColors.slate600, borderRadius: BorderRadius.circular(2))),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: TwColors.slate600,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
           const SizedBox(height: 28),
 
           if (isLoading)
-            const Column(
-              children: [
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: CircularProgressIndicator(color: TwColors.brightGreen, strokeWidth: 3),
-                ),
-              ],
-            )
+            const SvLoader.large()
           else
             Container(
               width: 74,
@@ -691,19 +829,34 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               decoration: BoxDecoration(
                 color: statusColor.withOpacity(0.12),
                 shape: BoxShape.circle,
-                border: Border.all(color: statusColor.withOpacity(0.35), width: 2),
+                border: Border.all(
+                  color: statusColor.withOpacity(0.35),
+                  width: 2,
+                ),
               ),
               child: Icon(statusIcon, color: statusColor, size: 36),
             ),
 
           const SizedBox(height: 16),
-          Text(statusTitle, style: TextStyle(color: statusColor, fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(
+            statusTitle,
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           if (statusSubtitle.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text(statusSubtitle,
-                  style: TextStyle(color: TwColors.white.withOpacity(0.55), fontSize: 13),
-                  textAlign: TextAlign.center),
+              child: Text(
+                statusSubtitle,
+                style: TextStyle(
+                  color: TwColors.white.withOpacity(0.55),
+                  fontSize: 13,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
 
           if (state.result != null && state.result!.transactionId.isNotEmpty)
@@ -729,7 +882,8 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                         padding: const EdgeInsets.only(top: 8),
                         child: _DetailRow(
                           label: 'Verified Amount',
-                          value: '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
+                          value:
+                              '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
                           valueColor: TwColors.brightGreen,
                         ),
                       ),
@@ -749,10 +903,15 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: TwColors.brightGreen,
                   foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   elevation: 0,
                 ),
-                child: const Text('Scan Again', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                child: const Text(
+                  'Scan Again',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
               ),
             ),
         ],
@@ -773,8 +932,13 @@ class _DetailRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: TextStyle(color: TwColors.white.withOpacity(0.45), fontSize: 13)),
+        Text(
+          label,
+          style: TextStyle(
+            color: TwColors.white.withOpacity(0.45),
+            fontSize: 13,
+          ),
+        ),
         Flexible(
           child: Text(
             value,
@@ -791,4 +955,3 @@ class _DetailRow extends StatelessWidget {
     );
   }
 }
-

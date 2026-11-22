@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/tailwind.dart';
 import '../../../core/utils/toast_service.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sv_loader.dart';
 
 /// Staff activation — QR invitation flow.
 ///
@@ -50,13 +51,12 @@ class _ActivateInvitationScreenState
   void dispose() {
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
-      super.dispose();
+    super.dispose();
   }
 
   Future<void> _checkToken(String rawToken) async {
     // Accept both the raw token and the full deep link from the QR.
-    final match =
-        RegExp(r'token=([A-Za-z0-9]+)').firstMatch(rawToken);
+    final match = RegExp(r'token=([A-Za-z0-9]+)').firstMatch(rawToken);
     final token = match?.group(1) ?? rawToken.trim();
 
     setState(() {
@@ -89,7 +89,10 @@ class _ActivateInvitationScreenState
       });
     } catch (e) {
       setState(() {
-        _error = e.toString().replaceFirst(RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'), '');
+        _error = e.toString().replaceFirst(
+          RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'),
+          '',
+        );
         _checking = false;
       });
     }
@@ -134,7 +137,10 @@ class _ActivateInvitationScreenState
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst(RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'), '');
+          _error = e.toString().replaceFirst(
+            RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'),
+            '',
+          );
           _activating = false;
         });
       }
@@ -157,7 +163,7 @@ class _ActivateInvitationScreenState
 
   Widget _buildBody() {
     if (_checking) {
-      return const Center(child: CircularProgressIndicator(color: TwColors.brightGreen));
+      return const Center(child: SvLoader.page());
     }
     if (_step == 0) return _buildScanStep();
     if (_step == 1) return _buildDetailsStep();
@@ -237,7 +243,11 @@ class _ActivateInvitationScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.badge_outlined, color: TwColors.brightGreen, size: 56),
+          const Icon(
+            Icons.badge_outlined,
+            color: TwColors.brightGreen,
+            size: 56,
+          ),
           const SizedBox(height: 16),
           Text(
             'You have been invited to join ${org?['name'] ?? 'the business'}',
@@ -286,7 +296,11 @@ class _ActivateInvitationScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.lock_outline_rounded, color: TwColors.brightGreen, size: 48),
+            const Icon(
+              Icons.lock_outline_rounded,
+              color: TwColors.brightGreen,
+              size: 48,
+            ),
             const SizedBox(height: 12),
             const Text(
               'Create your password',
@@ -307,21 +321,35 @@ class _ActivateInvitationScreenState
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            _passwordField(_passwordCtrl, 'Password', _obscurePassword, () {
-              setState(() => _obscurePassword = !_obscurePassword);
-            }, (v) {
-              if (v == null || v.isEmpty) return 'Password is required.';
-              if (v.length < 8) return 'Password must be at least 8 characters.';
-              return null;
-            }),
+            _passwordField(
+              _passwordCtrl,
+              'Password',
+              _obscurePassword,
+              () {
+                setState(() => _obscurePassword = !_obscurePassword);
+              },
+              (v) {
+                if (v == null || v.isEmpty) return 'Password is required.';
+                if (v.length < 8)
+                  return 'Password must be at least 8 characters.';
+                return null;
+              },
+            ),
             const SizedBox(height: 16),
-            _passwordField(_confirmCtrl, 'Confirm password', _obscureConfirm, () {
-              setState(() => _obscureConfirm = !_obscureConfirm);
-            }, (v) {
-              if (v == null || v.isEmpty) return 'Please confirm your password.';
-              if (v != _passwordCtrl.text) return 'Passwords do not match.';
-              return null;
-            }),
+            _passwordField(
+              _confirmCtrl,
+              'Confirm password',
+              _obscureConfirm,
+              () {
+                setState(() => _obscureConfirm = !_obscureConfirm);
+              },
+              (v) {
+                if (v == null || v.isEmpty)
+                  return 'Please confirm your password.';
+                if (v != _passwordCtrl.text) return 'Passwords do not match.';
+                return null;
+              },
+            ),
             if (_error != null) ...[
               const SizedBox(height: 14),
               Text(
@@ -363,34 +391,36 @@ class _ActivateInvitationScreenState
             ),
           ),
           const SizedBox(height: 10),
-          ...rows.map((row) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(
-                        row.$1,
-                        style: TextStyle(
-                          color: TwColors.white.withValues(alpha: 0.55),
-                          fontSize: 13,
-                        ),
+          ...rows.map(
+            (row) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 92,
+                    child: Text(
+                      row.$1,
+                      style: TextStyle(
+                        color: TwColors.white.withValues(alpha: 0.55),
+                        fontSize: 13,
                       ),
                     ),
-                    Expanded(
-                      child: Text(
-                        row.$2,
-                        style: const TextStyle(
-                          color: TwColors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$2,
+                      style: const TextStyle(
+                        color: TwColors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -413,7 +443,10 @@ class _ActivateInvitationScreenState
         labelStyle: TextStyle(color: TwColors.white.withValues(alpha: 0.6)),
         filled: true,
         fillColor: Colors.black,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: TwColors.slate700),
@@ -471,16 +504,11 @@ class _PrimaryButton extends StatelessWidget {
         elevation: 0,
       ),
       child: loading
-          ? const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(
-                color: TwColors.primaryBg,
-                strokeWidth: 2,
-              ),
-            )
-          : Text(label,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ? const SvLoader.button()
+          : Text(
+              label,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
     );
   }
 }

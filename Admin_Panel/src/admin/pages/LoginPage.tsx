@@ -27,6 +27,10 @@ export default function LoginPage() {
     }
   }
 
+  function handleForgotPassword() {
+    navigate('/forgot-password');
+  }
+
   return (
     <div className="min-h-screen bg-app flex items-center justify-center p-4">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -75,7 +79,16 @@ export default function LoginPage() {
 
             {/* Password */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-slate-300 text-sm font-medium">Password</label>
+              <div className="flex justify-between items-center">
+                <label className="text-slate-300 text-sm font-medium">Password</label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-xs text-[#B8FF3B] hover:underline transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
               <div className="relative">
                 <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                 <input

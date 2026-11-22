@@ -9,6 +9,7 @@ import {
   Req,
   HttpStatus,
 } from '@nestjs/common';
+import { Public } from '../../auth/decorators/public.decorator';
 import type { Request } from 'express';
 import type { AdminAuthContext } from '../interfaces/admin-jwt-payload.interface';
 import { AdminAuthService } from '../services/admin-auth.service';
@@ -19,6 +20,8 @@ import {
   AdminChangePasswordDto,
   AdminRefreshTokenDto,
   AdminLogoutDto,
+  AdminForgotPasswordDto,
+  AdminResetPasswordDto,
 } from '../dto/admin-login.dto';
 
 @Controller('api/admin/auth')
@@ -38,6 +41,24 @@ export class AdminAuthController {
       dto.password,
       ipAddress,
       userAgent,
+    );
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() dto: AdminForgotPasswordDto) {
+    return this.adminAuthService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: AdminResetPasswordDto) {
+    return this.adminAuthService.resetPassword(
+      dto.email,
+      dto.otpCode,
+      dto.newPassword,
     );
   }
 

@@ -4,10 +4,18 @@ import '../../core/tailwind.dart';
 import '../../domain/entities/subscription.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/sv_loader.dart';
 import 'payment_page.dart';
 
 class SubscriptionSheet extends ConsumerStatefulWidget {
-  const SubscriptionSheet({super.key});
+  const SubscriptionSheet({
+    super.key,
+    this.requireSelection = false,
+    this.startOnPlanList = false,
+  });
+
+  final bool requireSelection;
+  final bool startOnPlanList;
 
   @override
   ConsumerState<SubscriptionSheet> createState() => _SubscriptionSheetState();
@@ -19,9 +27,11 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
   @override
   void initState() {
     super.initState();
+    _showPlans = widget.startOnPlanList;
     ref.read(subscriptionCheckoutProvider.notifier).reset();
     final subscription = ref.read(authNotifierProvider).subscription;
-    if (subscription != null &&
+    if (!widget.startOnPlanList &&
+        subscription != null &&
         subscription.isActive &&
         !subscription.isQuotaExceeded) {
       return;
@@ -49,8 +59,7 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
     }
 
     await notifier.startCheckout(planId);
-    if (!mounted ||
-        ref.read(subscriptionCheckoutProvider).checkout == null) {
+    if (!mounted || ref.read(subscriptionCheckoutProvider).checkout == null) {
       return;
     }
 
@@ -61,7 +70,12 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
     if (!mounted) return;
 
     notifier.reset();
-    if (paid == true) Navigator.of(context).pop(true);
+    if (paid == true) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    await notifier.loadPlans();
   }
 
   @override
@@ -71,6 +85,15 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
     final checkoutState = ref.watch(subscriptionCheckoutProvider);
     final isActive = subscription?.isActive ?? false;
     final canUseCamera = isActive && !(subscription?.isQuotaExceeded ?? false);
+    final title = widget.startOnPlanList
+        ? 'Change plan'
+        : widget.requireSelection
+        ? 'Choose your plan'
+        : canUseCamera
+        ? 'Plan active'
+        : subscription?.isQuotaExceeded ?? false
+        ? 'Limit reached'
+        : 'Choose a plan';
 
     return Container(
       decoration: const BoxDecoration(
@@ -81,7 +104,9 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
         24,
         16,
         24,
-        24 + MediaQuery.viewInsetsOf(context).bottom + MediaQuery.of(context).padding.bottom,
+        24 +
+            MediaQuery.viewInsetsOf(context).bottom +
+            MediaQuery.of(context).padding.bottom,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -102,11 +127,7 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
             Row(
               children: [
                 Text(
-                  canUseCamera
-                      ? 'Plan active'
-                      : subscription?.isQuotaExceeded ?? false
-                          ? 'Limit reached'
-                          : 'Choose a plan',
+                  title,
                   style: const TextStyle(
                     color: TwColors.white,
                     fontSize: 19,
@@ -117,18 +138,25 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
                 if (canUseCamera)
                   const Padding(
                     padding: EdgeInsets.only(right: 6),
-                    child: Icon(Icons.check_circle_rounded,
-                        color: TwColors.brightGreen, size: 18),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      color: TwColors.brightGreen,
+                      size: 18,
+                    ),
                   ),
-                InkWell(
-                  onTap: () => Navigator.of(context).pop(false),
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(Icons.close_rounded,
-                        size: 18, color: TwColors.slate400),
+                if (!widget.requireSelection)
+                  InkWell(
+                    onTap: () => Navigator.of(context).pop(false),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: TwColors.slate400,
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -136,12 +164,9 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
               canUseCamera
                   ? subscription!.verificationSummary
                   : subscription?.isQuotaExceeded ?? false
-                      ? 'Upgrade to continue verifying.'
-                      : 'Simple plans. Pay with Telebirr.',
-              style: TextStyle(
-                color: TwColors.slate400,
-                fontSize: 12.5,
-              ),
+                  ? 'Upgrade to continue verifying.'
+                  : 'Simple plans. Pay with Telebirr.',
+              style: TextStyle(color: TwColors.slate400, fontSize: 12.5),
             ),
             if (subscription != null) ...[
               const SizedBox(height: 14),
@@ -173,7 +198,8 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
                     icon: const Icon(Icons.swap_horiz_rounded, size: 16),
                     label: const Text('Change Plan'),
                     style: TextButton.styleFrom(
-                        foregroundColor: TwColors.slate300),
+                      foregroundColor: TwColors.slate300,
+                    ),
                   ),
                 ],
               )
@@ -232,8 +258,11 @@ class _CurrentPlanChip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.workspace_premium_rounded,
-              size: 16, color: TwColors.brightGreen),
+          const Icon(
+            Icons.workspace_premium_rounded,
+            size: 16,
+            color: TwColors.brightGreen,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -247,10 +276,7 @@ class _CurrentPlanChip extends StatelessWidget {
           ),
           Text(
             summary,
-            style: const TextStyle(
-              color: TwColors.slate300,
-              fontSize: 12.5,
-            ),
+            style: const TextStyle(color: TwColors.slate300, fontSize: 12.5),
           ),
         ],
       ),
@@ -280,7 +306,7 @@ class _PlanSelection extends StatelessWidget {
     if (state.isLoading && state.plans.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
-        child: Center(child: CircularProgressIndicator(color: TwColors.brightGreen)),
+        child: Center(child: SvLoader.page()),
       );
     }
 
@@ -307,7 +333,9 @@ class _PlanSelection extends StatelessWidget {
             decoration: BoxDecoration(
               color: TwColors.amber400.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: TwColors.amber400.withValues(alpha: 0.35)),
+              border: Border.all(
+                color: TwColors.amber400.withValues(alpha: 0.35),
+              ),
             ),
             child: const Text(
               'Only the owner can change plans.',

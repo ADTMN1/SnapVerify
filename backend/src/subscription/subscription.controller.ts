@@ -1,12 +1,16 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -76,6 +80,38 @@ export class SubscriptionController {
       req.user.organizationId,
       id,
       dto.referenceNumber,
+    );
+  }
+
+  @Post('checkout/:id/verify-image')
+  @Roles(Role.OWNER)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          cb(new BadRequestException('Please upload an image file.'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  verifyCheckoutByImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('receiptText') receiptText: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Please select a screenshot to upload.');
+    }
+    return this.subscriptionService.verifyCheckoutByImage(
+      req.user.sub,
+      req.user.organizationId,
+      id,
+      file,
+      receiptText,
     );
   }
 }

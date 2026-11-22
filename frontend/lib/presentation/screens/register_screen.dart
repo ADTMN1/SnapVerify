@@ -5,6 +5,7 @@ import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sv_loader.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -98,15 +99,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       ),
     );
 
-    _logoSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
+    _logoSlideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // Focus listeners
     _setupFocusListeners();
@@ -191,7 +190,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       setState(() => _passwordFocused = _passwordFocusNode.hasFocus);
     });
     _confirmPasswordFocusNode.addListener(() {
-      setState(() => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus);
+      setState(
+        () => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus,
+      );
     });
   }
 
@@ -265,7 +266,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       return;
     }
     if (password.length < 8) {
-      setState(() => _passwordError = 'Password must be at least 8 characters.');
+      setState(
+        () => _passwordError = 'Password must be at least 8 characters.',
+      );
       return;
     }
 
@@ -279,15 +282,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       return;
     }
 
-    final ok = await ref.read(authNotifierProvider.notifier).register(
-      name: businessName,
-      fullName: fullName,
-      email: email,
-      password: password,
-      confirmPassword: confirmPassword,
-      type: _selectedBusinessType,
-      city: city,
-    );
+    final ok = await ref
+        .read(authNotifierProvider.notifier)
+        .register(
+          name: businessName,
+          fullName: fullName,
+          email: email,
+          password: password,
+          confirmPassword: confirmPassword,
+          type: _selectedBusinessType,
+          city: city,
+        );
 
     if (ok && mounted) {
       setState(() {
@@ -323,10 +328,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       return;
     }
 
-    await ref.read(authNotifierProvider.notifier).verifyEmail(
-      email: _registeredEmail,
-      otpCode: otp,
-    );
+    await ref
+        .read(authNotifierProvider.notifier)
+        .verifyEmail(email: _registeredEmail, otpCode: otp);
   }
 
   Future<void> _resendOtp() async {
@@ -337,8 +341,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         'This email is already verified. Please log in instead.',
       );
       // Navigate to login: clear the register stack
-      Navigator.of(context, rootNavigator: true)
-          .popUntil((route) => route.isFirst);
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).popUntil((route) => route.isFirst);
       return;
     }
     final authState = ref.read(authNotifierProvider);
@@ -473,10 +479,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
   Widget _buildAnimatedLogo() {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _logoScaleAnimation,
-        _logoSlideAnimation,
-      ]),
+      animation: Listenable.merge([_logoScaleAnimation, _logoSlideAnimation]),
       builder: (context, child) {
         return Transform.translate(
           offset: _logoSlideAnimation.value,
@@ -558,9 +561,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           child: TextButton(
             onPressed: _canResendOtp ? _resendOtp : null,
             child: Text(
-              _canResendOtp
-                  ? 'Resend code'
-                  : 'Resend code ($_resendTimer)',
+              _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
               style: TextStyle(
                 color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
                 fontSize: 14,
@@ -619,7 +620,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         const SizedBox(height: 10),
         Text(
-          _currentStep == 0 ? AppLocalizations.of(context)!.createNewAccount : 'Verify your email',
+          _currentStep == 0
+              ? AppLocalizations.of(context)!.createNewAccount
+              : 'Verify your email',
           style: TextStyle(
             color: TwColors.slate400,
             fontSize: 15,
@@ -736,9 +739,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                 color: _businessTypeError != null
                     ? TwColors.red500
                     : _selectedBusinessType != null
-                        ? TwColors.brightGreen
-                        : TwColors.white.withValues(alpha: 0.08),
-                width: _businessTypeError != null || _selectedBusinessType != null ? 1.5 : 1,
+                    ? TwColors.brightGreen
+                    : TwColors.white.withValues(alpha: 0.08),
+                width:
+                    _businessTypeError != null || _selectedBusinessType != null
+                    ? 1.5
+                    : 1,
               ),
               boxShadow: _selectedBusinessType != null
                   ? [
@@ -746,7 +752,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                         color: TwColors.brightGreen.withValues(alpha: 0.1),
                         blurRadius: 15,
                         offset: const Offset(0, 3),
-                      )
+                      ),
                     ]
                   : [],
             ),
@@ -961,8 +967,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           obscureText: _obscurePassword,
           suffixIcon: IconButton(
             icon: Icon(
-              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: _passwordFocused
+                  ? TwColors.brightGreen
+                  : TwColors.slate400,
               size: 16,
             ),
             onPressed: () {
@@ -1007,7 +1017,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
               _obscureConfirmPassword
                   ? Icons.visibility_off_outlined
                   : Icons.visibility_outlined,
-              color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
+              color: _confirmPasswordFocused
+                  ? TwColors.brightGreen
+                  : TwColors.slate400,
               size: 20,
             ),
             onPressed: () {
@@ -1060,8 +1072,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           color: hasError
               ? TwColors.red500
               : isFocused
-                  ? TwColors.brightGreen
-                  : TwColors.white.withValues(alpha: 0.08),
+              ? TwColors.brightGreen
+              : TwColors.white.withValues(alpha: 0.08),
           width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
@@ -1072,7 +1084,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                       : TwColors.brightGreen.withValues(alpha: 0.1),
                   blurRadius: 12,
                   offset: const Offset(0, 2),
-                )
+                ),
               ]
             : [],
       ),
@@ -1092,7 +1104,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           prefixIcon: Container(
             margin: const EdgeInsets.only(left: 8, right: 6),
             padding: const EdgeInsets.all(8),
@@ -1132,12 +1147,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
   Widget _buildNavigationButtons(AuthState authState) {
     if (authState.status == AuthStatus.loading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: TwColors.brightGreen,
-          strokeWidth: 3,
-        ),
-      );
+      return const Center(child: SvLoader.page());
     }
 
     if (authState.status == AuthStatus.error) {
@@ -1165,9 +1175,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           decoration: BoxDecoration(
             color: TwColors.red500.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: TwColors.red500.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: TwColors.red500.withValues(alpha: 0.3)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1199,7 +1207,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      authState.errorMessage ?? AppLocalizations.of(context)!.anErrorOccurred,
+                      authState.errorMessage ??
+                          AppLocalizations.of(context)!.anErrorOccurred,
                       style: TextStyle(
                         color: TwColors.red500.withValues(alpha: 0.8),
                         fontSize: 13,
@@ -1262,10 +1271,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );

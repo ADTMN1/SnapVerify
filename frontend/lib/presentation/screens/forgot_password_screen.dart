@@ -5,6 +5,7 @@ import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sv_loader.dart';
 import 'login_screen.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
@@ -75,7 +76,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
       setState(() => _passwordFocused = _passwordFocusNode.hasFocus);
     });
     _confirmPasswordFocusNode.addListener(() {
-      setState(() => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus);
+      setState(
+        () => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus,
+      );
     });
   }
 
@@ -133,7 +136,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         _resendTimer = 60;
       });
       _startResendTimer();
-      ToastService.showSuccess('If the account exists, a reset code has been sent.');
+      ToastService.showSuccess(
+        'If the account exists, a reset code has been sent.',
+      );
     }
   }
 
@@ -168,7 +173,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
       return;
     }
     if (password.length < 8) {
-      setState(() => _passwordError = 'Password must be at least 8 characters.');
+      setState(
+        () => _passwordError = 'Password must be at least 8 characters.',
+      );
       return;
     }
 
@@ -182,11 +189,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
       return;
     }
 
-    await ref.read(authNotifierProvider.notifier).resetPassword(
-      email,
-      otp,
-      password,
-    );
+    await ref
+        .read(authNotifierProvider.notifier)
+        .resetPassword(email, otp, password);
 
     final authState = ref.read(authNotifierProvider);
     if (authState.status != AuthStatus.error) {
@@ -326,7 +331,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
               child: Text(
                 _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
                 style: TextStyle(
-                  color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
+                  color: _canResendOtp
+                      ? TwColors.brightGreen
+                      : TwColors.slate400,
                   fontSize: 14,
                   fontWeight: FontWeight.normal,
                 ),
@@ -443,8 +450,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           obscureText: _obscurePassword,
           suffixIcon: IconButton(
             icon: Icon(
-              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: _passwordFocused
+                  ? TwColors.brightGreen
+                  : TwColors.slate400,
               size: 16,
             ),
             onPressed: () {
@@ -488,7 +499,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
               _obscureConfirmPassword
                   ? Icons.visibility_off_outlined
                   : Icons.visibility_outlined,
-              color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
+              color: _confirmPasswordFocused
+                  ? TwColors.brightGreen
+                  : TwColors.slate400,
               size: 20,
             ),
             onPressed: () {
@@ -539,8 +552,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           color: hasError
               ? TwColors.red500
               : isFocused
-                  ? TwColors.brightGreen
-                  : TwColors.white.withOpacity(0.08),
+              ? TwColors.brightGreen
+              : TwColors.white.withOpacity(0.08),
           width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
@@ -551,7 +564,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                       : TwColors.brightGreen.withOpacity(0.1),
                   blurRadius: 12,
                   offset: const Offset(0, 2),
-                )
+                ),
               ]
             : [],
       ),
@@ -568,7 +581,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           prefixIcon: Container(
             margin: const EdgeInsets.only(left: 8, right: 6),
             padding: const EdgeInsets.all(8),
@@ -608,12 +624,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
 
   Widget _buildNavigationButtons(AuthState authState) {
     if (authState.status == AuthStatus.loading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: TwColors.brightGreen,
-          strokeWidth: 3,
-        ),
-      );
+      return const Center(child: SvLoader.page());
     }
 
     if (authState.status == AuthStatus.error) {
@@ -635,9 +646,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
           decoration: BoxDecoration(
             color: TwColors.red500.withOpacity(0.1),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: TwColors.red500.withOpacity(0.3),
-            ),
+            border: Border.all(color: TwColors.red500.withOpacity(0.3)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -669,7 +678,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      authState.errorMessage ?? AppLocalizations.of(context)!.anErrorOccurred,
+                      authState.errorMessage ??
+                          AppLocalizations.of(context)!.anErrorOccurred,
                       style: TextStyle(
                         color: TwColors.red500.withOpacity(0.8),
                         fontSize: 13,
@@ -731,10 +741,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen>
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );

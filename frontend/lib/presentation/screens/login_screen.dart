@@ -5,6 +5,7 @@ import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sv_loader.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'activate_invitation_screen.dart';
@@ -52,8 +53,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Prefill the identifier (and checkbox) from the last "Remember me" login.
   Future<void> _loadRememberedLogin() async {
     try {
-      final remembered =
-          await ref.read(authRepositoryProvider).getRememberedLogin();
+      final remembered = await ref
+          .read(authRepositoryProvider)
+          .getRememberedLogin();
       if (remembered != null && remembered.isNotEmpty && mounted) {
         setState(() {
           _emailController.text = remembered;
@@ -97,8 +99,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // Accept an email address, a staff username, or a phone number — the
     // backend resolves the account (email → username → legacy phone).
     final isEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
-    final isUsername =
-        RegExp(r'^[a-zA-Z0-9._-]{3,30}$').hasMatch(email.trim());
+    final isUsername = RegExp(r'^[a-zA-Z0-9._-]{3,30}$').hasMatch(email.trim());
     final isPhone = RegExp(r'^\+?\d[\d\s-]{6,}$').hasMatch(email.trim());
     if (!isEmail && !isUsername && !isPhone) {
       setState(() => _emailError = 'Enter a valid email, username or phone.');
@@ -109,11 +110,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    await ref.read(authNotifierProvider.notifier).loginWithPassword(
-      email,
-      password,
-      rememberMe: _rememberMe,
-    );
+    await ref
+        .read(authNotifierProvider.notifier)
+        .loginWithPassword(email, password, rememberMe: _rememberMe);
   }
 
   @override
@@ -289,8 +288,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           obscureText: _obscurePassword,
           suffixIcon: IconButton(
             icon: Icon(
-              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: _passwordFocused
+                  ? TwColors.brightGreen
+                  : TwColors.slate400,
               size: 16,
             ),
             onPressed: () {
@@ -317,8 +320,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-
-
   Widget _buildUniqueInput({
     required TextEditingController controller,
     required FocusNode focusNode,
@@ -343,8 +344,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           color: hasError
               ? TwColors.red500
               : isFocused
-                  ? TwColors.brightGreen
-                  : TwColors.white.withOpacity(0.08),
+              ? TwColors.brightGreen
+              : TwColors.white.withOpacity(0.08),
           width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
@@ -355,7 +356,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       : TwColors.brightGreen.withOpacity(0.1),
                   blurRadius: 12,
                   offset: const Offset(0, 2),
-                )
+                ),
               ]
             : [],
       ),
@@ -374,7 +375,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           prefixIcon: Container(
             margin: const EdgeInsets.only(left: 8, right: 6),
             padding: const EdgeInsets.all(8),
@@ -415,7 +419,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildSubmitButton() {
     final authState = ref.watch(authNotifierProvider);
     final isLoading = authState.status == AuthStatus.loading;
-    
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -436,14 +440,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           minimumSize: const Size(double.infinity, 52),
         ),
         child: isLoading
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(TwColors.primaryBg),
-                ),
-              )
+            ? const SvLoader.button()
             : Text(
                 AppLocalizations.of(context)!.signIn,
                 style: const TextStyle(
@@ -471,10 +468,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onChanged: (v) => setState(() => _rememberMe = v ?? true),
                 activeColor: TwColors.brightGreen,
                 checkColor: TwColors.primaryBg,
-                side: BorderSide(
-                  color: TwColors.slate500,
-                  width: 1.5,
-                ),
+                side: BorderSide(color: TwColors.slate500, width: 1.5),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -502,15 +496,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+            MaterialPageRoute(
+              builder: (context) => const ForgotPasswordScreen(),
+            ),
           );
         },
         child: Text(
           AppLocalizations.of(context)!.forgotPassword,
-          style: TextStyle(
-            color: TwColors.brightGreen,
-            fontSize: 14,
-          ),
+          style: TextStyle(color: TwColors.brightGreen, fontSize: 14),
         ),
       ),
     );
@@ -536,7 +529,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               onPressed: () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const RegisterScreen(),
+                  ),
                 );
               },
               style: TextButton.styleFrom(
@@ -569,7 +564,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const ActivateInvitationScreen()),                );
+                  MaterialPageRoute(
+                    builder: (context) => const ActivateInvitationScreen(),
+                  ),
+                );
               },
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -597,9 +595,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       decoration: BoxDecoration(
         color: TwColors.red500.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: TwColors.red500.withOpacity(0.3),
-        ),
+        border: Border.all(color: TwColors.red500.withOpacity(0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -631,7 +627,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  authState.errorMessage ?? AppLocalizations.of(context)!.anErrorOccurred,
+                  authState.errorMessage ??
+                      AppLocalizations.of(context)!.anErrorOccurred,
                   style: TextStyle(
                     color: TwColors.red500.withOpacity(0.8),
                     fontSize: 13,
@@ -661,8 +658,3 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 }
-
-
-
-
-

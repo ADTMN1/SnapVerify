@@ -159,6 +159,26 @@ const BANKS_REQUIRING_ACCOUNT_NUMBER: ReadonlySet<CheckEtBank> = new Set([
   'boa',
 ]);
 
+const SUCCESSFUL_RECEIPT_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'success',
+  'successful',
+  'paid',
+  'verified',
+]);
+
+export function isStrictCheckEtSuccess(
+  raw: CheckEtRawResponse | null | undefined,
+): boolean {
+  const status = raw?.data?.receipt?.status;
+  return (
+    raw?.success === true &&
+    raw?.exists === true &&
+    typeof status === 'string' &&
+    SUCCESSFUL_RECEIPT_STATUSES.has(status.trim().toLowerCase())
+  );
+}
+
 /** Raw (unmodified) Check.et VerifyResponse body. */
 export interface CheckEtRawResponse {
   success: boolean;
@@ -557,7 +577,7 @@ export class CheckEtService {
     }
 
     return {
-      success: raw?.success === true,
+      success: isStrictCheckEtSuccess(raw),
       duplicate: raw?.duplicate === true,
       message: raw?.message ?? null,
       provider: (bankCode && CHECK_ET_TO_SNAP_BANK[bankCode]) || null,

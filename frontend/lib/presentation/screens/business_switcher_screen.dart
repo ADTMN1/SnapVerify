@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/tailwind.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sv_loader.dart';
 
 class BusinessSwitcherScreen extends ConsumerWidget {
   final bool isInitialSelection;
 
-  const BusinessSwitcherScreen({
-    super.key,
-    this.isInitialSelection = true,
-  });
+  const BusinessSwitcherScreen({super.key, this.isInitialSelection = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,7 +34,12 @@ class BusinessSwitcherScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         child: isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(
+                child: SvLoader.page(
+                  color: TwColors.primaryBg,
+                  backgroundColor: TwColors.primaryBg.withValues(alpha: 0.10),
+                ),
+              )
             : Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
@@ -45,8 +49,8 @@ class BusinessSwitcherScreen extends ConsumerWidget {
                       authState.pendingUser?.fullName != null
                           ? 'Hello, ${authState.pendingUser!.fullName}! 👋'
                           : authState.user?.fullName != null
-                              ? 'Hello, ${authState.user!.fullName}! 👋'
-                              : 'Welcome! 👋',
+                          ? 'Hello, ${authState.user!.fullName}! 👋'
+                          : 'Welcome! 👋',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -58,10 +62,7 @@ class BusinessSwitcherScreen extends ConsumerWidget {
                       isInitialSelection
                           ? 'Select a business to continue.'
                           : 'Select a business to switch to.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 32),
                     Expanded(
@@ -78,9 +79,13 @@ class BusinessSwitcherScreen extends ConsumerWidget {
                             isSelected: isSelected,
                             onTap: () async {
                               if (isInitialSelection) {
-                                await authNotifier.selectBusiness(m.organizationId);
+                                await authNotifier.selectBusiness(
+                                  m.organizationId,
+                                );
                               } else {
-                                await authNotifier.switchBusiness(m.organizationId);
+                                await authNotifier.switchBusiness(
+                                  m.organizationId,
+                                );
                                 if (context.mounted) {
                                   Navigator.of(context).pop();
                                 }
@@ -101,7 +106,10 @@ class BusinessSwitcherScreen extends ConsumerWidget {
                         ),
                         child: Text(
                           authState.errorMessage ?? 'An error occurred',
-                          style: TextStyle(color: Colors.red.shade700, fontSize: 14),
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ],
@@ -127,7 +135,9 @@ class _BusinessCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected ? const Color(0xFF2563EB).withOpacity(0.05) : Colors.white,
+      color: isSelected
+          ? const Color(0xFF2563EB).withOpacity(0.05)
+          : Colors.white,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -137,7 +147,9 @@ class _BusinessCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isSelected ? const Color(0xFF2563EB) : Colors.grey.shade200,
+              color: isSelected
+                  ? const Color(0xFF2563EB)
+                  : Colors.grey.shade200,
               width: isSelected ? 2 : 1,
             ),
           ),
@@ -178,9 +190,13 @@ class _BusinessCard extends StatelessWidget {
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
-                            color: _roleColor(membership.role).withOpacity(0.12),
+                            color: _roleColor(
+                              membership.role,
+                            ).withOpacity(0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(

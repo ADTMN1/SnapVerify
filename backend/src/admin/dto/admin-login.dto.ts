@@ -28,3 +28,21 @@ export class AdminLogoutDto {
   @IsString()
   refreshToken: string;
 }
+
+export class AdminForgotPasswordDto {
+  @IsEmail()
+  email: string;
+}
+
+export class AdminResetPasswordDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(6)
+  otpCode: string;
+
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+}

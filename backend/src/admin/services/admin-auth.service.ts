@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminJwtService } from './admin-jwt.service';
 import { PasswordService } from '../../auth/password.service';
+import { OtpService, OTP_PURPOSES } from '../../otp/otp.service';
 
 @Injectable()
 export class AdminAuthService {
@@ -16,6 +17,7 @@ export class AdminAuthService {
     private prisma: PrismaService,
     private adminJwtService: AdminJwtService,
     private passwordService: PasswordService,
+    private otpService: OtpService,
   ) {}
 
   /**
@@ -272,5 +274,106 @@ export class AdminAuthService {
 
     this.logger.log(`Admin logged out from all sessions: id=${adminId}`);
     return { message: 'Logged out from all sessions' };
+  }
+
+  /**
+   * Admin forgot password - send OTP to email.
+   * Prevents email enumeration by always returning success message.
+   */
+  async forgotPassword(email: string) {
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalized },
+      include: { userAssignments: true },
+    });
+
+    // Only send OTP if user exists AND has admin access (OWNER role or platform admin)
+    if (user) {
+      const hasAdminRole = user.userAssignments.some(
+        (assignment) => assignment.role === 'OWNER',
+      );
+      const isPlatformAdmin = user.isPlatformAdmin === true;
+
+      if (hasAdminRole || isPlatformAdmin) {
+        await this.otpService.generateOtp(
+          normalized,
+          OTP_PURPOSES.PASSWORD_RESET,
+        );
+      }
+    }
+
+    // Same response regardless — prevents email enumeration
+    return {
+      message:
+        'If an admin account exists for this email, a password reset code has been sent.',
+    };
+  }
+
+  /**
+   * Admin reset password - verify OTP and update password.
+   */
+  async resetPassword(email: string, otpCode: string, newPassword: string) {
+    const normalized = email.trim().toLowerCase();
+
+    // Verify OTP
+    await this.otpService.verifyOtp(
+      normalized,
+      otpCode,
+      OTP_PURPOSES.PASSWORD_RESET,
+    );
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalized },
+      include: { userAssignments: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException(
+        'Account not found. Please check your email address.',
+      );
+    }
+
+    // Verify user has admin access
+    const hasAdminRole = user.userAssignments.some(
+      (assignment) => assignment.role === 'OWNER',
+    );
+    const isPlatformAdmin = user.isPlatformAdmin === true;
+
+    if (!hasAdminRole && !isPlatformAdmin) {
+      throw new UnauthorizedException(
+        'You do not have permission to access the admin panel',
+      );
+    }
+
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('Your account is inactive');
+    }
+
+    const newPasswordHash = await this.passwordService.hash(newPassword);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: newPasswordHash },
+    });
+
+    // Invalidate all existing admin refresh tokens for this user
+    await this.adminJwtService.revokeAllTokens(user.id);
+
+    // Log this action
+    const primaryOrgId = user.userAssignments[0]?.organizationId;
+    if (primaryOrgId) {
+      await this.prisma.activityLog.create({
+        data: {
+          organizationId: primaryOrgId,
+          userId: user.id,
+          action: 'ADMIN_RESET_PASSWORD',
+          ipAddress: undefined,
+        },
+      });
+    }
+
+    this.logger.log(`Admin reset password: id=${user.id}`);
+
+    return { message: 'Password reset successfully' };
   }
 }

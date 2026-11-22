@@ -14,6 +14,7 @@ import 'presentation/providers/reports_provider.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/business_switcher_screen.dart';
+import 'presentation/widgets/sv_loader.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,12 +73,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     // Listen for auth state changes
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
-      debugPrint('[Main] Auth state changed: ${previous?.status} → ${next.status}');
+      debugPrint(
+        '[Main] Auth state changed: ${previous?.status} → ${next.status}',
+      );
       final previousStatus = previous?.status;
       if (previousStatus == next.status) return;
       _handleAuthChange(
         next,
-        showWelcome: _hasNavigatedOnce &&
+        showWelcome:
+            _hasNavigatedOnce &&
             previousStatus != AuthStatus.authenticated &&
             next.status == AuthStatus.authenticated,
       );
@@ -119,9 +123,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         // Ethiopic font.
         textTheme: GoogleFonts.poppinsTextTheme(
           ThemeData(brightness: Brightness.dark).textTheme,
-        ).apply(
-          fontFamilyFallback: const ['NotoSansEthiopic', 'sans-serif'],
-        ),
+        ).apply(fontFamilyFallback: const ['NotoSansEthiopic', 'sans-serif']),
       ),
       // Shown while the stored session is being restored. A bare `Scaffold()`
       // here looked like a black screen and made a slow/timed-out restore
@@ -146,17 +148,22 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       }
 
       try {
-          if (authState.status == AuthStatus.authenticated) {
-            debugPrint('[Main] Navigating to HomeScreen');
-            if (showWelcome) ToastService.showSuccess('Welcome back!');
+        if (authState.status == AuthStatus.authenticated) {
+          debugPrint('[Main] Navigating to HomeScreen');
+          if (showWelcome) ToastService.showSuccess('Welcome back!');
           _navigatorKey.currentState!.pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
           );
         } else if (authState.status == AuthStatus.requiresBusinessSelection) {
-          debugPrint('[Main] Navigating to BusinessSwitcherScreen (initial selection)');
+          debugPrint(
+            '[Main] Navigating to BusinessSwitcherScreen (initial selection)',
+          );
           _navigatorKey.currentState!.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen(isInitialSelection: true)),
+            MaterialPageRoute(
+              builder: (_) =>
+                  const BusinessSwitcherScreen(isInitialSelection: true),
+            ),
             (route) => false,
           );
         } else if (authState.status == AuthStatus.reconnecting) {
@@ -205,11 +212,7 @@ class _StartupSplash extends StatelessWidget {
               ),
             ),
             SizedBox(height: 24),
-            SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+            SvLoader.page(),
           ],
         ),
       ),
@@ -233,7 +236,11 @@ class _ReconnectScreen extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off_rounded, color: Colors.white70, size: 48),
+              const Icon(
+                Icons.cloud_off_rounded,
+                color: Colors.white70,
+                size: 48,
+              ),
               const SizedBox(height: 20),
               const Text(
                 'Reconnecting…',

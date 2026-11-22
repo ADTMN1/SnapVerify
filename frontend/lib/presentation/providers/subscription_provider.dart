@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -6,9 +7,10 @@ import '../../domain/entities/subscription_checkout.dart';
 import '../../domain/entities/subscription_plan.dart';
 import 'auth_provider.dart';
 
-final subscriptionRemoteDatasourceProvider = Provider<SubscriptionRemoteDatasource>(
-  (ref) => SubscriptionRemoteDatasource(client: http.Client()),
-);
+final subscriptionRemoteDatasourceProvider =
+    Provider<SubscriptionRemoteDatasource>(
+      (ref) => SubscriptionRemoteDatasource(client: http.Client()),
+    );
 
 class SubscriptionCheckoutState {
   final bool isLoading;
@@ -44,14 +46,18 @@ class SubscriptionCheckoutState {
   }
 }
 
-final subscriptionCheckoutProvider = StateNotifierProvider<
-    SubscriptionCheckoutNotifier, SubscriptionCheckoutState>((ref) {
-  return SubscriptionCheckoutNotifier(ref);
-});
+final subscriptionCheckoutProvider =
+    StateNotifierProvider<
+      SubscriptionCheckoutNotifier,
+      SubscriptionCheckoutState
+    >((ref) {
+      return SubscriptionCheckoutNotifier(ref);
+    });
 
-class SubscriptionCheckoutNotifier extends StateNotifier<SubscriptionCheckoutState> {
+class SubscriptionCheckoutNotifier
+    extends StateNotifier<SubscriptionCheckoutState> {
   SubscriptionCheckoutNotifier(this._ref)
-      : super(const SubscriptionCheckoutState());
+    : super(const SubscriptionCheckoutState());
 
   final Ref _ref;
 
@@ -66,7 +72,10 @@ class SubscriptionCheckoutNotifier extends StateNotifier<SubscriptionCheckoutSta
       state = state.copyWith(isLoading: false, plans: plans);
     } catch (e) {
       debugPrint('[Subscription] loadPlans failed: $e');
-      state = state.copyWith(isLoading: false, error: 'Could not load plans. Check your connection.');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Could not load plans. Check your connection.',
+      );
     }
   }
 
@@ -75,9 +84,7 @@ class SubscriptionCheckoutNotifier extends StateNotifier<SubscriptionCheckoutSta
     try {
       final token = await _token();
       if (token == null) return false;
-      await _ref
-          .read(subscriptionRemoteDatasourceProvider)
-          .activateFree(token);
+      await _ref.read(subscriptionRemoteDatasourceProvider).activateFree(token);
       await _ref.read(authNotifierProvider.notifier).refreshSubscription();
       state = const SubscriptionCheckoutState();
       return true;
@@ -117,7 +124,11 @@ class SubscriptionCheckoutNotifier extends StateNotifier<SubscriptionCheckoutSta
     }
   }
 
-  Future<bool> verify(String referenceNumber) async {
+  Future<bool> verifyWithScreenshot(
+    Uint8List imageBytes, {
+    String mimeType = 'image/jpeg',
+    String? ocrText,
+  }) async {
     final checkout = state.checkout;
     if (checkout == null) return false;
 
@@ -127,7 +138,13 @@ class SubscriptionCheckoutNotifier extends StateNotifier<SubscriptionCheckoutSta
       if (token == null) return false;
       await _ref
           .read(subscriptionRemoteDatasourceProvider)
-          .verifyCheckout(token, checkout.id, referenceNumber);
+          .verifyCheckoutByImage(
+            token,
+            checkout.id,
+            imageBytes,
+            mimeType: mimeType,
+            ocrText: ocrText,
+          );
       final subscription = await _ref
           .read(authNotifierProvider.notifier)
           .refreshSubscription();

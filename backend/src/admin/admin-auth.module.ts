@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { OtpModule } from '../otp/otp.module';
 import { AdminAuthService } from './services/admin-auth.service';
 import { AdminJwtService } from './services/admin-jwt.service';
 import { AdminAuthController } from './controllers/admin-auth.controller';
@@ -10,6 +11,7 @@ import { PasswordService } from '../auth/password.service';
 
 @Module({
   imports: [
+    OtpModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

@@ -11,6 +11,7 @@ import '../providers/notifications_provider.dart';
 import 'business_switcher_screen.dart';
 import 'language_settings_screen.dart';
 import 'notifications_screen.dart';
+import 'subscription_sheet.dart';
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
 
@@ -59,6 +60,8 @@ class ProfileScreen extends ConsumerWidget {
                     _buildAvatar(fullName, role),
                     const SizedBox(height: 28),
                     _buildInfoCard(phoneNumber, businessName),
+                    const SizedBox(height: 16),
+                    _buildSubscriptionCard(context, ref, authState),
                     const SizedBox(height: 16),
                     _buildStatsCard(todaySummary),
                     const SizedBox(height: 16),
@@ -222,6 +225,143 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildSubscriptionCard(
+    BuildContext context,
+    WidgetRef ref,
+    AuthState authState,
+  ) {
+    final subscription = authState.subscription;
+    final isOwner = authState.role == UserRole.owner;
+    final healthy =
+        subscription != null &&
+        subscription.isActive &&
+        !subscription.isQuotaExceeded;
+    final statusText = subscription == null
+        ? 'No plan selected'
+        : healthy
+        ? subscription.statusLabel
+        : subscription.isQuotaExceeded
+        ? 'Limit reached'
+        : subscription.statusLabel;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: TwColors.slate700, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Subscription',
+            style: TextStyle(
+              color: TwColors.white.withOpacity(0.5),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(
+                Icons.workspace_premium_rounded,
+                color: healthy ? TwColors.brightGreen : TwColors.amber400,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  subscription?.planLabel ?? 'No plan',
+                  style: const TextStyle(
+                    color: TwColors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: (healthy ? TwColors.brightGreen : TwColors.amber400)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: (healthy ? TwColors.brightGreen : TwColors.amber400)
+                        .withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: healthy ? TwColors.brightGreen : TwColors.amber400,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            subscription?.verificationSummary ??
+                'Choose a plan to start verifying payments.',
+            style: const TextStyle(color: TwColors.slate400, fontSize: 12.5),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: isOwner
+                  ? () => _openChangePlanSheet(context, ref)
+                  : null,
+              icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+              label: Text(subscription == null ? 'Choose Plan' : 'Change Plan'),
+              style: FilledButton.styleFrom(
+                backgroundColor: TwColors.brightGreen,
+                foregroundColor: TwColors.slate950,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          if (!isOwner) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Only the owner can change plans.',
+              style: TextStyle(color: TwColors.slate500, fontSize: 11.5),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openChangePlanSheet(BuildContext context, WidgetRef ref) async {
+    final container = ProviderScope.containerOf(context);
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (_) => ProviderScope(
+        parent: container,
+        child: const SubscriptionSheet(startOnPlanList: true),
+      ),
+    );
+    if (!context.mounted) return;
+    await ref.read(authNotifierProvider.notifier).refreshSubscription();
+  }
+
   Widget _buildStatsCard(AsyncValue<ReportSummary> todaySummary) {
     final summary = todaySummary.valueOrNull?.summary;
     final verifications = summary == null
@@ -372,7 +512,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget _buildLogoutButton(BuildContext context, WidgetRef ref) {
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
+      child: OutlinedButton.icon(
         onPressed: () async {
           final shouldLogout = await showDialog<bool>(
             context: context,
@@ -409,19 +549,20 @@ class ProfileScreen extends ConsumerWidget {
             await ref.read(authNotifierProvider.notifier).logout();
           }
         },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.red500.withValues(alpha: 0.12),
-          foregroundColor: TwColors.red500,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: TwColors.cardBg,
+          foregroundColor: TwColors.slate300,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: TwColors.red500.withValues(alpha: 0.3)),
+            borderRadius: BorderRadius.circular(14),
           ),
+          side: const BorderSide(color: TwColors.slate700),
           elevation: 0,
         ),
-        child: const Text(
+        icon: const Icon(Icons.logout_rounded, size: 18),
+        label: const Text(
           'Logout',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
     );

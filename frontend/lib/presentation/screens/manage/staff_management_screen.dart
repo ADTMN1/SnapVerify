@@ -8,6 +8,7 @@ import '../../../core/tailwind.dart';
 import '../../../core/utils/toast_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notifications_provider.dart';
+import '../../widgets/sv_loader.dart';
 import '../../widgets/sv_status_badge.dart';
 
 class StaffManagementScreen extends ConsumerStatefulWidget {
@@ -150,11 +151,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                         ),
                       const SizedBox(height: 16),
                       if (_isLoading)
-                        const Center(
-                          child: CircularProgressIndicator(
-                            color: TwColors.brightGreen,
-                          ),
-                        )
+                        const Center(child: SvLoader.page())
                       else if (_staff.isEmpty)
                         Center(
                           child: Padding(
@@ -1004,14 +1001,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                       ),
                       child: const Row(
                         children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: TwColors.brightGreen,
-                              strokeWidth: 2,
-                            ),
-                          ),
+                          SvLoader.inline(),
                           SizedBox(width: 10),
                           Text(
                             'Loading branches...',
@@ -1112,14 +1102,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
                     minimumSize: const Size(double.infinity, 52),
                   ),
                   child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: TwColors.primaryBg,
-                            strokeWidth: 2,
-                          ),
-                        )
+                      ? const SvLoader.button()
                       : const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1520,14 +1503,7 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                       ),
                       child: const Row(
                         children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: TwColors.brightGreen,
-                              strokeWidth: 2,
-                            ),
-                          ),
+                          SvLoader.inline(),
                           SizedBox(width: 10),
                           Text(
                             'Loading branches...',
@@ -1628,14 +1604,7 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
                     minimumSize: const Size(double.infinity, 52),
                   ),
                   child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: TwColors.primaryBg,
-                            strokeWidth: 2,
-                          ),
-                        )
+                      ? const SvLoader.button()
                       : const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

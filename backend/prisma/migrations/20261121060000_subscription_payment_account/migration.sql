@@ -10,7 +10,7 @@ VALUES (
   'platform-subscription-telebirr',
   'TELEBIRR',
   '0986006897',
-  'natnael abebaw',
+  'abebaw',
   true,
   NOW()
 )

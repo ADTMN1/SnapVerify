@@ -5,15 +5,15 @@ import 'package:snapverify/domain/entities/payment_account.dart';
 
 void main() {
   Map<String, dynamic> payload(String status) => {
-        'verified': status == 'VERIFIED',
-        'status': status,
-        'paymentId': 'p1',
-        'amount': 100.0,
-        'currency': 'ETB',
-        'transactionId': 'REF-****',
-        'riskScore': 0,
-        'message': 'msg',
-      };
+    'verified': status == 'VERIFIED',
+    'status': status,
+    'paymentId': 'p1',
+    'amount': 100.0,
+    'currency': 'ETB',
+    'transactionId': 'REF-****',
+    'riskScore': 0,
+    'message': 'msg',
+  };
 
   group('VerificationResult.fromJson status mapping', () {
     test('VERIFIED maps to verified', () {
@@ -36,6 +36,11 @@ void main() {
       expect(r.status, VerificationStatus.alreadyVerified);
     });
 
+    test('NEEDS_REVIEW maps to needsReview', () {
+      final r = VerificationResult.fromJson(payload('NEEDS_REVIEW'));
+      expect(r.status, VerificationStatus.needsReview);
+    });
+
     test('PENDING maps to pending', () {
       final r = VerificationResult.fromJson(payload('PENDING'));
       expect(r.status, VerificationStatus.pending);
@@ -44,38 +49,47 @@ void main() {
     test('unknown statuses map to pending — never a hard invalid', () {
       for (final s in ['SOME_NEW_STATUS', '']) {
         final r = VerificationResult.fromJson(payload(s));
-        expect(r.status, VerificationStatus.pending,
-            reason: 'status "$s" must map to pending');
+        expect(
+          r.status,
+          VerificationStatus.pending,
+          reason: 'status "$s" must map to pending',
+        );
       }
     });
 
-    test('provider outage/connectivity statuses map distinctly (never invalid)', () {
-      expect(
-        VerificationResult.fromJson(payload('PROVIDER_UNAVAILABLE')).status,
-        VerificationStatus.providerUnavailable,
-      );
-      expect(
-        VerificationResult.fromJson(payload('SERVICE_UNAVAILABLE')).status,
-        VerificationStatus.providerUnavailable,
-      );
-      expect(
-        VerificationResult.fromJson(payload('QUOTA_EXHAUSTED')).status,
-        VerificationStatus.quotaExhausted,
-      );
-      expect(
-        VerificationResult.fromJson(payload('PROVIDER_CONFIG_ERROR')).status,
-        VerificationStatus.providerConfigError,
-      );
-    });
+    test(
+      'provider outage/connectivity statuses map distinctly (never invalid)',
+      () {
+        expect(
+          VerificationResult.fromJson(payload('PROVIDER_UNAVAILABLE')).status,
+          VerificationStatus.providerUnavailable,
+        );
+        expect(
+          VerificationResult.fromJson(payload('SERVICE_UNAVAILABLE')).status,
+          VerificationStatus.providerUnavailable,
+        );
+        expect(
+          VerificationResult.fromJson(payload('QUOTA_EXHAUSTED')).status,
+          VerificationStatus.quotaExhausted,
+        );
+        expect(
+          VerificationResult.fromJson(payload('PROVIDER_CONFIG_ERROR')).status,
+          VerificationStatus.providerConfigError,
+        );
+      },
+    );
 
     test('provider outage helper flags outage statuses only', () {
       expect(
-        VerificationResult.fromJson(payload('PROVIDER_UNAVAILABLE'))
-            .isProviderOutage,
+        VerificationResult.fromJson(
+          payload('PROVIDER_UNAVAILABLE'),
+        ).isProviderOutage,
         isTrue,
       );
       expect(
-        VerificationResult.fromJson(payload('QUOTA_EXHAUSTED')).isProviderOutage,
+        VerificationResult.fromJson(
+          payload('QUOTA_EXHAUSTED'),
+        ).isProviderOutage,
         isTrue,
       );
       expect(
@@ -84,23 +98,29 @@ void main() {
       );
     });
 
-    test('provider/account configuration statuses map distinctly (never invalid)', () {
-      expect(
-        VerificationResult.fromJson(payload('PAYMENT_ACCOUNT_NOT_CONFIGURED'))
-            .status,
-        VerificationStatus.paymentAccountNotConfigured,
-      );
-      expect(
-        VerificationResult.fromJson(payload('PAYMENT_PROVIDER_UNDETECTED'))
-            .status,
-        VerificationStatus.providerUndetected,
-      );
-      expect(
-        VerificationResult.fromJson(payload('UNSUPPORTED_PAYMENT_PROVIDER'))
-            .status,
-        VerificationStatus.unsupportedProvider,
-      );
-    });
+    test(
+      'provider/account configuration statuses map distinctly (never invalid)',
+      () {
+        expect(
+          VerificationResult.fromJson(
+            payload('PAYMENT_ACCOUNT_NOT_CONFIGURED'),
+          ).status,
+          VerificationStatus.paymentAccountNotConfigured,
+        );
+        expect(
+          VerificationResult.fromJson(
+            payload('PAYMENT_PROVIDER_UNDETECTED'),
+          ).status,
+          VerificationStatus.providerUndetected,
+        );
+        expect(
+          VerificationResult.fromJson(
+            payload('UNSUPPORTED_PAYMENT_PROVIDER'),
+          ).status,
+          VerificationStatus.unsupportedProvider,
+        );
+      },
+    );
     test('missing status maps to pending', () {
       final r = VerificationResult.fromJson({
         'verified': false,
@@ -119,7 +139,9 @@ void main() {
       expect(paymentProviderFromOcrLabel('CBE'), PaymentProvider.CBE);
       expect(paymentProviderFromOcrLabel('Dashen'), PaymentProvider.DASHEN);
       expect(
-          paymentProviderFromOcrLabel('Abyssinia'), PaymentProvider.ABYSSINIA);
+        paymentProviderFromOcrLabel('Abyssinia'),
+        PaymentProvider.ABYSSINIA,
+      );
       expect(paymentProviderFromOcrLabel('CBE Birr'), PaymentProvider.CBEBIRR);
       expect(paymentProviderFromOcrLabel('CBEBirr'), PaymentProvider.CBEBIRR);
       expect(paymentProviderFromOcrLabel('M-Pesa'), PaymentProvider.M_PESA);
@@ -132,17 +154,22 @@ void main() {
       expect(cbeBirr, isNot(PaymentProvider.TELEBIRR));
     });
 
-    test('returns null for uncertain/unknown labels (caller must ask user)', () {
-      expect(paymentProviderFromOcrLabel(null), isNull);
-      expect(paymentProviderFromOcrLabel(''), isNull);
-      expect(paymentProviderFromOcrLabel('Unknown Wallet'), isNull);
-    });
+    test(
+      'returns null for uncertain/unknown labels (caller must ask user)',
+      () {
+        expect(paymentProviderFromOcrLabel(null), isNull);
+        expect(paymentProviderFromOcrLabel(''), isNull);
+        expect(paymentProviderFromOcrLabel('Unknown Wallet'), isNull);
+      },
+    );
   });
 
   group('OcrParser.maskReference (sanitized diagnostics)', () {
     test('masks full references, exposes only style and length', () {
-      expect(OcrParser.maskReference('TB251115.1234.A123456'),
-          'TB-****(21 chars)');
+      expect(
+        OcrParser.maskReference('TB251115.1234.A123456'),
+        'TB-****(21 chars)',
+      );
       expect(OcrParser.maskReference('FT26318TT5JWN'), 'FT-****(13 chars)');
       expect(OcrParser.maskReference(null), 'null');
     });

@@ -8,13 +8,15 @@ import '../providers/reports_provider.dart';
 import '../providers/notifications_provider.dart';
 import 'manage/staff_management_screen.dart';
 import 'manage/reports_screen.dart';
+import '../widgets/sv_loader.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 
 class HomeTab extends ConsumerStatefulWidget {
   /// Switches the root bottom-nav tab (indexes from HomeScreen layout).
   final void Function(int tabIndex)? onNavigate;
-  const HomeTab({super.key, this.onNavigate});
+  final VoidCallback? onScan;
+  const HomeTab({super.key, this.onNavigate, this.onScan});
 
   @override
   ConsumerState<HomeTab> createState() => _HomeTabState();
@@ -36,8 +38,20 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
-        final staff = await ref.read(authRepositoryProvider).getStaff((await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken())!);
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
+        final staff = await ref
+            .read(authRepositoryProvider)
+            .getStaff(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -61,9 +75,14 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     final filteredStaff = _selectedBranchId != null
         ? _staff.where((s) => s['branchId'] == _selectedBranchId).toList()
         : _staff;
-    final onlineStaff = filteredStaff.where((s) => s['status'] == 'active').length;
+    final onlineStaff = filteredStaff
+        .where((s) => s['status'] == 'active')
+        .length;
     final selectedBranchName = _selectedBranchId != null
-        ? _branches.firstWhere((b) => b['id'] == _selectedBranchId, orElse: () => null)
+        ? _branches.firstWhere(
+            (b) => b['id'] == _selectedBranchId,
+            orElse: () => null,
+          )
         : null;
     final branchName = selectedBranchName?['name'];
 
@@ -77,15 +96,16 @@ class _HomeTabState extends ConsumerState<HomeTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 16),
-                if (_branches.isNotEmpty) _BranchSelector(
-                  branches: _branches,
-                  selectedBranchId: _selectedBranchId,
-                  onSelected: (id) {
-                    setState(() {
-                      _selectedBranchId = id;
-                    });
-                  },
-                ),
+                if (_branches.isNotEmpty)
+                  _BranchSelector(
+                    branches: _branches,
+                    selectedBranchId: _selectedBranchId,
+                    onSelected: (id) {
+                      setState(() {
+                        _selectedBranchId = id;
+                      });
+                    },
+                  ),
                 if (_branches.isNotEmpty) const SizedBox(height: 20),
                 const _SectionLabel(label: 'Live Overview'),
                 const SizedBox(height: 12),
@@ -94,13 +114,17 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                   totalStaff: filteredStaff.length,
                 ),
                 const SizedBox(height: 24),
-                _SectionLabel(label: branchName != null ? "Today's Performance ($branchName)" : "Today's Performance"),
+                _SectionLabel(
+                  label: branchName != null
+                      ? "Today's Performance ($branchName)"
+                      : "Today's Performance",
+                ),
                 const SizedBox(height: 12),
                 const _TodayPaymentsCard(),
                 const SizedBox(height: 24),
                 const _SectionLabel(label: 'Quick Actions'),
                 const SizedBox(height: 12),
-                const _QuickActionsGrid(),
+                _QuickActionsGrid(onScan: widget.onScan),
                 const SizedBox(height: 32),
               ],
             ),
@@ -129,10 +153,7 @@ class _BranchSelector extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.black,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: TwColors.slate700,
-          width: 1,
-        ),
+        border: Border.all(color: TwColors.slate700, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,10 +182,7 @@ class _BranchSelector extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.black,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: TwColors.slate700,
-                width: 1,
-              ),
+              border: Border.all(color: TwColors.slate700, width: 1),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String?>(
@@ -259,7 +277,11 @@ class _HomeTopBar extends ConsumerWidget {
               ),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.verified_rounded, color: Colors.black, size: 18),
+            child: const Icon(
+              Icons.verified_rounded,
+              color: Colors.black,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 10),
           const Text(
@@ -277,9 +299,9 @@ class _HomeTopBar extends ConsumerWidget {
           _TopBarIcon(
             icon: Icons.person_rounded,
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
             },
           ),
         ],
@@ -298,9 +320,9 @@ class _NotificationsBell extends ConsumerWidget {
       icon: Icons.notifications_none_rounded,
       badgeCount: unread,
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-        );
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
       },
     );
   }
@@ -387,8 +409,8 @@ class _LiveStatsRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final summary = ref
-            .watch(reportSummaryProvider((from: today, to: today)))
-            .valueOrNull
+        .watch(reportSummaryProvider((from: today, to: today)))
+        .valueOrNull
         ?.summary;
     final flagged = summary == null ? '...' : '${summary.highRisk}';
     final txns = summary == null ? '...' : '${summary.total}';
@@ -521,9 +543,7 @@ class _TodayPaymentsCard extends ConsumerWidget {
         loading: () => _buildLoading(),
         error: (e, _) => _buildError(
           e,
-          () => ref.invalidate(
-            reportSummaryProvider((from: today, to: today)),
-          ),
+          () => ref.invalidate(reportSummaryProvider((from: today, to: today))),
         ),
       ),
     );
@@ -602,8 +622,9 @@ class _TodayPaymentsCard extends ConsumerWidget {
             value: progress.clamp(0.0, 1.0).toDouble(),
             minHeight: 6,
             backgroundColor: TwColors.slate800,
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(TwColors.brightGreen),
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              TwColors.brightGreen,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -635,14 +656,7 @@ class _TodayPaymentsCard extends ConsumerWidget {
   Widget _buildLoading() {
     return Row(
       children: [
-        const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: TwColors.brightGreen,
-          ),
-        ),
+        const SvLoader.inline(),
         const SizedBox(width: 12),
         Text(
           "Loading today's activity...",
@@ -716,23 +730,41 @@ class _PaymentStat extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _PaymentStat({required this.label, required this.value, required this.color});
+  const _PaymentStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(value, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w700)),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(color: TwColors.white.withOpacity(0.45), fontSize: 11)),
+        Text(
+          label,
+          style: TextStyle(
+            color: TwColors.white.withOpacity(0.45),
+            fontSize: 11,
+          ),
+        ),
       ],
     );
   }
 }
 
 class _QuickActionsGrid extends ConsumerWidget {
-  const _QuickActionsGrid();
+  final VoidCallback? onScan;
+  const _QuickActionsGrid({this.onScan});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -740,16 +772,38 @@ class _QuickActionsGrid extends ConsumerWidget {
     final canManage = authState.role.canManage;
 
     final actions = [
-      _ActionItem(Icons.qr_code_scanner_rounded, 'Scan QR', TwColors.brightGreen,
-          onTap: () => _navigate(context, 2)),
-      _ActionItem(Icons.receipt_long_rounded, 'Payments', TwColors.sky500,
-          onTap: () => _navigate(context, 1)),
+      _ActionItem(
+        Icons.qr_code_scanner_rounded,
+        'Scan QR',
+        TwColors.brightGreen,
+        onTap: () {
+          if (onScan != null) {
+            onScan!();
+          } else {
+            _navigate(context, 2);
+          }
+        },
+      ),
+      _ActionItem(
+        Icons.receipt_long_rounded,
+        'Payments',
+        TwColors.sky500,
+        onTap: () => _navigate(context, 1),
+      ),
       if (canManage)
-        _ActionItem(Icons.people_rounded, 'Staff', TwColors.lime400,
-            onTap: () => _push(context, const StaffManagementScreen())),
+        _ActionItem(
+          Icons.people_rounded,
+          'Staff',
+          TwColors.lime400,
+          onTap: () => _push(context, const StaffManagementScreen()),
+        ),
       if (canManage)
-        _ActionItem(Icons.bar_chart_rounded, 'Reports', TwColors.amber500,
-            onTap: () => _push(context, const ReportsScreen())),
+        _ActionItem(
+          Icons.bar_chart_rounded,
+          'Reports',
+          TwColors.amber500,
+          onTap: () => _push(context, const ReportsScreen()),
+        ),
     ];
 
     return GridView.count(
@@ -766,15 +820,12 @@ class _QuickActionsGrid extends ConsumerWidget {
   static void _navigate(BuildContext context, int tabIndex) {
     // HomeTab's onNavigate is injected by HomeScreen; look it up through the
     // widget tree by finding the HomeTab state via the inherited scope.
-    final homeTab =
-        context.findAncestorStateOfType<_HomeTabState>();
+    final homeTab = context.findAncestorStateOfType<_HomeTabState>();
     homeTab?.widget.onNavigate?.call(tabIndex);
   }
 
   static void _push(BuildContext context, Widget screen) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => screen),
-    );
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 }
 
@@ -815,14 +866,21 @@ class _QuickActionCard extends StatelessWidget {
             const SizedBox(width: 12),
             Text(
               item.label,
-              style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: TwColors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const Spacer(),
-            Icon(Icons.arrow_forward_ios_rounded, color: TwColors.white.withOpacity(0.25), size: 13),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: TwColors.white.withOpacity(0.25),
+              size: 13,
+            ),
           ],
         ),
       ),
     );
   }
 }
-

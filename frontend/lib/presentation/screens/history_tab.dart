@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/tailwind.dart';
 import '../providers/auth_provider.dart';
 import '../providers/payment_provider.dart';
+import '../widgets/sv_loader.dart';
 import '../widgets/sv_status_badge.dart';
 
 class HistoryTab extends ConsumerStatefulWidget {
@@ -27,7 +28,9 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
   }
 
   Future<void> _load() async {
-    final token = await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
+    final token = await ref
+        .read(authNotifierProvider.notifier)
+        .ensureFreshAccessToken();
     if (token == null) {
       if (!mounted) return;
       setState(() {
@@ -84,9 +87,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: TwColors.slate800, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
       ),
       child: Row(
         children: [
@@ -129,7 +130,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 120),
-          Center(child: CircularProgressIndicator(color: TwColors.brightGreen)),
+          Center(child: SvLoader.page()),
         ],
       );
     }
@@ -171,7 +172,10 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
 
     final verified = _items.where((e) => e.isVerified).length;
     final failed = _items.length - verified;
-    final total = _items.fold<double>(0, (sum, e) => sum + (e.isVerified ? e.amount : 0));
+    final total = _items.fold<double>(
+      0,
+      (sum, e) => sum + (e.isVerified ? e.amount : 0),
+    );
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -282,7 +286,10 @@ class _MetricCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(color: TwColors.slate400, fontSize: 12),
+                  style: const TextStyle(
+                    color: TwColors.slate400,
+                    fontSize: 12,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -362,7 +369,9 @@ class _HistoryTile extends StatelessWidget {
                     const SizedBox(width: 8),
                     SVStatusBadge(
                       text: item.statusLabel,
-                      type: item.isVerified ? BadgeType.success : BadgeType.error,
+                      type: item.isVerified
+                          ? BadgeType.success
+                          : BadgeType.error,
                       isSmall: true,
                     ),
                   ],
@@ -378,10 +387,15 @@ class _HistoryTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  item.transactionId.isEmpty ? 'No transaction reference' : item.transactionId,
+                  item.transactionId.isEmpty
+                      ? 'No transaction reference'
+                      : item.transactionId,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: TwColors.slate400, fontSize: 12),
+                  style: const TextStyle(
+                    color: TwColors.slate400,
+                    fontSize: 12,
+                  ),
                 ),
                 if (item.subtitle != null) ...[
                   const SizedBox(height: 2),
@@ -389,18 +403,28 @@ class _HistoryTile extends StatelessWidget {
                     item.subtitle!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: TwColors.slate500, fontSize: 12),
+                    style: const TextStyle(
+                      color: TwColors.slate500,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.schedule_rounded, size: 13, color: TwColors.slate500),
+                    const Icon(
+                      Icons.schedule_rounded,
+                      size: 13,
+                      color: TwColors.slate500,
+                    ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         item.timeLabel,
-                        style: const TextStyle(color: TwColors.slate500, fontSize: 12),
+                        style: const TextStyle(
+                          color: TwColors.slate500,
+                          fontSize: 12,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -409,7 +433,10 @@ class _HistoryTile extends StatelessWidget {
                       Flexible(
                         child: Text(
                           'by ${item.verifiedByName}',
-                          style: const TextStyle(color: TwColors.slate500, fontSize: 12),
+                          style: const TextStyle(
+                            color: TwColors.slate500,
+                            fontSize: 12,
+                          ),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
                         ),
@@ -476,7 +503,11 @@ class _StateCard extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: TwColors.slate400, fontSize: 14, height: 1.4),
+            style: const TextStyle(
+              color: TwColors.slate400,
+              fontSize: 14,
+              height: 1.4,
+            ),
           ),
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: 18),
@@ -486,8 +517,13 @@ class _StateCard extends StatelessWidget {
                 backgroundColor: TwColors.brightGreen,
                 foregroundColor: TwColors.slate900,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: Text(
                 actionLabel!,
@@ -589,19 +625,24 @@ class _HistoryItem {
       case 'MANUAL':
         return 'Manual';
       default:
-        return paymentMethod.isEmpty ? 'Verification' : _titleCase(paymentMethod);
+        return paymentMethod.isEmpty
+            ? 'Verification'
+            : _titleCase(paymentMethod);
     }
   }
 
   String get primaryTitle {
     if (senderName != null && senderName!.trim().isNotEmpty) return senderName!;
-    if (receiverName != null && receiverName!.trim().isNotEmpty) return receiverName!;
+    if (receiverName != null && receiverName!.trim().isNotEmpty)
+      return receiverName!;
     return 'Payment verification';
   }
 
   String? get subtitle {
     final parts = <String>[];
-    if (senderName != null && receiverName != null && senderName != receiverName) {
+    if (senderName != null &&
+        receiverName != null &&
+        senderName != receiverName) {
       parts.add('To: ${receiverName!}');
     }
     return parts.isEmpty ? null : parts.join(' · ');

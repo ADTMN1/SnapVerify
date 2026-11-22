@@ -463,6 +463,41 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
     expect(result.transactionNumber).toBe('FT26144SG2ST');
     expect(result.raw).toEqual(baseVerifyBody);
   });
+
+  it('rejects a receipt when exists is not true', async () => {
+    const svc = await build();
+    mockFetch.mockResolvedValue(
+      jsonResponse({ ...baseVerifyBody, exists: false }),
+    );
+
+    const result = await svc.verifyReference(
+      PaymentProvider.CBE,
+      'FT26144SG2ST',
+      null,
+    );
+    expect(result.success).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a receipt whose payment status is not successful', async () => {
+    const svc = await build();
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        ...baseVerifyBody,
+        data: {
+          ...baseVerifyBody.data,
+          receipt: { ...baseVerifyBody.data.receipt, status: 'pending' },
+        },
+      }),
+    );
+
+    const result = await svc.verifyReference(
+      PaymentProvider.CBE,
+      'FT26144SG2ST',
+      null,
+    );
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('CheckEtService request construction', () => {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/tailwind.dart';
+import 'sv_loader.dart';
 
 enum SVButtonType { primary, secondary, outline, danger, ghost }
 
@@ -45,16 +46,7 @@ class SVButton extends StatelessWidget {
         child: isLoading
             ? Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _foregroundColor,
-                    ),
-                  ),
-                ],
+                children: [SvLoader.button(color: _foregroundColor)],
               )
             : Row(
                 mainAxisSize: MainAxisSize.min,
@@ -109,10 +101,7 @@ class SVButton extends StatelessWidget {
   BorderSide get _borderSide {
     switch (type) {
       case SVButtonType.outline:
-        return BorderSide(
-          color: TwColors.white.withOpacity(0.2),
-          width: 1.5,
-        );
+        return BorderSide(color: TwColors.white.withOpacity(0.2), width: 1.5);
       default:
         return BorderSide.none;
     }

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/tailwind.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/payment_provider.dart';
+import '../../widgets/sv_loader.dart';
 import '../../widgets/sv_status_badge.dart';
 
 class PaymentActivityScreen extends ConsumerStatefulWidget {
@@ -28,7 +29,9 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
   }
 
   Future<void> _load() async {
-    final token = await ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
+    final token = await ref
+        .read(authNotifierProvider.notifier)
+        .ensureFreshAccessToken();
     if (token == null) {
       if (!mounted) return;
       setState(() {
@@ -63,7 +66,9 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
   @override
   Widget build(BuildContext context) {
     final verifiedCount = _items
-        .where((e) => (e['status']?.toString().toUpperCase() ?? '') == 'VERIFIED')
+        .where(
+          (e) => (e['status']?.toString().toUpperCase() ?? '') == 'VERIFIED',
+        )
         .length;
     final totalAmount = _items.fold<double>(0, (sum, e) {
       final status = (e['status']?.toString().toUpperCase() ?? '');
@@ -73,8 +78,9 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
       if (a is String) return sum + (double.tryParse(a) ?? 0);
       return sum;
     });
-    final currency =
-        _items.isNotEmpty ? (_items.first['currency']?.toString() ?? 'ETB') : 'ETB';
+    final currency = _items.isNotEmpty
+        ? (_items.first['currency']?.toString() ?? 'ETB')
+        : 'ETB';
 
     return Scaffold(
       backgroundColor: TwColors.primaryBg,
@@ -115,8 +121,11 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: TwColors.slate700, width: 1),
               ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: TwColors.white, size: 18),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: TwColors.white,
+                size: 18,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -142,8 +151,10 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
           ),
           IconButton(
             onPressed: _loading ? null : _load,
-            icon: Icon(Icons.refresh_rounded,
-                color: _loading ? TwColors.slate600 : TwColors.brightGreen),
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: _loading ? TwColors.slate600 : TwColors.brightGreen,
+            ),
           ),
         ],
       ),
@@ -156,7 +167,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 140),
-          Center(child: CircularProgressIndicator(color: TwColors.brightGreen)),
+          Center(child: SvLoader.page()),
         ],
       );
     }
@@ -205,7 +216,11 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     );
   }
 
-  Widget _buildStatistics(int verifiedCount, double totalAmount, String currency) {
+  Widget _buildStatistics(
+    int verifiedCount,
+    double totalAmount,
+    String currency,
+  ) {
     final amountText = NumberFormat.decimalPattern().format(totalAmount);
     return Row(
       children: [
@@ -306,10 +321,10 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     final methodLabel = method == 'IMAGE_OCR'
         ? 'Receipt scan'
         : method == 'REFERENCE'
-            ? 'Reference'
-            : method.isEmpty
-                ? 'Verification'
-                : method;
+        ? 'Reference'
+        : method.isEmpty
+        ? 'Verification'
+        : method;
 
     DateTime? createdAt;
     final c = item['createdAt'];
@@ -375,7 +390,9 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
                     ),
                     const SizedBox(width: 8),
                     SVStatusBadge(
-                      text: isVerified ? 'Verified' : (status.isEmpty ? 'Failed' : status),
+                      text: isVerified
+                          ? 'Verified'
+                          : (status.isEmpty ? 'Failed' : status),
                       type: isVerified ? BadgeType.success : BadgeType.error,
                       isSmall: true,
                     ),
@@ -396,13 +413,19 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
                     tx,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: TwColors.slate400, fontSize: 12),
+                    style: const TextStyle(
+                      color: TwColors.slate400,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 4),
                 Text(
                   byName != null ? '$timeLabel  ·  by $byName' : timeLabel,
-                  style: const TextStyle(color: TwColors.slate500, fontSize: 12),
+                  style: const TextStyle(
+                    color: TwColors.slate500,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
