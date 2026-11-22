@@ -17,6 +17,7 @@ import {
   resolveQrBaseUrl,
 } from './qr-link';
 import { isValidPublicId } from './public-id';
+import { PaymentQrService } from './payment-qr/payment-qr.service';
 
 /**
  * Caller context for QR operations. Populated from the verified JWT by
@@ -70,6 +71,7 @@ export class QrService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly paymentQrService: PaymentQrService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -203,13 +205,13 @@ export class QrService {
     return {
       ...this.toAccountView(account, baseUrl),
       /**
-       * Scanning identifies the receiving account only. It is explicitly not
+       * Resolving identifies the receiving account only. It is explicitly not
        * payment confirmation; payment verification happens through the
        * dedicated verification endpoints.
        */
       confirmedPayment: false,
       notice:
-        'This QR code identifies a payment account. It is not proof of payment — verify the transaction reference before releasing goods or services.',
+        'This identifies a payment account. It is not proof of payment — verify the transaction reference before releasing goods or services.',
     };
   }
 
@@ -232,6 +234,15 @@ export class QrService {
     },
     baseUrl: string | null,
   ) {
+    const bankPaymentQr = this.paymentQrService.generate({
+      provider: account.provider,
+      // Use the stored account data available to the backend only. The full
+      // account number is never exposed in the API response below.
+      accountNumber: account.accountNumber,
+      accountHolderName: account.accountHolderName,
+      suffix: account.suffix,
+    });
+
     return {
       id: account.id,
       publicId: account.publicId,
@@ -242,7 +253,20 @@ export class QrService {
       suffix: account.suffix,
       isActive: account.isActive,
       qrVersion: QR_VERSION,
-      qrUrl: baseUrl ? buildQrUrl(baseUrl, account.publicId) : null,
+      /**
+       * Legacy field name retained for client compatibility. When a verified
+       * bank-payment payload exists it is the exact payload to encode in the QR
+       * image (never a SnapVerify URL). When unsupported this is null so clients
+       * must not render a fake/bank-incompatible payment QR.
+       */
+      qrUrl: bankPaymentQr.supported ? bankPaymentQr.payload : null,
+      bankPaymentQr,
+      /**
+       * Internal SnapVerify account identifier link used only by SnapVerify's
+       * own resolve flow. It is NOT a bank/payment QR payload and must never be
+       * presented as a scannable bank payment code.
+       */
+      internalQrUrl: baseUrl ? buildQrUrl(baseUrl, account.publicId) : null,
       branch: account.branch
         ? { id: account.branch.id, name: account.branch.name }
         : null,

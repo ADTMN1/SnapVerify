@@ -26,6 +26,7 @@ class AuthRemoteDatasource {
     String identifier,
     String password, {
     String? organizationId,
+    required bool rememberMe,
   }) async {
     try {
       final response = await client.post(
@@ -34,6 +35,7 @@ class AuthRemoteDatasource {
         body: jsonEncode({
           'identifier': identifier,
           'password': password,
+          'rememberMe': rememberMe,
           if (organizationId != null) 'organizationId': organizationId,
         }),
       ).timeout(_timeout);
@@ -556,6 +558,7 @@ class AuthRemoteDatasource {
   Future<Map<String, dynamic>> selectBusiness({
     required String userId,
     required String organizationId,
+    required bool rememberMe,
   }) async {
     try {
       final response = await client.post(
@@ -564,6 +567,7 @@ class AuthRemoteDatasource {
         body: jsonEncode({
           'userId': userId,
           'organizationId': organizationId,
+          'rememberMe': rememberMe,
         }),
       ).timeout(_timeout);
       _throwIfError(response, 'selectBusiness');

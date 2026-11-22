@@ -11,9 +11,17 @@ import { OtpService, OTP_PURPOSES } from '../otp/otp.service';
 import { PasswordService } from './password.service';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
-import { JwtService } from './jwt.service';
-import { Role, SubscriptionStatus } from '@prisma/client';
+import {
+  JwtService,
+  DEFAULT_REFRESH_TTL_MS,
+  REMEMBERED_REFRESH_TTL_MS,
+} from './jwt.service';
+import { Role } from '@prisma/client';
 import { RegisterDto } from './dto/email-auth.dto';
+import {
+  subscriptionDto,
+  usagePeriodStart,
+} from '../subscription/subscription-usage';
 import * as crypto from 'crypto';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -108,21 +116,6 @@ export class AuthService {
         },
       });
 
-      const startDate = new Date();
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 14);
-      await this.prisma.subscription.create({
-        data: {
-          organizationId: organization.id,
-          planName: 'free_trial',
-          status: SubscriptionStatus.ACTIVE,
-          startDate,
-          endDate,
-          maxUsers: 5,
-          maxDevices: 10,
-        },
-      });
-
       await this.prisma.userBusinessAssignment.create({
         data: {
           userId: user.id,
@@ -148,11 +141,7 @@ export class AuthService {
   // ── Verify Email (step 2: consume OTP → login) ─────────────────────────────
   async verifyEmail(email: string, otpCode: string) {
     const normalized = email.trim().toLowerCase();
-    await this.otpService.verifyOtp(
-      normalized,
-      otpCode,
-      OTP_PURPOSES.REGISTER,
-    );
+    await this.otpService.verifyOtp(normalized, otpCode, OTP_PURPOSES.REGISTER);
 
     const user = await this.prisma.user.findUnique({
       where: { email: normalized },
@@ -165,7 +154,9 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new BadRequestException('Account not found. Please register again.');
+      throw new BadRequestException(
+        'Account not found. Please register again.',
+      );
     }
 
     await this.prisma.user.update({
@@ -186,7 +177,7 @@ export class AuthService {
       assignment.role,
       assignment.branchId ?? undefined,
     );
-    return this.buildAuthResponse(user, assignment, tokens);
+    return await this.buildAuthResponse(user, assignment, tokens);
   }
 
   // ── Resend verification OTP ────────────────────────────────────────────────
@@ -212,7 +203,12 @@ export class AuthService {
   }
 
   // ── Password Login (email, with legacy phone fallback) ─────────────────────
-  async login(identifier: string, password: string, organizationId?: string) {
+  async login(
+    identifier: string,
+    password: string,
+    organizationId?: string,
+    rememberMe = false,
+  ) {
     const isEmail = EMAIL_RE.test(identifier);
     const normalized = identifier.trim().toLowerCase();
     // Resolution order: email → username → legacy phone. Username is only
@@ -233,6 +229,9 @@ export class AuthService {
     });
 
     if (!user) {
+      this.logger.warn(
+        `[Login] account lookup failed style=${isEmail ? 'email' : isPhoneLike ? 'phone' : 'username'}`,
+      );
       throw new UnauthorizedException(
         'Invalid email or password. Please try again.',
       );
@@ -258,6 +257,14 @@ export class AuthService {
       password,
     );
     if (!valid) {
+      const hashFamily = user.passwordHash.startsWith('$argon2')
+        ? 'argon2id'
+        : user.passwordHash.startsWith('$2')
+          ? 'bcrypt'
+          : 'unknown';
+      this.logger.warn(
+        `[Login] password verification failed userId=${user.id} hashFamily=${hashFamily}`,
+      );
       throw new UnauthorizedException(
         'Invalid email or password. Please try again.',
       );
@@ -320,12 +327,19 @@ export class AuthService {
       assignment.organizationId,
       assignment.role,
       assignment.branchId ?? undefined,
+      undefined,
+      undefined,
+      rememberMe ? REMEMBERED_REFRESH_TTL_MS : DEFAULT_REFRESH_TTL_MS,
     );
-    return this.buildAuthResponse(user, assignment, tokens);
+    return await this.buildAuthResponse(user, assignment, tokens);
   }
 
   // ── Select Business (called when user has multiple orgs) ─────────────────
-  async selectBusiness(userId: string, organizationId: string) {
+  async selectBusiness(
+    userId: string,
+    organizationId: string,
+    rememberMe = false,
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -355,9 +369,12 @@ export class AuthService {
       assignment.organizationId,
       assignment.role,
       assignment.branchId ?? undefined,
+      undefined,
+      undefined,
+      rememberMe ? REMEMBERED_REFRESH_TTL_MS : DEFAULT_REFRESH_TTL_MS,
     );
 
-    return this.buildAuthResponse(user, assignment, tokens);
+    return await this.buildAuthResponse(user, assignment, tokens);
   }
 
   // ── Change Password (authenticated user) ───────────────────────────────────
@@ -696,10 +713,7 @@ export class AuthService {
   }
 
   // ── Activate Invitation (QR flow: validate token → staff sets password) ───
-  async activateInvitation(dto: {
-    token: string;
-    password: string;
-  }) {
+  async activateInvitation(dto: { token: string; password: string }) {
     const now = new Date();
 
     // Single-use activation: the updateMany guard below fails if two devices
@@ -719,15 +733,23 @@ export class AuthService {
         where: { token: dto.token },
       });
       if (!anyMatch) {
-        throw new BadRequestException('Invalid invitation. Please scan the QR code again.');
+        throw new BadRequestException(
+          'Invalid invitation. Please scan the QR code again.',
+        );
       }
       if (anyMatch.status === 'ACTIVATED') {
-        throw new BadRequestException('This invitation was already activated. Please log in instead.');
+        throw new BadRequestException(
+          'This invitation was already activated. Please log in instead.',
+        );
       }
       if (anyMatch.status === 'REVOKED') {
-        throw new BadRequestException('This invitation was revoked. Please ask your manager for a new one.');
+        throw new BadRequestException(
+          'This invitation was revoked. Please ask your manager for a new one.',
+        );
       }
-      throw new BadRequestException('This invitation has expired. Please ask your manager to regenerate it.');
+      throw new BadRequestException(
+        'This invitation has expired. Please ask your manager to regenerate it.',
+      );
     }
 
     const username = invitation.username?.trim().toLowerCase();
@@ -788,7 +810,9 @@ export class AuthService {
         ? { id: invitation.organization.id, name: invitation.organization.name }
         : null,
       role: invitation.role,
-      branch: invitation.branch ? { id: invitation.branch.id, name: invitation.branch.name } : null,
+      branch: invitation.branch
+        ? { id: invitation.branch.id, name: invitation.branch.name }
+        : null,
     };
   }
 
@@ -801,7 +825,11 @@ export class AuthService {
     const organization = await this.prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
     });
-    return { user: this.sanitizeUser(user), organization };
+    return {
+      user: this.sanitizeUser(user),
+      organization,
+      subscription: await this.latestSubscription(organizationId),
+    };
   }
 
   // ── List staff for an organization ────────────────────────────────────────
@@ -925,12 +953,30 @@ export class AuthService {
     };
   }
 
-  private buildAuthResponse(user: any, assignment: any, tokens: any) {
+  private async latestSubscription(organizationId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) return null;
+    const usage = await this.prisma.subscriptionUsage.findUnique({
+      where: {
+        subscriptionId_periodStart: {
+          subscriptionId: subscription.id,
+          periodStart: usagePeriodStart(subscription),
+        },
+      },
+    });
+    return subscriptionDto(subscription, usage);
+  }
+
+  private async buildAuthResponse(user: any, assignment: any, tokens: any) {
     const org = assignment.organization;
     return {
       tokens,
       requiresBusinessSelection: false,
       user: this.sanitizeUser(user),
+      subscription: await this.latestSubscription(org.id),
       organization: {
         id: org.id,
         name: org.name,

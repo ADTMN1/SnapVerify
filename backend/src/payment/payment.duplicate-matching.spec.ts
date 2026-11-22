@@ -25,6 +25,17 @@ const mockPrisma = {
   verificationLog: {
     create: jest.fn(),
   },
+  subscription: {
+    findFirst: jest.fn().mockResolvedValue({
+      id: 'sub-1',
+      verificationLimit: null,
+    }),
+  },
+  subscriptionUsage: {
+    upsert: jest.fn().mockResolvedValue({ id: 'usage-1', count: 0 }),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    findUnique: jest.fn().mockResolvedValue(null),
+  },
 };
 
 const mockCheckEt = {
@@ -104,7 +115,7 @@ const validNormalized = (overrides: Record<string, unknown> = {}) =>
     verificationMethod: 'official',
     raw: { success: true, exists: true, duplicate: false, message: null },
     ...overrides,
-  } as NormalizedVerification);
+  }) as NormalizedVerification;
 
 describe('Stage 1 — database duplicate protection (unit)', () => {
   let service: PaymentService;
@@ -169,7 +180,13 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       meta: { target: ['organizationId', 'normalizedTransactionId'] },
     });
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
     expect(result.paymentId).toBe('winner-1');
@@ -179,14 +196,24 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     mockPrisma.payment.findFirst
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'winner-1', amount: 100, transactionId: 'FT123' });
+      .mockResolvedValueOnce({
+        id: 'winner-1',
+        amount: 100,
+        transactionId: 'FT123',
+      });
     mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
     mockPrisma.payment.create.mockRejectedValue({
       code: 'P2002',
       meta: { target: ['organizationId', 'normalizedTransactionId'] },
     });
 
-    await service.verifyByReference('FT123', 'org-2', 'user-1', undefined, 'CBE');
+    await service.verifyByReference(
+      'FT123',
+      'org-2',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     const winnerLookup = mockPrisma.payment.findFirst.mock.calls[1][0];
     expect(winnerLookup.where.organizationId).toBe('org-2');
@@ -240,7 +267,11 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     mockPrisma.payment.findFirst
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'winner-1', amount: 100, transactionId: 'FT123' });
+      .mockResolvedValueOnce({
+        id: 'winner-1',
+        amount: 100,
+        transactionId: 'FT123',
+      });
     mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
     mockPrisma.payment.create.mockRejectedValue({
       code: 'P2002',
@@ -249,7 +280,13 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       },
     });
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
   });
 });
@@ -307,7 +344,11 @@ describe('Stage 1 — receiving-account matching', () => {
       suffix: null,
     });
     expect(
-      matched(service, validUpstreamRaw({ suffix: null, accountNumber: normalized }), acct),
+      matched(
+        service,
+        validUpstreamRaw({ suffix: null, accountNumber: normalized }),
+        acct,
+      ),
     ).toBe(true);
   });
 
@@ -327,7 +368,10 @@ describe('Stage 1 — receiving-account matching', () => {
   });
 
   it('treats a legacy plain SHA-256 hash as unusable and falls back to plaintext compare', () => {
-    const legacyHash = crypto.createHash('sha256').update('1000516323381').digest('hex');
+    const legacyHash = crypto
+      .createHash('sha256')
+      .update('1000516323381')
+      .digest('hex');
     const acct = account({
       accountNumberHash: legacyHash,
       accountNumber: '1000516323381',
@@ -463,7 +507,13 @@ describe('Stage 1 — response data minimization', () => {
       validNormalized({ receiverAccount: '1000516323381' }),
     );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     expect(JSON.stringify(result.raw)).not.toContain('1000516323381');
   });
@@ -482,7 +532,13 @@ describe('Stage 1 — response data minimization', () => {
     mockPrisma.verificationLog.create.mockResolvedValue({});
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     const logArgs = mockPrisma.verificationLog.create.mock.calls[0][0];
     expect(logArgs.data.matchedAccountNumber).not.toBe('1000516323381');
@@ -501,16 +557,33 @@ describe('Stage 1 — provider failures never persist as rejected payments', () 
   });
 
   it.each([
-    ['network failure', new CheckEtError(ProviderErrorType.NETWORK_ERROR, null, 'connect ECONNREFUSED')],
-    ['rate limiting (429)', new CheckEtError(ProviderErrorType.RATE_LIMITED, 429, 'Too many requests')],
-  ])('returns PROVIDER_UNAVAILABLE on %s (fail-closed)', async (_label, err) => {
-    mockCheckEt.verifyReference.mockRejectedValue(err);
-    // Retryable provider failures must prevent persistence.
-    await expect(
-      service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
-    ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
-    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
-  });
+    [
+      'network failure',
+      new CheckEtError(
+        ProviderErrorType.NETWORK_ERROR,
+        null,
+        'connect ECONNREFUSED',
+      ),
+    ],
+    [
+      'rate limiting (429)',
+      new CheckEtError(
+        ProviderErrorType.RATE_LIMITED,
+        429,
+        'Too many requests',
+      ),
+    ],
+  ])(
+    'returns PROVIDER_UNAVAILABLE on %s (fail-closed)',
+    async (_label, err) => {
+      mockCheckEt.verifyReference.mockRejectedValue(err);
+      // Retryable provider failures must prevent persistence.
+      await expect(
+        service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
+      ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
+      expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+    },
+  );
 
   it('persists a FAILED payment for an authoritative TRANSACTION_NOT_FOUND answer', async () => {
     // 404 VerifyResponse envelopes are business-level negative answers and
@@ -534,7 +607,13 @@ describe('Stage 1 — provider failures never persist as rejected payments', () 
       }),
     );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalled();

@@ -20,7 +20,9 @@ const VALID_PROD: Record<string, string> = {
 
 describe('validateEnvironment', () => {
   it('is a no-op outside production', () => {
-    expect(() => validateEnvironment({ NODE_ENV: 'development' })).not.toThrow();
+    expect(() =>
+      validateEnvironment({ NODE_ENV: 'development' }),
+    ).not.toThrow();
     expect(() => validateEnvironment({ NODE_ENV: 'test' })).not.toThrow();
     expect(() => validateEnvironment({})).not.toThrow();
   });
@@ -45,7 +47,9 @@ describe('validateEnvironment', () => {
   it('refuses to boot without any email transport', () => {
     const env: Record<string, string> = { ...VALID_PROD };
     delete env.BREVO_API_KEY;
-    expect(() => validateEnvironment(env)).toThrow(/Email delivery is not configured/);
+    expect(() => validateEnvironment(env)).toThrow(
+      /Email delivery is not configured/,
+    );
   });
 
   it('accepts SMTP as the email transport', () => {
@@ -59,12 +63,16 @@ describe('validateEnvironment', () => {
 
   it('rejects non-HTTPS public URLs', () => {
     const env = { ...VALID_PROD, QR_PUBLIC_BASE_URL: 'http://api.example.com' };
-    expect(() => validateEnvironment(env)).toThrow(/QR_PUBLIC_BASE_URL must be a valid https/);
+    expect(() => validateEnvironment(env)).toThrow(
+      /QR_PUBLIC_BASE_URL must be a valid https/,
+    );
   });
 
   it('rejects a malformed URL', () => {
     const env = { ...VALID_PROD, APP_URL: 'not-a-url' };
-    expect(() => validateEnvironment(env)).toThrow(/APP_URL must be a valid https/);
+    expect(() => validateEnvironment(env)).toThrow(
+      /APP_URL must be a valid https/,
+    );
   });
 
   it('rejects an out-of-range Check.et timeout', () => {

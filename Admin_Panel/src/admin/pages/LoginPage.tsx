@@ -1,26 +1,23 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Eye, EyeOff, User, Lock } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [orgId, setOrgId] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const isEmail = identifier.includes('@');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(identifier, password, orgId || undefined);
+      await login(email, password);
       navigate('/admin');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed. Check your credentials.';
@@ -44,14 +41,13 @@ export default function LoginPage() {
             <ShieldCheck size={28} className="text-slate-900" />
           </div>
           <h1 className="text-white text-2xl font-black tracking-tight">
-            Snap<span className="text-[#B8FF3B]">Verify</span>
-          </h1>
+            Snap<span className="text-[#B8FF3B]">Verify</span></h1>
           <p className="text-slate-500 text-sm mt-1">Admin Dashboard</p>
         </div>
 
         <div className="bg-card rounded-2xl border border-slate-800 p-6 shadow-2xl">
           <h2 className="text-white font-bold text-lg mb-1">Welcome back</h2>
-          <p className="text-slate-500 text-sm mb-6">Sign in with your phone number or email</p>
+          <p className="text-slate-500 text-sm mb-6">Sign in with your email and password</p>
 
           {error && (
             <div className="mb-4 p-3 rounded-xl border border-red-500/30 text-red-400 text-sm"
@@ -61,16 +57,16 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Phone or Email */}
+            {/* Email */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-slate-300 text-sm font-medium">Phone or Email</label>
+              <label className="text-slate-300 text-sm font-medium">Email</label>
               <div className="relative">
-                <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                 <input
-                  type="text"
-                  value={identifier}
-                  onChange={e => setIdentifier(e.target.value)}
-                  placeholder="0912345678 or admin@email.com"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="admin@email.com"
                   required
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500 transition-colors"
                 />
@@ -96,22 +92,6 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-
-            {/* Org ID — only show for phone login with multiple orgs */}
-            {!isEmail && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-slate-300 text-sm font-medium">
-                  Organization ID <span className="text-slate-600 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={orgId}
-                  onChange={e => setOrgId(e.target.value)}
-                  placeholder="Leave blank if you have one organization"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-500 transition-colors"
-                />
-              </div>
-            )}
 
             <button
               type="submit"

@@ -34,7 +34,9 @@ export class AdminDashboardController {
       throw new Error('Admin organization not found');
     }
 
-    const stats = await this.dashboardService.getDashboardStats(assignment.organizationId);
+    const stats = await this.dashboardService.getDashboardStats(
+      assignment.organizationId,
+    );
     return stats;
   }
 
@@ -141,6 +143,8 @@ export class AdminDashboardController {
       throw new Error('Admin organization not found');
     }
 
-    return this.dashboardService.getBranchPerformance(assignment.organizationId);
+    return this.dashboardService.getBranchPerformance(
+      assignment.organizationId,
+    );
   }
 }

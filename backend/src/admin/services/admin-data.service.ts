@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { PaymentProvider } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -13,7 +14,9 @@ export class AdminDataService {
     });
     if (!assignment) {
       // fallback to any assignment
-      const any = await this.prisma.userBusinessAssignment.findFirst({ where: { userId } });
+      const any = await this.prisma.userBusinessAssignment.findFirst({
+        where: { userId },
+      });
       if (!any) throw new Error('No organization found for this user');
       return any.organizationId;
     }
@@ -26,14 +29,27 @@ export class AdminDataService {
       where: { id: orgId },
       include: {
         subscriptions: { orderBy: { createdAt: 'desc' }, take: 1 },
-        _count: { select: { branches: true, userAssignments: true, payments: true, paymentAccounts: true } },
+        _count: {
+          select: {
+            branches: true,
+            userAssignments: true,
+            payments: true,
+            paymentAccounts: true,
+          },
+        },
       },
     });
   }
 
-  async getPayments(userId: string, params: {
-    page?: number; limit?: number; status?: string; search?: string;
-  }) {
+  async getPayments(
+    userId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+    },
+  ) {
     const orgId = await this.getOrgId(userId);
     const page = params.page ?? 1;
     const limit = Math.min(params.limit ?? 20, 100);
@@ -50,8 +66,13 @@ export class AdminDataService {
 
     const [data, total] = await Promise.all([
       this.prisma.payment.findMany({
-        where, skip, take: limit,
-        include: { user: { select: { id: true, fullName: true, phone: true } }, verificationLogs: true },
+        where,
+        skip,
+        take: limit,
+        include: {
+          user: { select: { id: true, fullName: true, phone: true } },
+          verificationLogs: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.payment.count({ where }),
@@ -65,7 +86,17 @@ export class AdminDataService {
     return this.prisma.userBusinessAssignment.findMany({
       where: { organizationId: orgId },
       include: {
-        user: { select: { id: true, fullName: true, phone: true, email: true, status: true, createdAt: true, updatedAt: true } },
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
         branch: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -92,7 +123,10 @@ export class AdminDataService {
     });
   }
 
-  async getAuditLogs(userId: string, params: { page?: number; limit?: number; action?: string; search?: string }) {
+  async getAuditLogs(
+    userId: string,
+    params: { page?: number; limit?: number; action?: string; search?: string },
+  ) {
     const orgId = await this.getOrgId(userId);
     const page = params.page ?? 1;
     const limit = Math.min(params.limit ?? 50, 200);
@@ -103,15 +137,21 @@ export class AdminDataService {
     if (params.search) {
       where.OR = [
         { action: { contains: params.search, mode: 'insensitive' } },
-        { user: { fullName: { contains: params.search, mode: 'insensitive' } } },
+        {
+          user: { fullName: { contains: params.search, mode: 'insensitive' } },
+        },
         { ipAddress: { contains: params.search } },
       ];
     }
 
     const [data, total] = await Promise.all([
       this.prisma.activityLog.findMany({
-        where, skip, take: limit,
-        include: { user: { select: { id: true, fullName: true, phone: true } } },
+        where,
+        skip,
+        take: limit,
+        include: {
+          user: { select: { id: true, fullName: true, phone: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.activityLog.count({ where }),
@@ -136,18 +176,30 @@ export class AdminDataService {
     });
   }
 
-  async getLoginHistory(userId: string, params: { page?: number; limit?: number }) {
+  async getLoginHistory(
+    userId: string,
+    params: { page?: number; limit?: number },
+  ) {
     const orgId = await this.getOrgId(userId);
     const page = params.page ?? 1;
     const limit = Math.min(params.limit ?? 50, 200);
     const skip = (page - 1) * limit;
 
-    const where = { organizationId: orgId, action: { in: ['LOGIN', 'LOGOUT', 'ADMIN_LOGIN', 'ADMIN_LOGOUT', 'LOGIN_FAILED'] } };
+    const where = {
+      organizationId: orgId,
+      action: {
+        in: ['LOGIN', 'LOGOUT', 'ADMIN_LOGIN', 'ADMIN_LOGOUT', 'LOGIN_FAILED'],
+      },
+    };
 
     const [data, total] = await Promise.all([
       this.prisma.activityLog.findMany({
-        where, skip, take: limit,
-        include: { user: { select: { id: true, fullName: true, phone: true } } },
+        where,
+        skip,
+        take: limit,
+        include: {
+          user: { select: { id: true, fullName: true, phone: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.activityLog.count({ where }),
@@ -164,7 +216,37 @@ export class AdminDataService {
     });
   }
 
-  async getFraudPayments(userId: string, params: { page?: number; limit?: number; minRisk?: number }) {
+  getSubscriptionAccount() {
+    return this.prisma.platformPaymentAccount.findUnique({
+      where: { provider: PaymentProvider.TELEBIRR },
+    });
+  }
+
+  updateSubscriptionAccount(dto: {
+    accountNumber: string;
+    accountHolderName?: string;
+    isActive?: boolean;
+  }) {
+    return this.prisma.platformPaymentAccount.upsert({
+      where: { provider: PaymentProvider.TELEBIRR },
+      create: {
+        provider: PaymentProvider.TELEBIRR,
+        accountNumber: dto.accountNumber,
+        accountHolderName: dto.accountHolderName,
+        isActive: dto.isActive ?? true,
+      },
+      update: {
+        accountNumber: dto.accountNumber,
+        accountHolderName: dto.accountHolderName,
+        isActive: dto.isActive ?? true,
+      },
+    });
+  }
+
+  async getFraudPayments(
+    userId: string,
+    params: { page?: number; limit?: number; minRisk?: number },
+  ) {
     const orgId = await this.getOrgId(userId);
     const page = params.page ?? 1;
     const limit = Math.min(params.limit ?? 20, 100);
@@ -175,8 +257,13 @@ export class AdminDataService {
 
     const [data, total] = await Promise.all([
       this.prisma.payment.findMany({
-        where, skip, take: limit,
-        include: { user: { select: { id: true, fullName: true, phone: true } }, verificationLogs: true },
+        where,
+        skip,
+        take: limit,
+        include: {
+          user: { select: { id: true, fullName: true, phone: true } },
+          verificationLogs: true,
+        },
         orderBy: [{ riskScore: 'desc' }, { createdAt: 'desc' }],
       }),
       this.prisma.payment.count({ where }),
@@ -192,7 +279,10 @@ export class AdminDataService {
       where: { id: deviceId, userAssignment: { organizationId: orgId } },
     });
     if (!device) throw new Error('Device not found');
-    return this.prisma.device.update({ where: { id: deviceId }, data: { isActive: false } });
+    return this.prisma.device.update({
+      where: { id: deviceId },
+      data: { isActive: false },
+    });
   }
 
   async removeDevice(userId: string, deviceId: string) {

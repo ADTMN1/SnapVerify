@@ -1,9 +1,4 @@
-import {
-  IsString,
-  IsNotEmpty,
-  MinLength,
-  IsOptional,
-} from 'class-validator';
+import { IsString, IsNotEmpty, IsBoolean, IsOptional } from 'class-validator';
 
 export class LoginDto {
   // Email for new users; legacy phone login is still accepted for existing
@@ -19,4 +14,8 @@ export class LoginDto {
   @IsString()
   @IsOptional()
   organizationId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  rememberMe?: boolean;
 }

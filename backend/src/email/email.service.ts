@@ -14,8 +14,7 @@ export class EmailService {
       this.configService.get<string>('EMAIL_FROM') ??
       'SnapVerify <no-reply@snapverify.app>';
 
-    this.brevoApiKey =
-      this.configService.get<string>('BREVO_API_KEY') || null;
+    this.brevoApiKey = this.configService.get<string>('BREVO_API_KEY') || null;
 
     const host = this.configService.get<string>('SMTP_HOST');
     const port = Number(this.configService.get<string>('SMTP_PORT') ?? 587);

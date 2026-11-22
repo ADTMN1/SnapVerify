@@ -9,6 +9,7 @@ import { SmsModule } from './sms/sms.module';
 import { EmailModule } from './email/email.module';
 import { OtpModule } from './otp/otp.module';
 import { PaymentModule } from './payment/payment.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 import { ReportsModule } from './reports/reports.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BranchModule } from './branch/branch.module';
@@ -49,6 +50,7 @@ import { resolveThrottlingConfig } from './config/throttling.config';
     EmailModule,
     OtpModule,
     PaymentModule,
+    SubscriptionModule,
     ReportsModule,
     NotificationsModule,
     BranchModule,

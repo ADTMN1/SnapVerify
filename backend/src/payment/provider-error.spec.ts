@@ -39,10 +39,7 @@ describe('Leul.et provider error classification (Stage 1)', () => {
   });
 
   it('classifies 404 as an authoritative TRANSACTION_NOT_FOUND (negative answer)', () => {
-    const e = classifyLeulEtResponse(
-      { error: 'Transaction not found' },
-      404,
-    );
+    const e = classifyLeulEtResponse({ error: 'Transaction not found' }, 404);
     expect(e?.type).toBe(ProviderErrorType.TRANSACTION_NOT_FOUND);
     expect(e?.isRetryable).toBe(false);
   });

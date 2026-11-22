@@ -5,8 +5,9 @@ import '../../presentation/providers/auth_provider.dart';
 import 'home_tab.dart';
 import 'history_tab.dart';
 import 'camera_tab.dart';
-import 'qr_tab.dart';
+import 'manage/payment_account_management_screen.dart';
 import 'manage_tab.dart';
+import 'subscription_sheet.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -28,7 +29,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!isWaiter) HomeTab(onNavigate: _switchTab),
       const HistoryTab(),
       const CameraTab(),
-      QRTab(isActive: _activeTabIndex == (isWaiter ? 2 : 3)),
+      const PaymentAccountManagementScreen(isTab: true),
       if (canManage) const ManageTab(),
     ];
 
@@ -56,11 +57,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required bool isWaiter,
     required bool canManage,
   }) {
-    // Waiter layout: History, Camera, QR
-    // Other roles: Home, History, Camera, QR, [Manage]
+    // Waiter layout: History, Camera, Accounts
+    // Other roles: Home, History, Camera, Accounts, [Manage]
     final int historyIdx = isWaiter ? 0 : 1;
     final int cameraIdx = isWaiter ? 1 : 2;
-    final int qrIdx = isWaiter ? 2 : 3;
+    final int accountsIdx = isWaiter ? 2 : 3;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -78,7 +79,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _activeTabIndex == cameraIdx
               ? const SizedBox(width: 48)
               : _buildCameraButton(cameraIdx),
-          _buildNavItem(qrIdx, Icons.qr_code_scanner_rounded, 'QR'),
+          _buildNavItem(
+            accountsIdx,
+            Icons.account_balance_wallet_outlined,
+            'Accounts',
+          ),
           if (canManage) _buildNavItem(4, Icons.settings_rounded, 'Manage'),
         ],
       ),
@@ -121,13 +126,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  void _handleCameraTap(int cameraIdx) {
+    if (!mounted) return;
+    final container = ProviderScope.containerOf(context);
+    showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (_) => ProviderScope(
+        parent: container,
+        child: const SubscriptionSheet(),
+      ),
+    ).then((canOpenCamera) {
+      ref.read(authNotifierProvider.notifier).refreshSubscription();
+      if (canOpenCamera == true && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _switchTab(cameraIdx);
+        });
+      }
+    });
+  }
+
   Widget _buildCameraButton(int cameraIdx) {
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _activeTabIndex = cameraIdx;
-        });
-      },
+      onTap: () => _handleCameraTap(cameraIdx),
       child: Container(
         width: 48,
         height: 48,

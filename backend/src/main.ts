@@ -3,6 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import { lookup } from 'dns/promises';
+import { isIP } from 'net';
 
 interface CorsConfig {
   origin: string[] | false;
@@ -81,7 +83,24 @@ export function resolveCorsConfig(
   };
 }
 
+async function pinDatabaseIpv4() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return;
+  const url = new URL(raw);
+  if (isIP(url.hostname)) {
+    process.env.DATABASE_HOST_V4 = url.hostname;
+    return;
+  }
+  try {
+    const result = await lookup(url.hostname, { family: 4 });
+    process.env.DATABASE_HOST_V4 = result.address;
+  } catch {
+    process.env.DATABASE_HOST_V4 = url.hostname;
+  }
+}
+
 async function bootstrap() {
+  await pinDatabaseIpv4();
   const app = await NestFactory.create(AppModule);
   app.use(helmet());
 

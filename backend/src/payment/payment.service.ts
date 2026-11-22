@@ -5,23 +5,25 @@ import {
   HttpException,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, PaymentStatus, PaymentProvider, PaymentAccount } from '@prisma/client';
+import {
+  Prisma,
+  PaymentStatus,
+  PaymentProvider,
+  PaymentAccount,
+} from '@prisma/client';
 import { normalizeTransactionId } from './reference-normalizer';
 import {
   computeAccountNumberHash,
   normalizeAccountNumber,
   parseAccountHashVersion,
 } from './account-hash';
-import {
-  ProviderError,
-  ProviderErrorType,
-} from './provider-error';
-import {
-  UpstreamVerificationUnavailableError,
-} from './payment-provider-errors';
+import { ProviderError, ProviderErrorType } from './provider-error';
+import { UpstreamVerificationUnavailableError } from './payment-provider-errors';
+import { usagePeriodStart } from '../subscription/subscription-usage';
 import {
   CheckEtService,
   NormalizedVerification,
@@ -83,8 +85,7 @@ const MAX_DECIMAL_PLACES = 2;
 const DECIMAL_STRING_PATTERN = /^\d+(\.\d+)?$/;
 
 type FinancialValidation =
-  | { ok: true; amount: Prisma.Decimal }
-  | { ok: false; reason: string };
+  { ok: true; amount: Prisma.Decimal } | { ok: false; reason: string };
 
 /**
  * Strictly parse and validate an upstream transaction amount.
@@ -116,7 +117,7 @@ export function parseVerifiedAmount(value: unknown): FinancialValidation {
 
   let amount: Prisma.Decimal;
   try {
-    amount = new Prisma.Decimal(candidate as string | number);
+    amount = new Prisma.Decimal(candidate);
   } catch {
     return { ok: false, reason: 'Transaction amount is not a valid number' };
   }
@@ -133,7 +134,10 @@ export function parseVerifiedAmount(value: unknown): FinancialValidation {
   }
 
   if (!amount.greaterThan(0)) {
-    return { ok: false, reason: 'Transaction amount must be greater than zero' };
+    return {
+      ok: false,
+      reason: 'Transaction amount must be greater than zero',
+    };
   }
 
   return { ok: true, amount };
@@ -241,9 +245,7 @@ export class PaymentService {
       // Fail closed: without a usable secret, hash comparison must not
       // silently degrade — matching falls back to the explicit legacy path,
       // which is logged.
-      this.logger.error(
-        `[_hashAccountNumber] ${(e as Error).message}`,
-      );
+      this.logger.error(`[_hashAccountNumber] ${(e as Error).message}`);
       return null;
     }
   }
@@ -332,7 +334,10 @@ export class PaymentService {
       const normalizedRegistered = this._normalizeAccountNumber(
         account.accountNumber,
       );
-      if (normalizedRegistered && normalizedApiAccount === normalizedRegistered) {
+      if (
+        normalizedRegistered &&
+        normalizedApiAccount === normalizedRegistered
+      ) {
         return true;
       }
       if (normalizedRegistered) {
@@ -432,7 +437,9 @@ export class PaymentService {
    * Mask any account-number-like field on a (shallow-copied) raw object.
    * Shared by the client-facing and persistence sanitizers.
    */
-  private _maskAccountFields(clone: Record<string, unknown>): Record<string, unknown> {
+  private _maskAccountFields(
+    clone: Record<string, unknown>,
+  ): Record<string, unknown> {
     for (const key of Object.keys(clone)) {
       if (
         /account(number)?$|accountnumber$/i.test(key) ||
@@ -630,7 +637,10 @@ export class PaymentService {
           };
         }
 
-        if (verification.success && this._isPaymentToVerification(verification, account)) {
+        if (
+          verification.success &&
+          this._isPaymentToVerification(verification, account)
+        ) {
           raw = this._toRawShape(verification);
           matchedAccount = account;
           break;
@@ -770,7 +780,11 @@ export class PaymentService {
         if (!normalized) {
           return { account, bankHint, accountNumber: null as string | null };
         }
-        return { account, bankHint, accountNumber: account.accountNumber as string };
+        return {
+          account,
+          bankHint,
+          accountNumber: account.accountNumber as string,
+        };
       })
       .filter(
         (
@@ -793,7 +807,10 @@ export class PaymentService {
       );
     }
 
-    const unique = new Map<string, { bankHint: 'cbe' | 'boa'; accountNumber: string }>();
+    const unique = new Map<
+      string,
+      { bankHint: 'cbe' | 'boa'; accountNumber: string }
+    >();
     for (const r of requiring) {
       const normalized = this._normalizeAccountNumber(r.accountNumber)!;
       unique.set(`${r.bankHint}:${normalized}`, {
@@ -1038,11 +1055,58 @@ export class PaymentService {
       userId,
       {
         method: 'IMAGE_OCR',
-        transactionId:
-          verification.transactionNumber ?? `OCR-${Date.now()}`,
+        transactionId: verification.transactionNumber ?? `OCR-${Date.now()}`,
       },
       matchedAccount,
     );
+  }
+
+  private async consumeVerificationQuota(organizationId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        OR: [{ endDate: null }, { endDate: { gt: new Date() } }],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      throw new ForbiddenException(
+        'No active subscription. Select a plan to continue.',
+      );
+    }
+
+    const periodStart = usagePeriodStart(subscription);
+    const usage = await this.prisma.subscriptionUsage.upsert({
+      where: {
+        subscriptionId_periodStart: {
+          subscriptionId: subscription.id,
+          periodStart,
+        },
+      },
+      create: { subscriptionId: subscription.id, periodStart },
+      update: {},
+    });
+
+    const limit = subscription.verificationLimit;
+    if (limit !== null && usage.count >= limit) {
+      throw new ForbiddenException(
+        `Verification limit reached (${limit}). Upgrade your plan to continue.`,
+      );
+    }
+
+    const incremented = await this.prisma.subscriptionUsage.updateMany({
+      where: {
+        id: usage.id,
+        ...(limit === null ? {} : { count: { lt: limit } }),
+      },
+      data: { count: { increment: 1 } },
+    });
+    if (incremented.count === 0) {
+      throw new ForbiddenException(
+        `Verification limit reached (${limit}). Upgrade your plan to continue.`,
+      );
+    }
   }
 
   private async _saveAndReturn(
@@ -1081,6 +1145,10 @@ export class PaymentService {
           );
         }
       }
+    }
+
+    if (verified) {
+      await this.consumeVerificationQuota(organizationId);
     }
 
     const status: PaymentStatus = verified

@@ -26,52 +26,59 @@ export class AdminDashboardService {
     today.setHours(0, 0, 0, 0);
 
     // Get all stats in parallel
-    const [verified, pending, failed, fraudAlerts, todayRevenue, activeEmployees, activeBranches] = 
-      await Promise.all([
-        // Total verified payments (all time)
-        this.prisma.payment.count({
-          where: { organizationId, status: 'VERIFIED' },
-        }),
-        // Total pending payments (all time)
-        this.prisma.payment.count({
-          where: { organizationId, status: 'PENDING' },
-        }),
-        // Total failed/rejected payments (all time)
-        this.prisma.payment.count({
-          where: {
-            organizationId,
-            status: { in: ['FAILED', 'REJECTED'] },
-          },
-        }),
-        // Fraud alerts (high risk score)
-        this.prisma.payment.count({
-          where: {
-            organizationId,
-            riskScore: { gte: 70 },
-            createdAt: { gte: today },
-          },
-        }),
-        // Today's revenue (sum of verified payments today)
-        this.prisma.payment.aggregate({
-          where: {
-            organizationId,
-            status: 'VERIFIED',
-            createdAt: { gte: today },
-          },
-          _sum: { amount: true },
-        }),
-        // Active employees
-        this.prisma.userBusinessAssignment.count({
-          where: {
-            organizationId,
-            status: 'active',
-          },
-        }),
-        // Active branches
-        this.prisma.branch.count({
-          where: { organizationId },
-        }),
-      ]);
+    const [
+      verified,
+      pending,
+      failed,
+      fraudAlerts,
+      todayRevenue,
+      activeEmployees,
+      activeBranches,
+    ] = await Promise.all([
+      // Total verified payments (all time)
+      this.prisma.payment.count({
+        where: { organizationId, status: 'VERIFIED' },
+      }),
+      // Total pending payments (all time)
+      this.prisma.payment.count({
+        where: { organizationId, status: 'PENDING' },
+      }),
+      // Total failed/rejected payments (all time)
+      this.prisma.payment.count({
+        where: {
+          organizationId,
+          status: { in: ['FAILED', 'REJECTED'] },
+        },
+      }),
+      // Fraud alerts (high risk score)
+      this.prisma.payment.count({
+        where: {
+          organizationId,
+          riskScore: { gte: 70 },
+          createdAt: { gte: today },
+        },
+      }),
+      // Today's revenue (sum of verified payments today)
+      this.prisma.payment.aggregate({
+        where: {
+          organizationId,
+          status: 'VERIFIED',
+          createdAt: { gte: today },
+        },
+        _sum: { amount: true },
+      }),
+      // Active employees
+      this.prisma.userBusinessAssignment.count({
+        where: {
+          organizationId,
+          status: 'active',
+        },
+      }),
+      // Active branches
+      this.prisma.branch.count({
+        where: { organizationId },
+      }),
+    ]);
 
     // Today's transactions
     const todayTransactions = await this.prisma.payment.count({

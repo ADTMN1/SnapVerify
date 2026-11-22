@@ -1,5 +1,9 @@
 import axios from 'axios';
-import type { Branch, UserBusinessAssignment, PaymentAccount, Device, Subscription } from '../types';
+import type {
+  Branch, UserBusinessAssignment, PaymentAccount, Device, Subscription,
+  PlatformOverview, PlatformOrganization, PlatformUser, PlatformSubscription,
+  PlatformActivity, PlatformPaymentsResult, PlatformPaymentAccount, Paginated,
+} from '../types';
 import { API_BASE_URL } from '../constants';
 
 const api = axios.create({ baseURL: API_BASE_URL });
@@ -54,10 +58,36 @@ export const adminDataApi = {
   loginHistory: (params?: { page?: number; limit?: number }) =>
     api.get('/api/admin/data/login-history', { params }),
   subscription: () => api.get<Subscription>('/api/admin/data/subscription'),
+  subscriptionAccount: () => api.get<PlatformPaymentAccount>('/api/admin/data/subscription-account'),
+  updateSubscriptionAccount: (data: {
+    accountNumber: string;
+    accountHolderName?: string;
+    isActive?: boolean;
+  }) => api.put<PlatformPaymentAccount>('/api/admin/data/subscription-account', data),
   fraud: (params?: { page?: number; limit?: number; minRisk?: number }) =>
     api.get('/api/admin/data/fraud', { params }),
   blockDevice: (id: string) => api.patch(`/api/admin/data/devices/${id}/block`),
   removeDevice: (id: string) => api.delete(`/api/admin/data/devices/${id}`),
+};
+
+export const platformAdminApi = {
+  overview: () => api.get<PlatformOverview>('/api/admin/platform/overview'),
+  organizations: (params?: { page?: number; limit?: number; status?: string; search?: string }) =>
+    api.get<Paginated<PlatformOrganization>>('/api/admin/platform/organizations', { params }),
+  organization: (id: string) =>
+    api.get<PlatformOrganization>(`/api/admin/platform/organizations/${id}`),
+  updateOrganization: (id: string, data: { status?: string; subscriptionPlan?: string }) =>
+    api.patch<PlatformOrganization>(`/api/admin/platform/organizations/${id}`, data),
+  users: (params?: { page?: number; limit?: number; status?: string; search?: string }) =>
+    api.get<Paginated<PlatformUser>>('/api/admin/platform/users', { params }),
+  updateUser: (id: string, data: { status?: string; isPlatformAdmin?: boolean }) =>
+    api.patch<PlatformUser>(`/api/admin/platform/users/${id}`, data),
+  subscriptions: (params?: { page?: number; limit?: number }) =>
+    api.get<Paginated<PlatformSubscription>>('/api/admin/platform/subscriptions', { params }),
+  payments: (params?: { page?: number; limit?: number; status?: string; search?: string }) =>
+    api.get<PlatformPaymentsResult>('/api/admin/platform/payments', { params }),
+  activity: (limit?: number) =>
+    api.get<PlatformActivity[]>('/api/admin/platform/activity', { params: { limit } }),
 };
 
 export const branchApi = {

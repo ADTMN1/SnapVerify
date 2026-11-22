@@ -1,10 +1,22 @@
 import {
-  Controller, Get, Patch, Delete, UseGuards, Query, Param, HttpCode, HttpStatus, Logger,
+  Controller,
+  Get,
+  Patch,
+  Delete,
+  UseGuards,
+  Query,
+  Param,
+  Body,
+  Put,
+  HttpCode,
+  HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { AdminDataService } from '../services/admin-data.service';
 import { AdminJwtAuthGuard } from '../guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from '../guards/admin-roles.guard';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
+import { UpdateSubscriptionAccountDto } from '../dto/update-subscription-account.dto';
 
 @Controller('api/admin/data')
 @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
@@ -85,6 +97,16 @@ export class AdminDataController {
   @Get('subscription')
   getSubscription(@CurrentAdmin() admin: any) {
     return this.dataService.getSubscription(admin.sub);
+  }
+
+  @Get('subscription-account')
+  getSubscriptionAccount() {
+    return this.dataService.getSubscriptionAccount();
+  }
+
+  @Put('subscription-account')
+  updateSubscriptionAccount(@Body() dto: UpdateSubscriptionAccountDto) {
+    return this.dataService.updateSubscriptionAccount(dto);
   }
 
   @Get('fraud')

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionStatus } from '@prisma/client';
+import { usagePeriodStart } from '../../subscription/subscription-usage';
 
 /**
  * Checks that the user's current organization has an active subscription.
@@ -41,6 +42,22 @@ export class SubscriptionGuard implements CanActivate {
       throw new ForbiddenException(
         'Subscription expired. Please renew your subscription to continue.',
       );
+    }
+
+    if (subscription.verificationLimit !== null) {
+      const usage = await this.prisma.subscriptionUsage.findUnique({
+        where: {
+          subscriptionId_periodStart: {
+            subscriptionId: subscription.id,
+            periodStart: usagePeriodStart(subscription),
+          },
+        },
+      });
+      if ((usage?.count ?? 0) >= subscription.verificationLimit) {
+        throw new ForbiddenException(
+          `Verification limit reached (${subscription.verificationLimit}). Upgrade your plan to continue.`,
+        );
+      }
     }
 
     return true;

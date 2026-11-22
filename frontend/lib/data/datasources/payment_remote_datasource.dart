@@ -214,7 +214,6 @@ class PaymentRemoteDatasource {
     required String accessToken,
     required String provider,
     String? accountNumber,
-    String? suffix,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts');
     debugPrint('[PaymentDS] createPaymentAccount → $uri');
@@ -228,7 +227,6 @@ class PaymentRemoteDatasource {
       body: jsonEncode({
         'provider': provider,
         if (accountNumber != null) 'accountNumber': accountNumber,
-        if (suffix != null) 'suffix': suffix,
       }),
     ).timeout(_timeout);
 
@@ -246,7 +244,6 @@ class PaymentRemoteDatasource {
     required String accessToken,
     required String provider,
     String? accountNumber,
-    String? suffix,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts/$provider');
     debugPrint('[PaymentDS] updatePaymentAccount → $uri');
@@ -259,7 +256,6 @@ class PaymentRemoteDatasource {
       },
       body: jsonEncode({
         if (accountNumber != null) 'accountNumber': accountNumber,
-        if (suffix != null) 'suffix': suffix,
       }),
     ).timeout(_timeout);
 

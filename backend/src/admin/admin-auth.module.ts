@@ -6,6 +6,7 @@ import { AdminJwtService } from './services/admin-jwt.service';
 import { AdminAuthController } from './controllers/admin-auth.controller';
 import { AdminJwtAuthGuard } from './guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from './guards/admin-roles.guard';
+import { PasswordService } from '../auth/password.service';
 
 @Module({
   imports: [
@@ -13,14 +14,16 @@ import { AdminRolesGuard } from './guards/admin-roles.guard';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_ADMIN_ACCESS_SECRET') || 
-                config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        secret:
+          config.get<string>('JWT_ADMIN_ACCESS_SECRET') ||
+          config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       }),
     }),
   ],
   providers: [
     AdminAuthService,
     AdminJwtService,
+    PasswordService,
     AdminJwtAuthGuard,
     AdminRolesGuard,
   ],

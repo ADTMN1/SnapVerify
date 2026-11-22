@@ -50,6 +50,7 @@ export class AuthController {
       dto.identifier,
       dto.password,
       dto.organizationId,
+      dto.rememberMe,
     );
   }
 
@@ -135,9 +136,18 @@ export class AuthController {
   @Post('select-business')
   @HttpCode(HttpStatus.OK)
   async selectBusiness(
-    @Body() body: { userId: string; organizationId: string },
+    @Body()
+    body: {
+      userId: string;
+      organizationId: string;
+      rememberMe?: boolean;
+    },
   ) {
-    return this.authService.selectBusiness(body.userId, body.organizationId);
+    return this.authService.selectBusiness(
+      body.userId,
+      body.organizationId,
+      body.rememberMe,
+    );
   }
 
   @Public()
@@ -147,11 +157,7 @@ export class AuthController {
     @Body() dto: RefreshTokenDto,
     @Request() req: { ip: string },
   ) {
-    return this.jwtService.refreshTokens(
-      dto.refreshToken,
-      undefined,
-      req.ip,
-    );
+    return this.jwtService.refreshTokens(dto.refreshToken, undefined, req.ip);
   }
 
   @Public()

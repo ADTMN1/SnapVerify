@@ -517,7 +517,7 @@ export class CheckEtService {
           success: false,
           duplicate: true,
           message: raw?.message ?? 'This payment was already verified.',
-        } as CheckEtRawResponse,
+        },
         httpStatus,
       );
     }

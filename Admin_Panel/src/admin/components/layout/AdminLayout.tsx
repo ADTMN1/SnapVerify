@@ -14,7 +14,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Bell, Building, ShieldCheck, Zap, Webhook, History, LifeBuoy, Settings,
 };
 
-const NAV = [
+const OWNER_NAV = [
   { label: 'Dashboard',        icon: 'LayoutDashboard', path: '/admin' },
   { label: 'Transactions',     icon: 'Receipt',         path: '/admin/transactions' },
   { label: 'Live Monitor',     icon: 'Activity',        path: '/admin/live' },
@@ -37,9 +37,22 @@ const NAV = [
   { label: 'Settings',         icon: 'Settings',        path: '/admin/settings' },
 ];
 
+const PLATFORM_NAV = [
+  { label: 'Overview',       icon: 'LayoutDashboard', path: '/admin' },
+  { label: 'Organizations',  icon: 'Building2',       path: '/admin/organizations' },
+  { label: 'Users',          icon: 'Users',           path: '/admin/users' },
+  { label: 'Transactions',   icon: 'Receipt',         path: '/admin/platform/transactions' },
+  { label: 'Subscriptions',  icon: 'CreditCard',      path: '/admin/platform/subscriptions' },
+  { label: 'Activity',       icon: 'Activity',        path: '/admin/platform/activity' },
+  { label: 'Audit Logs',     icon: 'ClipboardList',   path: '/admin/audit' },
+  { label: 'Login History',  icon: 'History',         path: '/admin/login-history' },
+  { label: 'Settings',       icon: 'Settings',        path: '/admin/settings' },
+];
+
 function SidebarContent({ collapsed, onClose }: { collapsed: boolean; onClose?: () => void }) {
-  const { user, organization, logout } = useAuth();
+  const { user, organization, role, logout } = useAuth();
   const navigate = useNavigate();
+  const nav = role === 'SUPER_ADMIN' ? PLATFORM_NAV : OWNER_NAV;
 
   async function handleLogout() {
     await logout();
@@ -56,7 +69,9 @@ function SidebarContent({ collapsed, onClose }: { collapsed: boolean; onClose?: 
         {!collapsed && (
           <div className="min-w-0">
             <p className="text-white font-bold text-sm leading-none">SnapVerify</p>
-            <p className="text-slate-500 text-xs mt-0.5 truncate">{organization?.name ?? 'Admin Panel'}</p>
+            <p className="text-slate-500 text-xs mt-0.5 truncate">
+              {role === 'SUPER_ADMIN' ? 'Platform Admin' : (organization?.name ?? 'Admin Panel')}
+            </p>
           </div>
         )}
         {onClose && (
@@ -68,7 +83,7 @@ function SidebarContent({ collapsed, onClose }: { collapsed: boolean; onClose?: 
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 scrollbar-thin px-2">
-        {NAV.map(item => {
+        {nav.map(item => {
           const Icon = ICON_MAP[item.icon] ?? LayoutDashboard;
           return (
             <NavLink

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../../data/datasources/auth_remote_datasource.dart';
 import '../../domain/entities/auth_tokens.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/entities/organization.dart';
+import '../../domain/entities/subscription.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
@@ -33,7 +35,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-enum AuthStatus { initial, loading, authenticated, unauthenticated, error, requiresBusinessSelection }
+enum AuthStatus { initial, loading, authenticated, unauthenticated, reconnecting, error, requiresBusinessSelection }
 
 /// User roles mirrored from the backend enum.
 enum UserRole { owner, manager, cashier, waiter, unknown }
@@ -144,16 +146,6 @@ extension UserRoleX on UserRole {
   bool get canRemovePaymentAccount =>
       this == UserRole.owner;
 
-  /// QR Code Management Permissions
-  bool get canGenerateQRCode =>
-      this == UserRole.owner;
-
-  bool get canManageQRCode =>
-      this == UserRole.owner;
-
-  bool get canViewQRCode =>
-      this != UserRole.unknown;
-
   /// Reports Permissions
   bool get canExportReports =>
       this == UserRole.owner;
@@ -209,6 +201,7 @@ class AuthState {
   final String? errorMessage;
   final User? user;
   final Organization? organization;
+  final Subscription? subscription;
   final List<UserRoleAssignment> roles;
   final List<UserBusinessMembership> availableOrganizations;
   final User? pendingUser;
@@ -220,6 +213,7 @@ class AuthState {
     this.errorMessage,
     this.user,
     this.organization,
+    this.subscription,
     this.roles = const [],
     this.availableOrganizations = const [],
     this.pendingUser,
@@ -235,6 +229,7 @@ class AuthState {
     String? errorMessage,
     User? user,
     Organization? organization,
+    Subscription? subscription,
     List<UserRoleAssignment>? roles,
     List<UserBusinessMembership>? availableOrganizations,
     User? pendingUser,
@@ -246,6 +241,7 @@ class AuthState {
       errorMessage: errorMessage,   // always replace (null clears the error)
       user: user ?? this.user,
       organization: organization ?? this.organization,
+      subscription: subscription ?? this.subscription,
       roles: roles ?? this.roles,
       availableOrganizations: availableOrganizations ?? this.availableOrganizations,
       pendingUser: pendingUser ?? this.pendingUser,
@@ -273,10 +269,25 @@ final authNotifierProvider =
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
+  Timer? _refreshTimer;
+  Future<Subscription?>? _subscriptionRefresh;
 
   AuthNotifier(this._ref)
       : super(const AuthState(status: AuthStatus.initial)) {
     _restoreSession();
+    // Keep the short-lived access token fresh while the app is open instead
+    // of waiting for a request to fail with 401 once the 15-minute JWT lapses.
+    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (state.status == AuthStatus.authenticated) {
+        ensureFreshAccessToken();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   AuthRepository get _repo => _ref.read(authRepositoryProvider);
@@ -290,22 +301,37 @@ class AuthNotifier extends StateNotifier<AuthState> {
   static const Duration _restoreTimeout = Duration(seconds: 8);
 
   Future<void> _restoreSession() async {
-    try {
-      final restored = await _restoreStoredSession().timeout(
-        _restoreTimeout,
-        onTimeout: () {
-          debugPrint('[Auth] session restore timed out — showing login');
-          return null;
-        },
-      );
-      // Null means "no usable stored session" (or timed out): land on login.
-      state = restored ?? AuthState.unauthenticated;
-    } catch (e) {
-      debugPrint('[Auth] session restore failed: $e');
-      await _repo.clearTokens();
-      state = AuthState.unauthenticated;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final restored = await _restoreStoredSession().timeout(
+          _restoreTimeout,
+        );
+        state = restored ?? AuthState.unauthenticated;
+        return;
+      } on TimeoutException {
+        debugPrint('[Auth] session restore attempt ${attempt + 1} timed out');
+      } catch (e) {
+        if (!_isTransientError(e)) {
+          debugPrint('[Auth] session restore rejected: $e');
+          await _repo.clearTokens();
+          state = AuthState.unauthenticated;
+          return;
+        }
+        debugPrint(
+          '[Auth] session restore attempt ${attempt + 1} failed (transient): $e',
+        );
+      }
+      if (attempt < 2) {
+        await Future<void>.delayed(Duration(seconds: 2 * (attempt + 1)));
+      }
     }
+    // Connectivity failed, but the stored session is still intact. Keep it
+    // and let the user retry instead of forcing them to re-enter credentials.
+    state = const AuthState(status: AuthStatus.reconnecting);
   }
+
+  /// Retries restoring the stored session after a connectivity failure.
+  Future<void> retryRestore() => _restoreSession();
 
   /// Reads the persisted session and validates it against the backend.
   /// Returns the authenticated state, or `null` when there is nothing stored.
@@ -329,6 +355,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       finalTokens,
       user: userAndOrg['user'],
       organization: userAndOrg['organization'],
+      subscription: userAndOrg['subscription'],
     );
   }
 
@@ -340,7 +367,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final organization = data['organization'] != null 
         ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
         : null;
-    return {'user': user, 'organization': organization};
+    final subscription = _parseSubscription(data['subscription']);
+    return {
+      'user': user,
+      'organization': organization,
+      'subscription': subscription,
+    };
   }
 
   // ── Password Login ───────────────────────────────────────────────────────
@@ -364,6 +396,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         identifier,
         password,
         organizationId: organizationId,
+        rememberMe: rememberMe,
       );
       debugPrint('[Auth] Login data received: $data');
 
@@ -404,6 +437,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final org = data['organization'] != null 
         ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
         : null;
+    final subscription = _parseSubscription(data['subscription']);
     final rolesList = (data['roles'] as List<dynamic>?) 
         ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
         .toList() ?? [];
@@ -415,6 +449,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       tokens, 
       user: user, 
       organization: userAndOrg['organization'],
+      subscription: subscription ?? userAndOrg['subscription'],
       roles: rolesList,
     );
   }
@@ -433,9 +468,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
+      final rememberMe = await _repo.getRememberMe();
       final data = await _repo.selectBusiness(
         userId: pendingUserId,
         organizationId: organizationId,
+        rememberMe: rememberMe,
       );
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       final user = data['user'] != null 
@@ -444,6 +481,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final org = data['organization'] != null 
           ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
           : null;
+      final subscription = _parseSubscription(data['subscription']);
       final rolesList = (data['roles'] as List<dynamic>?) 
           ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
           .toList() ?? state.roles;
@@ -471,6 +509,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tokens, 
         user: user, 
         organization: org,
+        subscription: subscription,
         roles: rolesList,
       ).copyWith(
         availableOrganizations: state.availableOrganizations.isNotEmpty 
@@ -500,9 +539,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
+      final rememberMe = await _repo.getRememberMe();
       final data = await _repo.selectBusiness(
         userId: currentUserId,
         organizationId: organizationId,
+        rememberMe: rememberMe,
       );
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       final user = data['user'] != null 
@@ -511,6 +552,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final org = data['organization'] != null 
           ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
           : null;
+      final subscription = _parseSubscription(data['subscription']);
       final rolesList = (data['roles'] as List<dynamic>?) 
           ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
           .toList() ?? state.roles;
@@ -519,6 +561,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tokens, 
         user: user, 
         organization: org,
+        subscription: subscription,
         roles: rolesList,
       ).copyWith(
         availableOrganizations: state.availableOrganizations,
@@ -652,7 +695,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     debugPrint('[Auth] access token expired/expiring — silent refresh before request');
     final refreshed = await silentRefresh();
-    return refreshed?.accessToken;
+    // Keep the existing token on transient failure so callers never crash on a
+    // null token; the next retry or timer tick will refresh it.
+    return refreshed?.accessToken ?? tokens.accessToken;
   }
 
   Future<AuthTokens?>? _refreshInFlight;
@@ -671,8 +716,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = _authenticatedState(refreshedTokens, user: state.user, organization: state.organization, roles: state.roles);
       return refreshedTokens;
     } catch (e) {
-      debugPrint('[Auth] silent refresh failed: $e — logging out');
-      await logout();
+      if (_isTransientError(e)) {
+        // A dead network or a 5xx must not destroy a valid stored session.
+        // Keep the tokens so the next request/timer can retry the refresh.
+        debugPrint('[Auth] silent refresh failed (transient), keeping session: $e');
+        return null;
+      }
+      debugPrint('[Auth] silent refresh rejected, clearing session: $e');
+      await _repo.clearTokens();
+      state = AuthState.unauthenticated;
       return null;
     }
   }
@@ -685,7 +737,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await _repo.logout(state.tokens!.refreshToken);
       }
     } catch (e) {
-      debugPrint('[Auth] logout server revocation failed — token may remain active for up to 7 days: $e');
+      debugPrint('[Auth] logout server revocation failed — token may remain active until its TTL expires: $e');
     } finally {
       state = AuthState.unauthenticated;
     }
@@ -761,14 +813,78 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  AuthState _authenticatedState(AuthTokens tokens, {User? user, Organization? organization, List<UserRoleAssignment>? roles}) => AuthState(
+  AuthState _authenticatedState(
+    AuthTokens tokens, {
+    User? user,
+    Organization? organization,
+    Subscription? subscription,
+    List<UserRoleAssignment>? roles,
+  }) =>
+      AuthState(
         status: AuthStatus.authenticated,
         tokens: tokens,
         role: _parseRole(tokens.role),
         user: user,
         organization: organization,
+        subscription: subscription ?? state.subscription,
         roles: roles ?? state.roles,
       );
+
+  Subscription? _parseSubscription(dynamic value) {
+    if (value == null) return null;
+    if (value is Subscription) return value;
+    if (value is Map) {
+      return Subscription.fromJson(Map<String, dynamic>.from(value));
+    }
+    return null;
+  }
+
+  /// Re-fetch the latest subscription from the server after a renewal/payment.
+  Future<Subscription?> refreshSubscription() {
+    final pending = _subscriptionRefresh;
+    if (pending != null) return pending;
+
+    final future = _refreshSubscription();
+    _subscriptionRefresh = future;
+    future.whenComplete(() {
+      if (identical(_subscriptionRefresh, future)) {
+        _subscriptionRefresh = null;
+      }
+    });
+    return future;
+  }
+
+  Future<Subscription?> _refreshSubscription() async {
+    final token = await ensureFreshAccessToken();
+    if (token == null) return state.subscription;
+    try {
+      final data = await _repo.getMe(token);
+      final subscription = _parseSubscription(data['subscription']);
+      state = state.copyWith(subscription: subscription);
+      return subscription;
+    } catch (e) {
+      debugPrint('[Auth] Subscription refresh failed: $e');
+      return state.subscription;
+    }
+  }
+
+  /// Network loss, DNS failures, timeouts and server errors are recoverable:
+  /// the refresh token may still be valid, so never wipe the session for them.
+  /// A 4xx from the auth endpoint means the session itself is no longer valid.
+  bool _isTransientError(Object e) {
+    if (e is ApiException) {
+      final code = e.statusCode;
+      if (code == null) return true;
+      if (code == 429) return true;
+      return code >= 500;
+    }
+    final msg = e.toString().toLowerCase();
+    return msg.contains('socketexception') ||
+        msg.contains('connection') ||
+        msg.contains('timeout') ||
+        msg.contains('failed host lookup') ||
+        msg.contains('handshake');
+  }
 
   String _friendly(Object e) {
     if (e is ApiException) return e.message;

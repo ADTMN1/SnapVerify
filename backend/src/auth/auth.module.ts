@@ -21,7 +21,13 @@ import { OtpModule } from '../otp/otp.module';
     }),
     OtpModule,
   ],
-  providers: [AuthService, JwtService, JwtAuthGuard, RolesGuard, PasswordService],
+  providers: [
+    AuthService,
+    JwtService,
+    JwtAuthGuard,
+    RolesGuard,
+    PasswordService,
+  ],
   controllers: [AuthController],
   exports: [AuthService, JwtService, JwtAuthGuard, RolesGuard, JwtModule],
 })

@@ -14,6 +14,9 @@ interface JwtPayload {
 const MIN_JWT_SECRET_LENGTH = 32;
 const MAX_REFRESH_TOKENS_PER_USER = 10;
 
+export const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const REMEMBERED_REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -58,6 +61,7 @@ export class JwtService {
     branchId?: string,
     deviceInfo?: string,
     ipAddress?: string,
+    refreshTtlMs: number = DEFAULT_REFRESH_TTL_MS,
   ) {
     const payload: JwtPayload = { sub: userId, organizationId, role, branchId };
 
@@ -68,7 +72,7 @@ export class JwtService {
 
     const refreshToken = crypto.randomBytes(64).toString('hex');
     const tokenHash = hashToken(refreshToken);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + refreshTtlMs);
 
     // Enforce per-user token cap: delete oldest tokens beyond the limit
     const existingTokens = await this.prisma.refreshToken.findMany({
@@ -101,6 +105,38 @@ export class JwtService {
     return { accessToken, refreshToken };
   }
 
+  private async findRefreshToken(tokenHash: string) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.prisma.refreshToken.findUnique({
+          where: { token: tokenHash },
+          include: {
+            user: {
+              include: { userAssignments: true },
+            },
+          },
+        });
+      } catch (error) {
+        if (!this.isTransientDbError(error) || attempt === 2) throw error;
+        await new Promise((resolve) =>
+          setTimeout(resolve, 300 * (attempt + 1)),
+        );
+      }
+    }
+    return null;
+  }
+
+  private isTransientDbError(error: unknown): boolean {
+    const code = (error as { code?: string } | null)?.code;
+    return (
+      code === 'ETIMEDOUT' ||
+      code === 'ECONNRESET' ||
+      code === 'P1001' ||
+      code === 'P1008' ||
+      code === 'P1017'
+    );
+  }
+
   async refreshTokens(
     refreshToken: string,
     deviceInfo?: string,
@@ -108,14 +144,7 @@ export class JwtService {
   ) {
     const tokenHash = hashToken(refreshToken);
 
-    const token = await this.prisma.refreshToken.findUnique({
-      where: { token: tokenHash },
-      include: {
-        user: {
-          include: { userAssignments: true },
-        },
-      },
-    });
+    const token = await this.findRefreshToken(tokenHash);
 
     if (!token || token.expiresAt < new Date()) {
       throw new UnauthorizedException(
@@ -148,6 +177,7 @@ export class JwtService {
       assignment.branchId ?? undefined,
       deviceInfo,
       ipAddress,
+      Math.max(token.expiresAt.getTime() - Date.now(), 60_000),
     );
     return {
       tokens,

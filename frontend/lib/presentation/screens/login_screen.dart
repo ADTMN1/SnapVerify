@@ -364,6 +364,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         focusNode: focusNode,
         enabled: enabled,
         obscureText: obscureText,
+        autocorrect: !obscureText,
+        enableSuggestions: !obscureText,
         keyboardType: keyboardType,
         maxLength: maxLength,
         style: const TextStyle(

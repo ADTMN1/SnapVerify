@@ -6,16 +6,16 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminJwtService } from './admin-jwt.service';
-import * as bcrypt from 'bcrypt';
+import { PasswordService } from '../../auth/password.service';
 
 @Injectable()
 export class AdminAuthService {
   private readonly logger = new Logger(AdminAuthService.name);
-  private readonly saltRounds = 12;
 
   constructor(
     private prisma: PrismaService,
     private adminJwtService: AdminJwtService,
+    private passwordService: PasswordService,
   ) {}
 
   /**
@@ -41,13 +41,21 @@ export class AdminAuthService {
     }
 
     if (!user.passwordHash) {
-      this.logger.warn(`Admin login failed: no password set for user id=${user.id}`);
+      this.logger.warn(
+        `Admin login failed: no password set for user id=${user.id}`,
+      );
       throw new UnauthorizedException('Password not set for this account');
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    // Shared verifier handles Argon2id (current) and legacy bcrypt hashes.
+    const { valid: isPasswordValid } = await this.passwordService.verify(
+      user.passwordHash,
+      password,
+    );
     if (!isPasswordValid) {
-      this.logger.warn(`Admin login failed: invalid password for user id=${user.id}`);
+      this.logger.warn(
+        `Admin login failed: invalid password for user id=${user.id}`,
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -58,37 +66,46 @@ export class AdminAuthService {
       throw new UnauthorizedException('Your account is inactive');
     }
 
-    // Check if user has OWNER role (admin access)
+    // Determine admin role: platform super admins get unrestricted access,
+    // otherwise the user must own at least one organization.
+    const isPlatformAdmin = user.isPlatformAdmin === true;
     const hasAdminRole = user.userAssignments.some(
       (assignment) => assignment.role === 'OWNER',
     );
 
-    if (!hasAdminRole) {
+    if (!isPlatformAdmin && !hasAdminRole) {
       this.logger.warn(
-        `Admin login failed: user lacks OWNER role for user id=${user.id}`,
+        `Admin login failed: user lacks admin access for user id=${user.id}`,
       );
       throw new UnauthorizedException(
-        'Only business owners can access the admin panel',
+        'You do not have permission to access the admin panel',
       );
     }
 
-    this.logger.log(`Admin login successful for user id=${user.id}`);
+    const role = isPlatformAdmin ? 'SUPER_ADMIN' : 'BUSINESS_OWNER';
+    this.logger.log(
+      `Admin login successful for user id=${user.id} (role=${role})`,
+    );
 
-    // Log this admin activity
-    await this.prisma.activityLog.create({
-      data: {
-        organizationId: user.userAssignments[0].organizationId, // Use first org
-        userId: user.id,
-        action: 'ADMIN_LOGIN',
-        metadata: { email },
-        ipAddress,
-      },
-    });
+    // Log this admin activity (platform admins without an org assignment
+    // have no organization to attribute the log to, so it is skipped).
+    const primaryOrgId = user.userAssignments[0]?.organizationId;
+    if (primaryOrgId) {
+      await this.prisma.activityLog.create({
+        data: {
+          organizationId: primaryOrgId,
+          userId: user.id,
+          action: 'ADMIN_LOGIN',
+          metadata: { email, role },
+          ipAddress,
+        },
+      });
+    }
 
     const tokens = await this.adminJwtService.generateTokens(
       user.id,
       user.email || email,
-      'BUSINESS_OWNER',
+      role,
       ipAddress,
       userAgent,
     );
@@ -101,6 +118,7 @@ export class AdminAuthService {
         email: user.email,
         phone: user.phone,
         status: user.status,
+        isPlatformAdmin,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -130,6 +148,7 @@ export class AdminAuthService {
       email: user.email,
       phone: user.phone,
       status: user.status,
+      isPlatformAdmin: user.isPlatformAdmin === true,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       organizations: user.userAssignments.map((a) => ({
@@ -154,15 +173,15 @@ export class AdminAuthService {
       throw new BadRequestException('Admin not found');
     }
 
-    const isCurrentValid = await bcrypt.compare(
-      currentPassword,
+    const { valid: isCurrentValid } = await this.passwordService.verify(
       user.passwordHash,
+      currentPassword,
     );
     if (!isCurrentValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    const newPasswordHash = await bcrypt.hash(newPassword, this.saltRounds);
+    const newPasswordHash = await this.passwordService.hash(newPassword);
 
     await this.prisma.user.update({
       where: { id: adminId },
@@ -172,11 +191,12 @@ export class AdminAuthService {
     // Log this action
     await this.prisma.activityLog.create({
       data: {
-        organizationId: (
-          await this.prisma.userBusinessAssignment.findFirst({
-            where: { userId: adminId },
-          })
-        )?.organizationId || 'unknown',
+        organizationId:
+          (
+            await this.prisma.userBusinessAssignment.findFirst({
+              where: { userId: adminId },
+            })
+          )?.organizationId || 'unknown',
         userId: adminId,
         action: 'ADMIN_CHANGE_PASSWORD',
         ipAddress,
@@ -222,7 +242,11 @@ export class AdminAuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    return this.adminJwtService.refreshTokens(refreshToken, ipAddress, userAgent);
+    return this.adminJwtService.refreshTokens(
+      refreshToken,
+      ipAddress,
+      userAgent,
+    );
   }
 
   /**

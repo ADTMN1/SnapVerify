@@ -16,24 +16,25 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
 
   /** Upper bound for the readiness probe so /health cannot hang. */
-  private static readonly HEALTH_TIMEOUT_MS = 3000;
+  private static readonly HEALTH_TIMEOUT_MS = 8000;
 
   constructor() {
     // Strip sslmode from the connection string — we pass ssl config directly
     // to avoid pg's broken sslmode=require behavior in newer versions
     const url = new URL(process.env.DATABASE_URL ?? '');
-    for (const key of [
-      'sslmode',
-      'channel_binding',
-      'uselibpqcompat',
-      'connect_timeout',
-    ]) {
-      url.searchParams.delete(key);
-    }
-    const connStr = url.toString();
+    const ssl = resolveSslConfig();
     const pool = new Pool({
-      connectionString: connStr,
-      ssl: resolveSslConfig(),
+      host: process.env.DATABASE_HOST_V4 || url.hostname,
+      port: Number(url.port || 5432),
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      database: decodeURIComponent(url.pathname.slice(1)),
+      ssl: ssl === false ? false : { ...ssl, servername: url.hostname },
+      max: 5,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 20_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

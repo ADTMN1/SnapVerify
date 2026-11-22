@@ -8,6 +8,7 @@ import '../datasources/auth_remote_datasource.dart';
 const _kAccessToken = 'sv_access_token';
 const _kRefreshToken = 'sv_refresh_token';
 const _kRememberedLogin = 'sv_remembered_login';
+const _kRememberMe = 'sv_remember_me';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDatasource remoteDatasource;
@@ -30,15 +31,18 @@ class AuthRepositoryImpl implements AuthRepository {
     String identifier,
     String password, {
     String? organizationId,
+    required bool rememberMe,
   }) async {
     final data = await remoteDatasource.loginWithPassword(
       identifier,
       password,
       organizationId: organizationId,
+      rememberMe: rememberMe,
     );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       await saveTokens(tokens);
+      await setRememberMe(rememberMe);
     }
     return data;
   }
@@ -293,6 +297,16 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> setRememberMe(bool value) async {
+    await secureStorage.write(key: _kRememberMe, value: value.toString());
+  }
+
+  @override
+  Future<bool> getRememberMe() async {
+    return (await secureStorage.read(key: _kRememberMe)) == 'true';
+  }
+
+  @override
   Future<AuthTokens?> getTokens() async {
     final results = await Future.wait([
       secureStorage.read(key: _kAccessToken),
@@ -330,10 +344,12 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Map<String, dynamic>> selectBusiness({
     required String userId,
     required String organizationId,
+    required bool rememberMe,
   }) async {
     final data = await remoteDatasource.selectBusiness(
       userId: userId,
       organizationId: organizationId,
+      rememberMe: rememberMe,
     );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);

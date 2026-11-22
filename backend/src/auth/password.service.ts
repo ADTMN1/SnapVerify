@@ -35,7 +35,10 @@ export class PasswordService {
     password: string,
   ): Promise<{ valid: boolean; needsRehash: boolean }> {
     if (isArgon2(storedHash)) {
-      return { valid: await argon2.verify(storedHash, password), needsRehash: false };
+      return {
+        valid: await argon2.verify(storedHash, password),
+        needsRehash: false,
+      };
     }
     if (storedHash.startsWith('$2')) {
       const valid = await bcrypt.compare(password, storedHash);

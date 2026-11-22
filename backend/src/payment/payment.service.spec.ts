@@ -28,6 +28,17 @@ const mockPrisma = {
   verificationLog: {
     create: jest.fn(),
   },
+  subscription: {
+    findFirst: jest.fn().mockResolvedValue({
+      id: 'sub-1',
+      verificationLimit: null,
+    }),
+  },
+  subscriptionUsage: {
+    upsert: jest.fn().mockResolvedValue({ id: 'usage-1', count: 0 }),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    findUnique: jest.fn().mockResolvedValue(null),
+  },
 };
 
 const mockCheckEt = {
@@ -169,7 +180,13 @@ describe('PaymentService security (Check.et provider)', () => {
       riskScore: 0,
     });
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
     expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
@@ -182,7 +199,13 @@ describe('PaymentService security (Check.et provider)', () => {
       validNormalized({ duplicate: true }),
     );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe('DUPLICATE_TRANSACTION');
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
@@ -232,7 +255,13 @@ describe('verifyByReference validation rejection classification', () => {
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockRejectedValue(receivingAccountRejected());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
@@ -252,7 +281,13 @@ describe('verifyByReference validation rejection classification', () => {
     ]);
     mockCheckEt.verifyReference.mockRejectedValue(receivingAccountRejected());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
@@ -265,16 +300,29 @@ describe('verifyByReference validation rejection classification', () => {
   });
 
   it('approves when one account returns VALIDATION_ERROR and another returns a confirmed matching transaction', async () => {
-    const second = { ...registeredAccount, id: 'account-2', accountNumber: '1000999999999' };
+    const second = {
+      ...registeredAccount,
+      id: 'account-2',
+      accountNumber: '1000999999999',
+    };
     mockPrisma.payment.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount, second]);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([
+      registeredAccount,
+      second,
+    ]);
     mockCheckEt.verifyReference
       .mockRejectedValueOnce(receivingAccountRejected())
       .mockResolvedValueOnce(
         validNormalized({ receiverAccount: '1000999999999' }),
       );
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     expect(result.verified).toBe(true);
     expect(mockPrisma.payment.create).toHaveBeenCalledWith(
@@ -285,13 +333,24 @@ describe('verifyByReference validation rejection classification', () => {
   });
 
   it('fails closed with PROVIDER_UNAVAILABLE when one account returns VALIDATION_ERROR and another returns an infrastructure error', async () => {
-    const second = { ...registeredAccount, id: 'account-2', accountNumber: '1000999999999' };
+    const second = {
+      ...registeredAccount,
+      id: 'account-2',
+      accountNumber: '1000999999999',
+    };
     mockPrisma.payment.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount, second]);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([
+      registeredAccount,
+      second,
+    ]);
     mockCheckEt.verifyReference
       .mockRejectedValueOnce(receivingAccountRejected())
       .mockRejectedValueOnce(
-        new CheckEtError(ProviderErrorType.NETWORK_ERROR, null, 'Network error: ETIMEDOUT'),
+        new CheckEtError(
+          ProviderErrorType.NETWORK_ERROR,
+          null,
+          'Network error: ETIMEDOUT',
+        ),
       );
 
     await expect(
@@ -307,7 +366,11 @@ describe('verifyByReference validation rejection classification', () => {
       { ...registeredAccount, id: 'account-2', accountNumber: '1000999999999' },
     ]);
     mockCheckEt.verifyReference.mockRejectedValue(
-      new CheckEtError(ProviderErrorType.SERVER_ERROR, 503, 'Upstream unavailable'),
+      new CheckEtError(
+        ProviderErrorType.SERVER_ERROR,
+        503,
+        'Upstream unavailable',
+      ),
     );
 
     await expect(
@@ -321,7 +384,13 @@ describe('verifyByReference validation rejection classification', () => {
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockRejectedValue(receivingAccountRejected());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     expect(result.verified).toBe(false);
     expect(result.status).not.toBe(PaymentStatus.VERIFIED);
@@ -334,7 +403,13 @@ describe('verifyByReference validation rejection classification', () => {
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
 
     expect(result.verified).toBe(true);
     expect(Number(result.amount)).toBe(100);
@@ -430,7 +505,13 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
     const svc = await buildWithAccount();
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await svc.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(true);
     expect(Number(result.amount)).toBe(100);
   });
@@ -447,11 +528,15 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
     ['excessive precision', { amount: '99.999' }],
   ])('rejects approval when the bank reports %s', async (_label, overrides) => {
     const svc = await buildWithAccount();
-    mockCheckEt.verifyReference.mockResolvedValue(
-      validNormalized(overrides as Partial<NormalizedVerification>),
-    );
+    mockCheckEt.verifyReference.mockResolvedValue(validNormalized(overrides));
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await svc.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalledWith(
@@ -468,11 +553,15 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
     ['invalid currency', { currency: 'GOLD' }],
   ])('rejects approval when the bank reports %s', async (_label, overrides) => {
     const svc = await buildWithAccount();
-    mockCheckEt.verifyReference.mockResolvedValue(
-      validNormalized(overrides as Partial<NormalizedVerification>),
-    );
+    mockCheckEt.verifyReference.mockResolvedValue(validNormalized(overrides));
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await svc.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
   });
@@ -486,7 +575,13 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
       }),
     );
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await svc.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalled();
@@ -504,7 +599,13 @@ describe('PaymentService financial integrity gate (Check.et)', () => {
       }),
     );
 
-    const result = await svc.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await svc.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
   });
@@ -675,10 +776,22 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
     const svc = await build();
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([
-      { ...registeredAccount, id: 'branch-a', branchId: 'branch-a', accountNumber: '1000111111111' },
-      { ...registeredAccount, id: 'branch-b', branchId: 'branch-b', accountNumber: '1000222222222' },
+      {
+        ...registeredAccount,
+        id: 'branch-a',
+        branchId: 'branch-a',
+        accountNumber: '1000111111111',
+      },
+      {
+        ...registeredAccount,
+        id: 'branch-b',
+        branchId: 'branch-b',
+        accountNumber: '1000222222222',
+      },
     ]);
-    mockCheckEt.verifyReceiptFile.mockResolvedValue(validNormalized({ receiverAccount: '1000222222222' }));
+    mockCheckEt.verifyReceiptFile.mockResolvedValue(
+      validNormalized({ receiverAccount: '1000222222222' }),
+    );
 
     await svc.verifyByImage(
       Buffer.from('fake-image'),
@@ -793,7 +906,10 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
   it('rejects approval when the verified payment went to a different account', async () => {
     const svc = await buildWithAccount();
     mockCheckEt.verifyReceiptFile.mockResolvedValue(
-      validNormalized({ receiverAccount: '9999999999999', receiver: 'Someone Else' }),
+      validNormalized({
+        receiverAccount: '9999999999999',
+        receiver: 'Someone Else',
+      }),
     );
 
     const result = await svc.verifyByImage(
@@ -855,7 +971,13 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1', undefined, 'TELEBIRR');
+    const result = await service.verifyByReference(
+      'TB251115.1234.A123456',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
 
     expect(result.verified).toBe(true);
     expect(result.status).toBe(PaymentStatus.VERIFIED);
@@ -870,7 +992,13 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1', undefined, 'TELEBIRR');
+    const result = await service.verifyByReference(
+      'TB251115.1234.A123456',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
     expect(result.verified).toBe(true);
   });
 
@@ -883,14 +1011,26 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('TB251115.1234.A123456', 'org-1', 'user-1', undefined, 'TELEBIRR');
+    const result = await service.verifyByReference(
+      'TB251115.1234.A123456',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
     expect(result.verified).toBe(false);
     expect(result.message).toMatch(/different account/i);
   });
 
   it('does NOT forward account_number to Check.et for Telebirr (docs contract)', async () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
-    await service.verifyByReference('TB123', 'org-1', 'user-1', undefined, 'TELEBIRR');
+    await service.verifyByReference(
+      'TB123',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
     expect(mockCheckEt.verifyReference).toHaveBeenCalledWith(
       PaymentProvider.TELEBIRR,
       'TB123',
@@ -909,7 +1049,13 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1', undefined, 'TELEBIRR');
+    const result = await service.verifyByReference(
+      'DJV9JIVHMR',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
     expect(result.verified).toBe(true);
   });
 
@@ -922,7 +1068,13 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       }),
     );
 
-    const result = await service.verifyByReference('DJV9JIVHMR', 'org-1', 'user-1', undefined, 'TELEBIRR');
+    const result = await service.verifyByReference(
+      'DJV9JIVHMR',
+      'org-1',
+      'user-1',
+      undefined,
+      'TELEBIRR',
+    );
     expect(result.verified).toBe(false);
     expect(result.message).toMatch(/different account/i);
   });
@@ -974,7 +1126,6 @@ describe('verifyByReference failure-message selection across multiple banks', ()
           provider: PaymentProvider.CBE,
           checkEtBank: 'cbe',
           message: 'Transaction not found.',
-
         }),
       )
       .mockResolvedValueOnce(
@@ -1014,7 +1165,6 @@ describe('verifyByReference failure-message selection across multiple banks', ()
         provider: PaymentProvider.CBE,
         checkEtBank: 'cbe',
         message: 'Transaction not found.',
-
       }),
     );
 
@@ -1052,7 +1202,13 @@ describe('CBE and BOA verification compatibility after canonicalization', () => 
     mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
     mockPrisma.verificationLog.create.mockResolvedValue({});
 
-    const result = await service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE');
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
     expect(result.verified).toBe(true);
   });
 
@@ -1080,7 +1236,13 @@ describe('CBE and BOA verification compatibility after canonicalization', () => 
     mockPrisma.payment.create.mockResolvedValue(mockVerifiedPayment());
     mockPrisma.verificationLog.create.mockResolvedValue({});
 
-    const result = await service.verifyByReference('BOA123456789', 'org-1', 'user-1', undefined, 'ABYSSINIA');
+    const result = await service.verifyByReference(
+      'BOA123456789',
+      'org-1',
+      'user-1',
+      undefined,
+      'ABYSSINIA',
+    );
     expect(result.verified).toBe(true);
   });
 });

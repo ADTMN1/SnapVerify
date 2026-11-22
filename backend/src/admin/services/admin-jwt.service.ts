@@ -33,7 +33,8 @@ export class AdminJwtService {
     const payload: AdminJwtPayload = { sub: userId, email, role };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_ADMIN_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
+      secret:
+        process.env.JWT_ADMIN_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
       expiresIn: '15m',
     });
 
@@ -86,7 +87,11 @@ export class AdminJwtService {
       },
     });
 
-    if (!token || token.expiresAt < new Date() || token.organizationId !== 'admin') {
+    if (
+      !token ||
+      token.expiresAt < new Date() ||
+      token.organizationId !== 'admin'
+    ) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -98,7 +103,13 @@ export class AdminJwtService {
     // Delete old token and create new pair
     await this.prisma.refreshToken.delete({ where: { id: token.id } });
 
-    return this.generateTokens(user.id, user.email || '', token.role, ipAddress, userAgent);
+    return this.generateTokens(
+      user.id,
+      user.email || '',
+      token.role,
+      ipAddress,
+      userAgent,
+    );
   }
 
   async revokeToken(refreshToken: string) {
@@ -117,7 +128,8 @@ export class AdminJwtService {
   verifyAccessToken(token: string) {
     try {
       return this.jwtService.verify<AdminJwtPayload>(token, {
-        secret: process.env.JWT_ADMIN_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
+        secret:
+          process.env.JWT_ADMIN_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

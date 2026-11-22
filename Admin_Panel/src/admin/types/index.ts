@@ -2,6 +2,10 @@
 
 export type Role = 'OWNER' | 'MANAGER' | 'CASHIER' | 'WAITER';
 
+// Admin panel roles (JWT `role` claim). BUSINESS_OWNER = owner-scoped access,
+// SUPER_ADMIN = platform-wide control over all organizations.
+export type AdminRole = Role | 'BUSINESS_OWNER' | 'SUPER_ADMIN';
+
 export type PaymentStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'FAILED';
 
 export type PaymentProvider = 'CBE' | 'TELEBIRR' | 'DASHEN' | 'ABYSSINIA' | 'CBEBIRR' | 'M_PESA';
@@ -123,6 +127,19 @@ export interface Subscription {
   endDate?: string;
   maxUsers?: number;
   maxDevices?: number;
+  verificationLimit?: number | null;
+  verificationUsed?: number;
+  verificationRemaining?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlatformPaymentAccount {
+  id: string;
+  provider: string;
+  accountNumber: string;
+  accountHolderName?: string;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -184,6 +201,7 @@ export interface AuthUser {
   phone: string;
   email?: string;
   status: string;
+  isPlatformAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -192,7 +210,7 @@ export interface AuthState {
   user: AuthUser | null;
   organization: Organization | null;
   tokens: AuthTokens | null;
-  role: Role | null;
+  role: AdminRole | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -254,4 +272,64 @@ export interface FilterOption {
 export interface SortConfig {
   key: string;
   direction: 'asc' | 'desc';
+}
+
+// ── Platform (super admin) ─────────────────────────────────────────────────────
+
+export interface Paginated<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface PlatformOverview {
+  totalOrganizations: number;
+  activeOrganizations: number;
+  totalUsers: number;
+  totalPayments: number;
+  totalBranches: number;
+  verifiedPayments: number;
+  pendingPayments: number;
+  totalRevenue: number;
+  todayRevenue: number;
+  todayTransactions: number;
+  activeSubscriptions: number;
+  recentOrganizations: (Organization & {
+    _count?: { userAssignments: number; payments: number; branches: number };
+  })[];
+}
+
+export interface PlatformOrganization extends Organization {
+  _count?: { userAssignments: number; payments: number; branches: number; paymentAccounts: number };
+  subscriptions?: Subscription[];
+  branches?: Branch[];
+  userAssignments?: (UserBusinessAssignment & {
+    user?: Pick<AuthUser, 'id' | 'fullName' | 'email' | 'phone' | 'status'>;
+  })[];
+}
+
+export interface PlatformUser extends AuthUser {
+  isPlatformAdmin?: boolean;
+  hasPassword?: boolean;
+  userAssignments?: (UserBusinessAssignment & {
+    organization?: Pick<Organization, 'id' | 'name'>;
+  })[];
+}
+
+export interface PlatformSubscription extends Subscription {
+  organization?: Pick<Organization, 'id' | 'name'>;
+}
+
+export interface PlatformPayment extends Payment {
+  organization?: Pick<Organization, 'id' | 'name'>;
+}
+
+export interface PlatformActivity extends Omit<ActivityLog, 'user'> {
+  user?: Pick<AuthUser, 'id' | 'fullName' | 'email'> | null;
+  organization?: Pick<Organization, 'id' | 'name'> | null;
+}
+
+export interface PlatformPaymentsResult extends Paginated<PlatformPayment> {
+  totalAmount: number;
 }

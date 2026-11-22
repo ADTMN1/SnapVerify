@@ -5,6 +5,7 @@ abstract class AuthRepository {
     String identifier,
     String password, {
     String? organizationId,
+    required bool rememberMe,
   });
 
   /// Owner registration (step 1): creates the account + business and sends an
@@ -99,6 +100,8 @@ abstract class AuthRepository {
   Future<void> saveRememberedLogin(String identifier);
   Future<String?> getRememberedLogin();
   Future<void> forgetRememberedLogin();
+  Future<void> setRememberMe(bool value);
+  Future<bool> getRememberMe();
 
   /// Load tokens from secure storage. Returns null when not logged in.
   Future<AuthTokens?> getTokens();
@@ -110,5 +113,6 @@ abstract class AuthRepository {
   Future<Map<String, dynamic>> selectBusiness({
     required String userId,
     required String organizationId,
+    required bool rememberMe,
   });
 }

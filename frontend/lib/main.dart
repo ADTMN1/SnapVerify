@@ -39,17 +39,14 @@ class MyApp extends ConsumerStatefulWidget {
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
   bool _isNavigating = false;
-  bool _initialNavigated = false;
+  bool _hasNavigatedOnce = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Initial navigation only once
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authState = ref.read(authNotifierProvider);
-      _handleAuthChange(authState);
-      _initialNavigated = true;
+      _handleAuthChange(ref.read(authNotifierProvider));
     });
   }
 
@@ -65,6 +62,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // may have expired while backgrounded, and cached report errors should
     // not outlive the trip to the background.
     if (state == AppLifecycleState.resumed) {
+      ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
       ref.invalidate(reportSummaryProvider);
       ref.invalidate(notificationsProvider);
     }
@@ -75,7 +73,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // Listen for auth state changes
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
       debugPrint('[Main] Auth state changed: ${previous?.status} → ${next.status}');
-      _handleAuthChange(next);
+      final previousStatus = previous?.status;
+      if (previousStatus == next.status) return;
+      _handleAuthChange(
+        next,
+        showWelcome: _hasNavigatedOnce &&
+            previousStatus != AuthStatus.authenticated &&
+            next.status == AuthStatus.authenticated,
+      );
     });
 
     return MaterialApp(
@@ -101,9 +106,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       scaffoldMessengerKey: ToastService.scaffoldMessengerKey,
       theme: ThemeData(
         useMaterial3: true,
+        scaffoldBackgroundColor: TwColors.primaryBg,
+        cardColor: TwColors.cardBg,
+        dividerColor: TwColors.slate700,
         colorScheme: ColorScheme.fromSeed(
           seedColor: TwColors.sky500,
           brightness: Brightness.dark,
+          surface: TwColors.cardBg,
         ),
         // Poppins stays the primary typeface; Noto Sans Ethiopic is only a
         // fallback so Amharic glyphs render on devices without a system
@@ -121,7 +130,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     );
   }
 
-  void _handleAuthChange(AuthState authState) {
+  void _handleAuthChange(AuthState authState, {bool showWelcome = false}) {
     if (authState.status == AuthStatus.initial) return; // Splash handles it
     if (_isNavigating) return; // Prevent navigation loops
 
@@ -137,9 +146,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       }
 
       try {
-        if (authState.status == AuthStatus.authenticated) {
-          debugPrint('[Main] Navigating to HomeScreen');
-          if (_initialNavigated) ToastService.showSuccess('Welcome back!');
+          if (authState.status == AuthStatus.authenticated) {
+            debugPrint('[Main] Navigating to HomeScreen');
+            if (showWelcome) ToastService.showSuccess('Welcome back!');
           _navigatorKey.currentState!.pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
@@ -148,6 +157,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           debugPrint('[Main] Navigating to BusinessSwitcherScreen (initial selection)');
           _navigatorKey.currentState!.pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen(isInitialSelection: true)),
+            (route) => false,
+          );
+        } else if (authState.status == AuthStatus.reconnecting) {
+          debugPrint('[Main] Navigating to ReconnectScreen');
+          _navigatorKey.currentState!.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const _ReconnectScreen()),
             (route) => false,
           );
         } else if (authState.status == AuthStatus.unauthenticated) {
@@ -159,6 +174,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         }
         // Error is displayed by individual screens via _buildErrorState widgets
         // No duplicate toast needed here
+        if (authState.status != AuthStatus.initial) {
+          _hasNavigatedOnce = true;
+        }
       } finally {
         _isNavigating = false;
       }
@@ -193,6 +211,52 @@ class _StartupSplash extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when a stored session exists but the backend could not be reached.
+/// The tokens are kept, so retrying restores the session without re-entering
+/// credentials once connectivity returns.
+class _ReconnectScreen extends ConsumerWidget {
+  const _ReconnectScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B1B2B),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_rounded, color: Colors.white70, size: 48),
+              const SizedBox(height: 20),
+              const Text(
+                'Reconnecting…',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your session is saved. Check your connection and retry.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () =>
+                    ref.read(authNotifierProvider.notifier).retryRestore(),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       ),
     );

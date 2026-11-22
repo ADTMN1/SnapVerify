@@ -53,53 +53,58 @@ model Branch {
 }
 
 model Organization {
-  id               String                   @id @default(uuid())
-  name             String
-  type             String
-  phone            String
-  email            String?
-  address          String?
-  city             String?
-  country          String?
-  logoUrl          String?
-  subscriptionPlan String?
-  status           String                   @default("active")
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
-  activityLogs     ActivityLog[]
-  branches         Branch[]
-  invitations      Invitation[]
-  paymentAccounts  PaymentAccount[]
-  payments         Payment[]
-  subscriptions    Subscription[]
-  userAssignments  UserBusinessAssignment[]
-  verificationLogs VerificationLog[]
+  id                    String                   @id @default(uuid())
+  name                  String
+  type                  String
+  phone                 String
+  email                 String?
+  address               String?
+  city                  String?
+  country               String?
+  logoUrl               String?
+  subscriptionPlan      String?
+  status                String                   @default("active")
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  activityLogs          ActivityLog[]
+  branches              Branch[]
+  invitations           Invitation[]
+  paymentAccounts       PaymentAccount[]
+  payments              Payment[]
+  subscriptions         Subscription[]
+  subscriptionCheckouts SubscriptionCheckout[]
+  userAssignments       UserBusinessAssignment[]
+  verificationLogs      VerificationLog[]
 
   @@map("organizations")
 }
 
 model User {
-  id                  String                   @id @default(uuid())
-  fullName            String?
+  id                    String                   @id @default(uuid())
+  fullName              String?
   // Staff log in with username + password; owners use email.
-  username            String?                  @unique
+  username              String?                  @unique
   // Phone is optional since authentication moved to email; retained for
   // legacy users and non-auth metadata.
-  phone               String?                  @unique
-  email               String?                  @unique
-  emailVerified       Boolean                  @default(false)
-  passwordHash        String?
-  status              String                   @default("active")
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  phone                 String?                  @unique
+  email                 String?                  @unique
+  emailVerified         Boolean                  @default(false)
+  passwordHash          String?
+  status                String                   @default("active")
+  // Platform-level super admin. When true this user can access the SnapVerify
+  // platform control panel (all organizations) in addition to any org roles.
+  isPlatformAdmin       Boolean                  @default(false)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
   // Timestamp of the most recent "mark all as read" action. Notification
   // feed items created at or before this time are considered read.
-  notificationsReadAt DateTime?
-  activityLogs        ActivityLog[]
-  payments            Payment[]
-  refreshTokens       RefreshToken[]
-  userAssignments     UserBusinessAssignment[]
-  verificationLogs    VerificationLog[]
+  notificationsReadAt   DateTime?
+  activityLogs          ActivityLog[]
+  payments              Payment[]
+  refreshTokens         RefreshToken[]
+  subscriptionCheckouts SubscriptionCheckout[]
+  userAssignments       UserBusinessAssignment[]
+  verificationLogs      VerificationLog[]
 
   @@map("users")
 }
@@ -252,19 +257,67 @@ model VerificationLog {
 }
 
 model Subscription {
-  id             String             @id @default(uuid())
-  organizationId String
-  planName       String
-  status         SubscriptionStatus
-  startDate      DateTime
-  endDate        DateTime?
-  maxUsers       Int?
-  maxDevices     Int?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                String              @id @default(uuid())
+  organizationId    String
+  planName          String
+  status            SubscriptionStatus
+  startDate         DateTime
+  endDate           DateTime?
+  maxUsers          Int?
+  maxDevices        Int?
+  verificationLimit Int?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  usage             SubscriptionUsage[]
 
   @@map("subscriptions")
+}
+
+model SubscriptionUsage {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  periodStart    DateTime
+  count          Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, periodStart])
+  @@map("subscription_usage")
+}
+
+model SubscriptionCheckout {
+  id              String          @id @default(uuid())
+  organizationId  String
+  userId          String
+  planName        String
+  amount          Int
+  currency        String          @default("ETB")
+  provider        PaymentProvider @default(TELEBIRR)
+  reference       String          @unique
+  vendorReference String?
+  status          CheckoutStatus  @default(PENDING)
+  expiresAt       DateTime
+  paidAt          DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscription_checkouts")
+}
+
+model PlatformPaymentAccount {
+  id                String          @id @default(uuid())
+  provider          PaymentProvider @unique
+  accountNumber     String
+  accountHolderName String?
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@map("platform_payment_accounts")
 }
 
 model ActivityLog {
@@ -298,6 +351,13 @@ enum SubscriptionStatus {
   ACTIVE
   INACTIVE
   CANCELLED
+  EXPIRED
+}
+
+enum CheckoutStatus {
+  PENDING
+  PAID
+  FAILED
   EXPIRED
 }
 

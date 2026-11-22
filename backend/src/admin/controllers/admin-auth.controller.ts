@@ -75,10 +75,7 @@ export class AdminAuthController {
   @Post('logout-all')
   @UseGuards(AdminJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logoutAll(
-    @CurrentAdmin() admin: any,
-    @Req() req: Request,
-  ) {
+  async logoutAll(@CurrentAdmin() admin: any, @Req() req: Request) {
     const ipAddress = req.ip || req.socket.remoteAddress;
     return this.adminAuthService.logoutAll(admin.sub, ipAddress);
   }

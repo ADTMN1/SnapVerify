@@ -260,7 +260,9 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
     try {
       const svc = await build(undefined, { CHECK_ET_TIMEOUT_MS: 5000 });
       mockFetch
-        .mockResolvedValueOnce(jsonResponse({ message: 'Too many requests' }, 429))
+        .mockResolvedValueOnce(
+          jsonResponse({ message: 'Too many requests' }, 429),
+        )
         .mockResolvedValueOnce(jsonResponse(baseVerifyBody, 200));
 
       const pending = svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
@@ -297,10 +299,17 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
     mockFetch.mockResolvedValue({
       status: 409,
       text: async () =>
-        JSON.stringify({ success: false, message: 'This payment was already verified.' }),
+        JSON.stringify({
+          success: false,
+          message: 'This payment was already verified.',
+        }),
     });
 
-    const result = await svc.verifyReference(PaymentProvider.TELEBIRR, 'DJV9JIVHMR', null);
+    const result = await svc.verifyReference(
+      PaymentProvider.TELEBIRR,
+      'DJV9JIVHMR',
+      null,
+    );
 
     expect(result.success).toBe(false);
     expect(result.duplicate).toBe(true);
@@ -357,17 +366,38 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
     try {
       const svc = await build(undefined, { CHECK_ET_TIMEOUT_MS: 5000 });
       const cases: [number, unknown, ProviderErrorType, boolean, number][] = [
-        [401, { message: 'Unauthenticated.' }, ProviderErrorType.AUTH_ERROR, false, 1],
+        [
+          401,
+          { message: 'Unauthenticated.' },
+          ProviderErrorType.AUTH_ERROR,
+          false,
+          1,
+        ],
         [
           402,
-          { message: 'Monthly verification limit reached. Please upgrade your plan.' },
+          {
+            message:
+              'Monthly verification limit reached. Please upgrade your plan.',
+          },
           ProviderErrorType.QUOTA_EXHAUSTED,
           false,
           1,
         ],
-        [429, { message: 'Too many requests' }, ProviderErrorType.RATE_LIMITED, true, 3],
+        [
+          429,
+          { message: 'Too many requests' },
+          ProviderErrorType.RATE_LIMITED,
+          true,
+          3,
+        ],
         [500, { message: 'boom' }, ProviderErrorType.SERVER_ERROR, true, 3],
-        [422, { message: 'The given data was invalid.' }, ProviderErrorType.VALIDATION_ERROR, false, 1],
+        [
+          422,
+          { message: 'The given data was invalid.' },
+          ProviderErrorType.VALIDATION_ERROR,
+          false,
+          1,
+        ],
       ];
       for (const [status, body, type, retryable, expectedCalls] of cases) {
         mockFetch.mockReset();
@@ -406,7 +436,11 @@ describe('CheckEtService HTTP layer (mocked transport — no real API calls)', (
       ),
     );
 
-    const result = await svc.verifyReference(PaymentProvider.CBE, 'FT123', null);
+    const result = await svc.verifyReference(
+      PaymentProvider.CBE,
+      'FT123',
+      null,
+    );
     expect(result.success).toBe(false);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });

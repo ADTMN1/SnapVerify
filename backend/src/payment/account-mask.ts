@@ -15,9 +15,9 @@ export function maskAccountNumberForResponse(
   return `****${digits.slice(-4)}`;
 }
 
-export function maskAccount<
-  T extends { accountNumber?: string | null },
->(account: T): T {
+export function maskAccount<T extends { accountNumber?: string | null }>(
+  account: T,
+): T {
   return {
     ...account,
     accountNumber: maskAccountNumberForResponse(account.accountNumber ?? null),

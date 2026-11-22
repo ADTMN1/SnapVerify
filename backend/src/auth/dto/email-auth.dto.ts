@@ -23,6 +23,9 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty({ message: 'Password is required.' })
   @MinLength(8, { message: 'Password must be at least 8 characters.' })
+  @Matches(/^\S(?:.*\S)?$/, {
+    message: 'Password must not start or end with a space.',
+  })
   password: string;
 
   @IsString()
@@ -74,6 +77,9 @@ export class ResetPasswordDto {
   @IsString()
   @IsNotEmpty({ message: 'New password is required.' })
   @MinLength(8, { message: 'New password must be at least 8 characters.' })
+  @Matches(/^\S(?:.*\S)?$/, {
+    message: 'Password must not start or end with a space.',
+  })
   newPassword: string;
 }
 
@@ -99,6 +105,8 @@ export class ActivateInvitationDto {
 
   @IsString()
   @IsNotEmpty({ message: 'Please confirm your password.' })
-  @MinLength(8, { message: 'Password confirmation must be at least 8 characters.' })
+  @MinLength(8, {
+    message: 'Password confirmation must be at least 8 characters.',
+  })
   confirmPassword: string;
 }

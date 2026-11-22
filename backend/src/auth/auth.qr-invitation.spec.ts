@@ -4,7 +4,12 @@
  * revocation, regeneration, username login, and org isolation.
  */
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OtpService } from '../otp/otp.service';
@@ -44,6 +49,7 @@ describe('AuthService — QR staff invitations', () => {
     invitation: Record<string, jest.Mock>;
     userBusinessAssignment: Record<string, jest.Mock>;
     branch: Record<string, jest.Mock>;
+    subscription: Record<string, jest.Mock>;
   };
   let passwordService: { hash: jest.Mock; verify: jest.Mock };
   let jwtService: { generateTokens: jest.Mock };
@@ -53,17 +59,23 @@ describe('AuthService — QR staff invitations', () => {
       user: {
         findUnique: jest.fn().mockResolvedValue(null),
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'user-1', username: 'teststaff' }),
+        create: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-1', username: 'teststaff' }),
       },
       invitation: {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn(),
-        create: jest.fn().mockImplementation(({ data }) =>
-          Promise.resolve(makeInvitation({ ...data })),
-        ),
-        update: jest.fn().mockImplementation(({ data, where }) =>
-          Promise.resolve(makeInvitation({ id: where.id, ...data })),
-        ),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) =>
+            Promise.resolve(makeInvitation({ ...data })),
+          ),
+        update: jest
+          .fn()
+          .mockImplementation(({ data, where }) =>
+            Promise.resolve(makeInvitation({ id: where.id, ...data })),
+          ),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -72,6 +84,7 @@ describe('AuthService — QR staff invitations', () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'b1' }) },
+      subscription: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     passwordService = {
       hash: jest.fn().mockResolvedValue('hashed'),
@@ -92,13 +105,22 @@ describe('AuthService — QR staff invitations', () => {
     }).compile();
 
     service = moduleRef.get(AuthService);
-    jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
-    jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+    jest
+      .spyOn((service as any).logger, 'log')
+      .mockImplementation(() => undefined);
+    jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation(() => undefined);
   });
 
   describe('addStaff', () => {
     it('creates a PENDING invitation with 10-minute expiry and no notification', async () => {
-      const inv = await service.addStaff('org-1', 'Test Staff', 'TestStaff', Role.CASHIER);
+      const inv = await service.addStaff(
+        'org-1',
+        'Test Staff',
+        'TestStaff',
+        Role.CASHIER,
+      );
       expect(inv.status).toBe('PENDING');
       expect(inv.username).toBe('teststaff');
       expect(prisma.invitation.create).toHaveBeenCalledWith(
@@ -138,7 +160,13 @@ describe('AuthService — QR staff invitations', () => {
     it('rejects invalid branch (org isolation)', async () => {
       prisma.branch.findFirst.mockResolvedValueOnce(null);
       await expect(
-        service.addStaff('org-1', 'X', 'user1', Role.CASHIER, 'other-org-branch'),
+        service.addStaff(
+          'org-1',
+          'X',
+          'user1',
+          Role.CASHIER,
+          'other-org-branch',
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
@@ -185,7 +213,10 @@ describe('AuthService — QR staff invitations', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(makeInvitation({ status: 'EXPIRED' }));
       await expect(
-        service.activateInvitation({ token: 'tok-abc', password: 'Str0ngPass!' }),
+        service.activateInvitation({
+          token: 'tok-abc',
+          password: 'Str0ngPass!',
+        }),
       ).rejects.toThrow(/expired/i);
     });
 
@@ -194,7 +225,10 @@ describe('AuthService — QR staff invitations', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(makeInvitation({ status: 'ACTIVATED' }));
       await expect(
-        service.activateInvitation({ token: 'tok-abc', password: 'Str0ngPass!' }),
+        service.activateInvitation({
+          token: 'tok-abc',
+          password: 'Str0ngPass!',
+        }),
       ).rejects.toThrow(/already activated/i);
     });
 
@@ -203,7 +237,10 @@ describe('AuthService — QR staff invitations', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(makeInvitation({ status: 'REVOKED' }));
       await expect(
-        service.activateInvitation({ token: 'tok-abc', password: 'Str0ngPass!' }),
+        service.activateInvitation({
+          token: 'tok-abc',
+          password: 'Str0ngPass!',
+        }),
       ).rejects.toThrow(/revoked/i);
     });
 
@@ -220,7 +257,10 @@ describe('AuthService — QR staff invitations', () => {
         .mockResolvedValueOnce(null);
       prisma.user.findUnique.mockResolvedValueOnce({ id: 'u9' });
       await expect(
-        service.activateInvitation({ token: 'tok-abc', password: 'Str0ngPass!' }),
+        service.activateInvitation({
+          token: 'tok-abc',
+          password: 'Str0ngPass!',
+        }),
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });
@@ -249,9 +289,9 @@ describe('AuthService — QR staff invitations', () => {
       prisma.invitation.findFirst.mockResolvedValueOnce(
         makeInvitation({ status: 'ACTIVATED' }),
       );
-      await expect(
-        service.revokeInvitation('inv-1', 'org-1'),
-      ).rejects.toThrow(/already activated/i);
+      await expect(service.revokeInvitation('inv-1', 'org-1')).rejects.toThrow(
+        /already activated/i,
+      );
     });
 
     it('regenerates: new token + fresh expiry, only when not activated', async () => {

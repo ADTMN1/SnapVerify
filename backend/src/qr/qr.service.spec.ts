@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { QrService, QrAccessContext } from './qr.service';
+import { PaymentQrService } from './payment-qr/payment-qr.service';
 
 const RAW_ACCOUNT_NUMBER = '1000516323381';
 const PUBLIC_ID = 'a1b2c3d4e5f60718293a4b5c';
@@ -22,6 +23,39 @@ const mockPrisma = {
   },
   activityLog: { create: jest.fn() },
 };
+
+type AnyMock = { mock: { calls: unknown[][] } };
+const pm = mockPrisma.paymentAccount as unknown as {
+  findMany: AnyMock;
+  findFirst: AnyMock;
+  findUnique: AnyMock;
+};
+const al = mockPrisma.activityLog as unknown as { create: AnyMock };
+
+const findManyWhere = (call = 0): Record<string, unknown> =>
+  (pm.findMany.mock.calls[call]?.[0] as { where: Record<string, unknown> })
+    .where;
+const findFirstWhere = (call = 0): Record<string, unknown> =>
+  (pm.findFirst.mock.calls[call]?.[0] as { where: Record<string, unknown> })
+    .where;
+const auditData = (
+  call = 0,
+): {
+  action?: string;
+  organizationId?: string;
+  userId?: string;
+  metadata?: Record<string, unknown>;
+} =>
+  (
+    al.create.mock.calls[call]?.[0] as {
+      data: {
+        action?: string;
+        organizationId?: string;
+        userId?: string;
+        metadata?: Record<string, unknown>;
+      };
+    }
+  ).data;
 
 function account(overrides: Record<string, unknown> = {}) {
   return {
@@ -61,6 +95,7 @@ async function build(): Promise<QrService> {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       QrService,
+      PaymentQrService,
       { provide: PrismaService, useValue: mockPrisma },
       { provide: ConfigService, useValue: { get: jest.fn(() => undefined) } },
     ],
@@ -85,9 +120,8 @@ describe('QrService', () => {
 
       await service.listForBusiness(ownerCtx, {});
 
-      const where = mockPrisma.paymentAccount.findMany.mock.calls[0][0].where;
-      expect(where.organizationId).toBe('org-1');
-      expect(where.branchId).toBeUndefined();
+      expect(findManyWhere().organizationId).toBe('org-1');
+      expect(findManyWhere().branchId).toBeUndefined();
     });
 
     it('forces a branch-scoped caller onto their own branch', async () => {
@@ -95,8 +129,7 @@ describe('QrService', () => {
 
       await service.listForBusiness(managerCtx, {});
 
-      const where = mockPrisma.paymentAccount.findMany.mock.calls[0][0].where;
-      expect(where.branchId).toBe('branch-1');
+      expect(findManyWhere().branchId).toBe('branch-1');
     });
 
     it('rejects a branch-scoped caller asking for another branch', async () => {
@@ -120,9 +153,8 @@ describe('QrService', () => {
         isActive: 'false',
       });
 
-      const where = mockPrisma.paymentAccount.findMany.mock.calls[0][0].where;
-      expect(where.provider).toBe(PaymentProvider.CBE);
-      expect(where.isActive).toBe(false);
+      expect(findManyWhere().provider).toBe(PaymentProvider.CBE);
+      expect(findManyWhere().isActive).toBe(false);
     });
 
     it('rejects unknown providers and non-boolean isActive values', async () => {
@@ -134,7 +166,7 @@ describe('QrService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('returns masked accounts with QR links and never the raw number', async () => {
+    it('returns masked accounts with no fabricated bank payment QR and never the raw number', async () => {
       mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
 
       const result = await service.listForBusiness(
@@ -149,7 +181,21 @@ describe('QrService', () => {
       expect(result.qrVersion).toBe('v1');
       expect(result.items).toHaveLength(1);
       expect(result.items[0].accountNumber).toBe('****3381');
-      expect(result.items[0].qrUrl).toBe(
+      // Must not expose a SnapVerify URL as a bank/payment QR payload.
+      expect(result.items[0].qrUrl).toBeNull();
+      expect(result.items[0].bankPaymentQr).toEqual(
+        expect.objectContaining({
+          supported: false,
+          payload: null,
+          format: 'UNSUPPORTED',
+          reasonCode: 'REQUIRES_ACQUIRER_ONBOARDING',
+        }),
+      );
+      expect(result.items[0].bankPaymentQr.reason).toEqual(
+        expect.stringContaining('must not fabricate'),
+      );
+      // Internal resolve link is retained separately and never presented as payment QR.
+      expect(result.items[0].internalQrUrl).toBe(
         `https://api.snapverify.example/qr/v1/${PUBLIC_ID}`,
       );
       expect(result.items[0].branch).toEqual({ id: 'branch-1', name: 'Bole' });
@@ -161,7 +207,7 @@ describe('QrService', () => {
 
       await service.listForBusiness(ownerCtx, {});
 
-      const data = mockPrisma.activityLog.create.mock.calls[0][0].data;
+      const data = auditData();
       expect(data.action).toBe('QR_LIST_VIEWED');
       expect(data.organizationId).toBe('org-1');
       expect(data.userId).toBe('user-1');
@@ -189,9 +235,7 @@ describe('QrService', () => {
         service.getAccountQr({ ...ownerCtx, organizationId: 'org-2' }, 'acc-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
 
-      expect(
-        mockPrisma.paymentAccount.findFirst.mock.calls[0][0].where,
-      ).toEqual({
+      expect(findFirstWhere()).toEqual({
         id: 'acc-1',
         organizationId: 'org-2',
       });
@@ -207,7 +251,7 @@ describe('QrService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('returns QR information for a legacy account that already has an id', async () => {
+    it('returns account info for a legacy account without a bank payment QR', async () => {
       mockPrisma.paymentAccount.findFirst.mockResolvedValue(account());
 
       const result = await service.getAccountQr(ownerCtx, 'acc-1', {
@@ -216,11 +260,14 @@ describe('QrService', () => {
       });
 
       expect(result.publicId).toBe(PUBLIC_ID);
-      expect(result.qrUrl).toContain(`/qr/v1/${PUBLIC_ID}`);
+      expect(result.qrUrl).toBeNull();
+      expect(result.internalQrUrl).toContain(`/qr/v1/${PUBLIC_ID}`);
+      expect(result.bankPaymentQr.supported).toBe(false);
+      expect(result.bankPaymentQr.payload).toBeNull();
       expect(result.accountNumber).toBe('****3381');
     });
 
-    it('still exposes the QR of a disabled account for management purposes', async () => {
+    it('still exposes management info for a disabled account without a bank payment QR', async () => {
       mockPrisma.paymentAccount.findFirst.mockResolvedValue(
         account({ isActive: false }),
       );
@@ -230,15 +277,19 @@ describe('QrService', () => {
         headers: { host: 'api.snapverify.example' },
       });
       expect(result.isActive).toBe(false);
-      expect(result.qrUrl).toContain(PUBLIC_ID);
+      expect(result.qrUrl).toBeNull();
+      expect(result.internalQrUrl).toContain(PUBLIC_ID);
+      expect(result.bankPaymentQr.supported).toBe(false);
     });
 
-    it('omits the URL instead of inventing a domain when no origin is known', async () => {
+    it('omits internal QR URL instead of inventing a domain when no origin is known', async () => {
       mockPrisma.paymentAccount.findFirst.mockResolvedValue(account());
 
       const result = await service.getAccountQr(ownerCtx, 'acc-1');
       expect(result.publicId).toBe(PUBLIC_ID);
       expect(result.qrUrl).toBeNull();
+      expect(result.internalQrUrl).toBeNull();
+      expect(result.bankPaymentQr.supported).toBe(false);
     });
   });
 
@@ -303,6 +354,11 @@ describe('QrService', () => {
       expect(result.accountNumber).toBe('****3381');
       expect(result.confirmedPayment).toBe(false);
       expect(result.notice).toMatch(/not proof of payment/i);
+      expect(result.qrUrl).toBeNull();
+      expect(result.internalQrUrl).toContain(`/qr/v1/${PUBLIC_ID}`);
+      expect(result.bankPaymentQr).toEqual(
+        expect.objectContaining({ supported: false, payload: null }),
+      );
       expect(result.organization).toEqual({
         id: 'org-1',
         name: 'Test Business PLC',
@@ -315,10 +371,10 @@ describe('QrService', () => {
 
       await service.resolve(PUBLIC_ID, ownerCtx);
 
-      const data = mockPrisma.activityLog.create.mock.calls[0][0].data;
+      const data = auditData();
       expect(data.action).toBe('QR_RESOLVED');
-      expect(data.metadata.paymentAccountId).toBe('acc-1');
-      expect(data.metadata.outcome).toBe('OK');
+      expect(data.metadata?.paymentAccountId).toBe('acc-1');
+      expect(data.metadata?.outcome).toBe('OK');
       expect(JSON.stringify(data)).not.toContain(RAW_ACCOUNT_NUMBER);
       expect(JSON.stringify(data)).not.toContain(OTHER_PUBLIC_ID);
     });

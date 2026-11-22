@@ -1081,6 +1081,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         focusNode: focusNode,
         enabled: enabled,
         obscureText: obscureText,
+        autocorrect: !obscureText,
+        enableSuggestions: !obscureText,
         keyboardType: keyboardType,
         maxLength: maxLength,
         onChanged: onChanged,

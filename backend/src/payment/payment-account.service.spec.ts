@@ -3,22 +3,65 @@ import { ConfigService } from '@nestjs/config';
 import { PaymentProvider } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentAccountService } from './payment-account.service';
+import { CreatePaymentAccountDto } from './dto/create-payment-account.dto';
+import { UpdatePaymentAccountDto } from './dto/update-payment-account.dto';
 import * as crypto from 'crypto';
 
 const HMAC_SECRET = 'a'.repeat(48);
 const hmac = (s: string) =>
   `hmac-v1:${crypto.createHmac('sha256', HMAC_SECRET).update(s).digest('hex')}`;
 
-const mockPrisma = {
-  paymentAccount: {
-    findFirst: jest.fn(),
-    findMany: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    updateMany: jest.fn(),
-    deleteMany: jest.fn(),
-  },
+type AccountRecord = {
+  id: string;
+  publicId: string | null;
+  organizationId: string;
+  provider: PaymentProvider;
+  accountNumber: string;
+  accountNumberHash: string | null;
+  suffix: string | null;
+  accountHolderName: string | null;
+  isActive: boolean;
+  branchId: string | null;
 };
+
+type CreateArgs = {
+  data: {
+    publicId: string;
+    accountNumber?: string | null;
+    accountNumberHash?: string | null;
+    suffix?: string | null;
+    [key: string]: unknown;
+  };
+};
+
+type UpdateArgs = {
+  where: { id: string };
+  data: {
+    publicId?: string;
+    accountNumberHash?: string | null;
+    suffix?: string | null;
+    [key: string]: unknown;
+  };
+};
+
+const paymentAccountMock = {
+  findFirst: jest.fn<Promise<AccountRecord | null>, [unknown]>(),
+  findMany: jest.fn<Promise<AccountRecord[]>, [unknown]>(),
+  create: jest.fn<Promise<AccountRecord>, [CreateArgs]>(),
+  update: jest.fn<Promise<AccountRecord>, [UpdateArgs]>(),
+  updateMany: jest.fn<Promise<{ count: number }>, [unknown]>(),
+  deleteMany: jest.fn<Promise<{ count: number }>, [unknown]>(),
+};
+
+const mockPrisma = { paymentAccount: paymentAccountMock };
+
+const createDto = (
+  dto: CreatePaymentAccountDto & { suffix?: string },
+): CreatePaymentAccountDto => dto;
+
+const updateDto = (
+  dto: UpdatePaymentAccountDto & { suffix?: string },
+): UpdatePaymentAccountDto => dto;
 
 async function build() {
   const module: TestingModule = await Test.createTestingModule({
@@ -57,7 +100,7 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
     await expect(builder.compile()).rejects.toThrow(/ACCOUNT_HASH_SECRET/);
   });
 
-  const baseAccount = {
+  const baseAccount: AccountRecord = {
     id: 'acc-1',
     publicId: '0123456789abcdef01234567',
     organizationId: 'org-1',
@@ -71,18 +114,21 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
   };
 
   it('stores a keyed HMAC accountNumberHash on create (not plain SHA-256)', async () => {
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.create.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create.mockResolvedValue(baseAccount);
 
-    await service.create('org-1', {
-      provider: PaymentProvider.CBE,
-      accountNumber: '1000516323381',
-      suffix: '16323381',
-      accountHolderName: 'Test Business',
-      branchId: undefined,
-    } as any);
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000516323381',
+        suffix: '16323381',
+        accountHolderName: 'Test Business',
+        branchId: undefined,
+      }),
+    );
 
-    const args = mockPrisma.paymentAccount.create.mock.calls[0][0];
+    const args = paymentAccountMock.create.mock.calls[0][0];
     expect(args.data.accountNumberHash).toBe(hmac('1000516323381'));
     const plain = crypto
       .createHash('sha256')
@@ -93,23 +139,26 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
   });
 
   it('never returns a full account number from the API (create response masked)', async () => {
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.create.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create.mockResolvedValue(baseAccount);
 
-    const result = await service.create('org-1', {
-      provider: PaymentProvider.CBE,
-      accountNumber: '1000516323381',
-      suffix: '16323381',
-      accountHolderName: 'Test Business',
-      branchId: undefined,
-    } as any);
+    const result = await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000516323381',
+        suffix: '16323381',
+        accountHolderName: 'Test Business',
+        branchId: undefined,
+      }),
+    );
 
     expect(result.accountNumber).toBe('****3381');
     expect(JSON.stringify(result)).not.toContain('1000516323381');
   });
 
   it('masks account numbers in findAll and findByOrganizationAndBranch', async () => {
-    mockPrisma.paymentAccount.findMany.mockResolvedValue([baseAccount]);
+    paymentAccountMock.findMany.mockResolvedValue([baseAccount]);
 
     const all = await service.findAll('org-1');
     const byBranch = await service.findByOrganizationAndBranch('org-1');
@@ -119,21 +168,23 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
   });
 
   it('assigns a stable, opaque public QR id when creating an account', async () => {
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.create.mockImplementation(async ({ data }) => ({
-      ...baseAccount,
-      publicId: data.publicId,
-    }));
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create.mockImplementation(({ data }) =>
+      Promise.resolve({ ...baseAccount, publicId: data.publicId }),
+    );
 
-    const result = await service.create('org-1', {
-      provider: PaymentProvider.CBE,
-      accountNumber: '1000516323381',
-      suffix: '16323381',
-      accountHolderName: 'Test Business',
-      branchId: undefined,
-    } as any);
+    const result = await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000516323381',
+        suffix: '16323381',
+        accountHolderName: 'Test Business',
+        branchId: undefined,
+      }),
+    );
 
-    const args = mockPrisma.paymentAccount.create.mock.calls[0][0];
+    const args = paymentAccountMock.create.mock.calls[0][0];
     expect(args.data.publicId).toMatch(/^[0-9a-f]{24}$/);
     expect(result.publicId).toBe(args.data.publicId);
     // The QR identifier must not be derived from the account number.
@@ -141,91 +192,214 @@ describe('PaymentAccountService — Stage 1 data minimization', () => {
   });
 
   it('retries with a fresh public id when the generated one collides', async () => {
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue(null);
-    mockPrisma.paymentAccount.create
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create
       .mockRejectedValueOnce({ code: 'P2002', meta: { target: ['publicId'] } })
-      .mockImplementationOnce(async ({ data }) => ({
-        ...baseAccount,
-        publicId: data.publicId,
-      }));
+      .mockImplementationOnce(({ data }) =>
+        Promise.resolve({ ...baseAccount, publicId: data.publicId }),
+      );
 
-    await service.create('org-1', {
-      provider: PaymentProvider.CBE,
-      accountNumber: '1000516323381',
-      suffix: '16323381',
-      accountHolderName: 'Test Business',
-      branchId: undefined,
-    } as any);
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000516323381',
+        suffix: '16323381',
+        accountHolderName: 'Test Business',
+        branchId: undefined,
+      }),
+    );
 
-    expect(mockPrisma.paymentAccount.create).toHaveBeenCalledTimes(2);
-    const first = mockPrisma.paymentAccount.create.mock.calls[0][0].data;
-    const second = mockPrisma.paymentAccount.create.mock.calls[1][0].data;
+    expect(paymentAccountMock.create).toHaveBeenCalledTimes(2);
+    const first = paymentAccountMock.create.mock.calls[0][0].data;
+    const second = paymentAccountMock.create.mock.calls[1][0].data;
     expect(second.publicId).toMatch(/^[0-9a-f]{24}$/);
     expect(second.publicId).not.toBe(first.publicId);
   });
 
   it('never rewrites the public id of an existing account', async () => {
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue(baseAccount);
-    mockPrisma.paymentAccount.update.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(baseAccount);
+    paymentAccountMock.update.mockResolvedValue(baseAccount);
 
-    await service.create('org-1', {
-      provider: PaymentProvider.CBE,
-      accountNumber: '1000516323381',
-      suffix: '16323381',
-      accountHolderName: 'Test Business',
-      branchId: undefined,
-    } as any);
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000516323381',
+        suffix: '16323381',
+        accountHolderName: 'Test Business',
+        branchId: undefined,
+      }),
+    );
 
-    const args = mockPrisma.paymentAccount.update.mock.calls[0][0];
+    const args = paymentAccountMock.update.mock.calls[0][0];
     expect(args.data.publicId).toBeUndefined();
   });
 
   it('backfills a public id for a legacy account that has none', async () => {
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue({
+    paymentAccountMock.findFirst.mockResolvedValue({
       ...baseAccount,
       publicId: null,
     });
-    mockPrisma.paymentAccount.update.mockResolvedValue(baseAccount);
+    paymentAccountMock.update.mockResolvedValue(baseAccount);
 
-    await service.create('org-1', {
-      provider: PaymentProvider.CBE,
-      accountNumber: '1000516323381',
-      suffix: '16323381',
-      accountHolderName: 'Test Business',
-      branchId: undefined,
-    } as any);
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000516323381',
+        suffix: '16323381',
+        accountHolderName: 'Test Business',
+        branchId: undefined,
+      }),
+    );
 
-    const args = mockPrisma.paymentAccount.update.mock.calls[0][0];
+    const args = paymentAccountMock.update.mock.calls[0][0];
     expect(args.data.publicId).toMatch(/^[0-9a-f]{24}$/);
   });
 
-  it('keeps the hash in sync when the account number is updated', async () => {
-    mockPrisma.paymentAccount.updateMany.mockResolvedValue({ count: 1 });
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue({
-      ...baseAccount,
-      accountNumber: '1000999999',
-      accountNumberHash: hmac('1000999999'),
-    });
+  it('derives the CBE suffix from a formatted account number on create and ignores a client suffix', async () => {
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create.mockResolvedValue(baseAccount);
 
-    await service.update('org-1', PaymentProvider.CBE, undefined, {
-      accountNumber: '1000999999',
-    } as any);
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '1000 5163-23381',
+        suffix: '99999999',
+      }),
+    );
 
-    const args = mockPrisma.paymentAccount.updateMany.mock.calls[0][0];
-    expect(args.data.accountNumberHash).toBe(hmac('1000999999'));
+    const args = paymentAccountMock.create.mock.calls[0][0];
+    expect(args.data.suffix).toBe('16323381');
   });
 
-  it('masks account numbers on update responses', async () => {
-    mockPrisma.paymentAccount.updateMany.mockResolvedValue({ count: 1 });
-    mockPrisma.paymentAccount.findFirst.mockResolvedValue(baseAccount);
+  it('derives the ABYSSINIA suffix from the last five digits on create', async () => {
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create.mockResolvedValue({
+      ...baseAccount,
+      provider: PaymentProvider.ABYSSINIA,
+    });
+
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.ABYSSINIA,
+        accountNumber: '1000290172',
+        suffix: '99999',
+      }),
+    );
+
+    const args = paymentAccountMock.create.mock.calls[0][0];
+    expect(args.data.suffix).toBe('90172');
+  });
+
+  it('does not fabricate a suffix for providers without a verified rule', async () => {
+    paymentAccountMock.findFirst.mockResolvedValue(null);
+    paymentAccountMock.create.mockResolvedValue({
+      ...baseAccount,
+      provider: PaymentProvider.TELEBIRR,
+    });
+
+    await service.create(
+      'org-1',
+      createDto({
+        provider: PaymentProvider.TELEBIRR,
+        accountNumber: '0912345678',
+        suffix: 'brigade',
+      }),
+    );
+
+    const args = paymentAccountMock.create.mock.calls[0][0];
+    expect(args.data.suffix).toBeNull();
+  });
+
+  const invalidCreateCases: Array<[PaymentProvider, string | undefined]> = [
+    [PaymentProvider.CBE, '1234'],
+    [PaymentProvider.ABYSSINIA, '123'],
+    [PaymentProvider.CBE, undefined],
+  ];
+
+  it.each(invalidCreateCases)(
+    'rejects an account number with too few digits for %s',
+    async (provider, accountNumber) => {
+      await expect(
+        service.create('org-1', createDto({ provider, accountNumber })),
+      ).rejects.toThrow(/at least \d+ digits/);
+      expect(paymentAccountMock.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the hash in sync and recomputes the suffix when the account number is updated', async () => {
+    paymentAccountMock.findMany.mockResolvedValue([baseAccount]);
+    paymentAccountMock.update.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(baseAccount);
+
+    await service.update(
+      'org-1',
+      PaymentProvider.CBE,
+      undefined,
+      updateDto({ accountNumber: '1000999999' }),
+    );
+
+    const args = paymentAccountMock.update.mock.calls[0][0];
+    expect(args.data.accountNumberHash).toBe(hmac('1000999999'));
+    expect(args.data.suffix).toBe('00999999');
+    expect(paymentAccountMock.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('recomputes the suffix when the provider changes to a provider with a rule', async () => {
+    paymentAccountMock.findMany.mockResolvedValue([
+      { ...baseAccount, provider: PaymentProvider.TELEBIRR, suffix: null },
+    ]);
+    paymentAccountMock.update.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(baseAccount);
+
+    await service.update(
+      'org-1',
+      PaymentProvider.TELEBIRR,
+      undefined,
+      updateDto({
+        provider: PaymentProvider.CBE,
+        accountNumber: '0912345678',
+      }),
+    );
+
+    const args = paymentAccountMock.update.mock.calls[0][0];
+    expect(args.data.suffix).toBe('12345678');
+  });
+
+  it('clears the suffix when the provider changes to one without a rule', async () => {
+    paymentAccountMock.findMany.mockResolvedValue([baseAccount]);
+    paymentAccountMock.update.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(baseAccount);
+
+    await service.update(
+      'org-1',
+      PaymentProvider.CBE,
+      undefined,
+      updateDto({ provider: PaymentProvider.TELEBIRR }),
+    );
+
+    const args = paymentAccountMock.update.mock.calls[0][0];
+    expect(args.data.suffix).toBeNull();
+  });
+
+  it('masks account numbers on update responses and leaves suffixes untouched on unrelated edits', async () => {
+    paymentAccountMock.findMany.mockResolvedValue([baseAccount]);
+    paymentAccountMock.update.mockResolvedValue(baseAccount);
+    paymentAccountMock.findFirst.mockResolvedValue(baseAccount);
 
     const result = await service.update(
       'org-1',
       PaymentProvider.CBE,
       undefined,
-      { suffix: '16323381' } as any,
+      updateDto({ accountHolderName: 'Renamed Business' }),
     );
 
+    const args = paymentAccountMock.update.mock.calls[0][0];
+    expect(args.data).not.toHaveProperty('suffix');
     expect(result.accountNumber).toBe('****3381');
   });
 });

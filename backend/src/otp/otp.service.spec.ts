@@ -58,7 +58,9 @@ describe('OtpService (email)', () => {
       expect(created.purpose).toBe('register');
       expect(created.otpHash).toMatch(/^[a-f0-9]{64}$/);
       expect(created.code).toBeUndefined();
-      expect(created.expiresAt.getTime()).toBeGreaterThan(Date.now() + 5 * 60 * 1000);
+      expect(created.expiresAt.getTime()).toBeGreaterThan(
+        Date.now() + 5 * 60 * 1000,
+      );
       expect(emailService.sendOtpEmail).toHaveBeenCalledWith(
         EMAIL.toLowerCase(),
         expect.stringMatching(/^\d{6}$/),
@@ -97,7 +99,11 @@ describe('OtpService (email)', () => {
       await service.generateOtp(EMAIL, OTP_PURPOSES.PASSWORD_RESET);
 
       expect(prisma.emailOtp.deleteMany).toHaveBeenCalledWith({
-        where: { email: EMAIL.toLowerCase(), purpose: 'password_reset', consumedAt: null },
+        where: {
+          email: EMAIL.toLowerCase(),
+          purpose: 'password_reset',
+          consumedAt: null,
+        },
       });
     });
   });
@@ -107,7 +113,10 @@ describe('OtpService (email)', () => {
       id: 'otp-1',
       email: EMAIL,
       purpose: 'register',
-      otpHash: require('crypto').createHash('sha256').update('123456').digest('hex'),
+      otpHash: require('crypto')
+        .createHash('sha256')
+        .update('123456')
+        .digest('hex'),
       attempts: 0,
       expiresAt: new Date(Date.now() + 60_000),
       consumedAt: null,
@@ -168,7 +177,11 @@ describe('OtpService (email)', () => {
       prisma.emailOtp.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.verifyOtp('  Owner@Example.COM ', '123456', OTP_PURPOSES.REGISTER),
+        service.verifyOtp(
+          '  Owner@Example.COM ',
+          '123456',
+          OTP_PURPOSES.REGISTER,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.emailOtp.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({

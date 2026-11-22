@@ -33,9 +33,10 @@ export class AdminJwtAuthGuard implements CanActivate {
     const token = authHeader.slice(7);
 
     try {
-      const secret = this.config.get<string>('JWT_ADMIN_ACCESS_SECRET') || 
-                     this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
-      
+      const secret =
+        this.config.get<string>('JWT_ADMIN_ACCESS_SECRET') ||
+        this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
+
       const payload = this.jwtService.verify<AdminJwtPayload>(token, {
         secret,
       });

@@ -17,6 +17,7 @@ import { VerifyReferenceDto } from './dto/verify-reference.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SubscriptionGuard } from '../auth/guards/subscription.guard';
 import { resolveThrottlingConfig } from '../config/throttling.config';
 
 // Stage 1: upstream verification calls are expensive (OCR + per-account
@@ -43,13 +44,14 @@ export class PaymentController {
    * Any authenticated staff member can verify a payment by reference number.
    */
   @Post('verify')
+  @UseGuards(SubscriptionGuard)
   @Throttle({
     default: { ttl: throttling.ttlMs, limit: throttling.paymentVerifyLimit },
   })
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER)
   async verifyByReference(@Body() dto: VerifyReferenceDto, @Req() req: any) {
     const { sub: userId, organizationId, role, branchId } = req.user;
-    const userBranchId = role === 'OWNER' ? undefined : branchId ?? undefined;
+    const userBranchId = role === 'OWNER' ? undefined : (branchId ?? undefined);
     return this.paymentService.verifyByReference(
       dto.referenceNumber,
       organizationId,
@@ -66,6 +68,7 @@ export class PaymentController {
    * Any authenticated staff member can verify a payment by image (OCR).
    */
   @Post('verify-image')
+  @UseGuards(SubscriptionGuard)
   @Throttle({
     default: {
       ttl: throttling.ttlMs,
@@ -93,7 +96,7 @@ export class PaymentController {
     if (!file)
       throw new BadRequestException('Please select an image file to upload.');
     const { sub: userId, organizationId, role, branchId } = req.user;
-    const userBranchId = role === 'OWNER' ? undefined : branchId ?? undefined;
+    const userBranchId = role === 'OWNER' ? undefined : (branchId ?? undefined);
     return this.paymentService.verifyByImage(
       file.buffer,
       file.mimetype,

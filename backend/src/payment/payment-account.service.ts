@@ -9,7 +9,10 @@ import { CreatePaymentAccountDto } from './dto/create-payment-account.dto';
 import { UpdatePaymentAccountDto } from './dto/update-payment-account.dto';
 import { PaymentProvider } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { computeAccountNumberHash } from './account-hash';
+import {
+  computeAccountNumberHash,
+  normalizeAccountNumber,
+} from './account-hash';
 import { maskAccount } from './account-mask';
 import { generatePublicId, isUniqueConstraintViolation } from '../qr/public-id';
 
@@ -19,6 +22,11 @@ import { generatePublicId, isUniqueConstraintViolation } from '../qr/public-id';
  * collision can never surface as a failed account creation.
  */
 const PUBLIC_ID_ATTEMPTS = 5;
+
+const SUFFIX_LENGTHS: Partial<Record<PaymentProvider, number>> = {
+  [PaymentProvider.CBE]: 8,
+  [PaymentProvider.ABYSSINIA]: 5,
+};
 
 @Injectable()
 export class PaymentAccountService {
@@ -47,27 +55,34 @@ export class PaymentAccountService {
     return computeAccountNumberHash(accountNumber, this.accountHashSecret);
   }
 
+  /**
+   * Derive the suffix from the registered account number. The suffix is
+   * internal metadata for local matching — never accepted from the client.
+   */
+  private deriveSuffix(
+    provider: PaymentProvider,
+    accountNumber: string | null | undefined,
+  ): string | null {
+    const length = SUFFIX_LENGTHS[provider];
+    if (!length) return null;
+
+    const normalized = normalizeAccountNumber(accountNumber);
+    const digits = normalized?.replace(/\D/g, '') ?? '';
+    if (digits.length < length) {
+      throw new BadRequestException(
+        `${provider} accounts require an account number with at least ${length} digits.`,
+      );
+    }
+    return digits.slice(-length);
+  }
+
   // Create a payment account
   async create(organizationId: string, dto: CreatePaymentAccountDto) {
     this.logger.log(
       `[create] Creating payment account for org: ${organizationId}, provider: ${dto.provider}`,
     );
 
-    // Validate suffix length for specific providers
-    if (dto.provider === PaymentProvider.CBE) {
-      if (!dto.suffix || dto.suffix.length !== 8) {
-        throw new BadRequestException(
-          'CBE accounts require an 8-digit account suffix.',
-        );
-      }
-    }
-    if (dto.provider === PaymentProvider.ABYSSINIA) {
-      if (!dto.suffix || dto.suffix.length !== 5) {
-        throw new BadRequestException(
-          'Abyssinia accounts require a 5-digit account suffix.',
-        );
-      }
-    }
+    const suffix = this.deriveSuffix(dto.provider, dto.accountNumber);
 
     try {
       // Check if account already exists for this organization/provider/branch combination
@@ -90,7 +105,7 @@ export class PaymentAccountService {
             // Stage 1: hash is stored alongside so matching can use hashed
             // comparison; plaintext column retained for legacy backfill.
             accountNumberHash: this.hashAccountNumber(dto.accountNumber),
-            suffix: dto.suffix,
+            suffix,
             accountHolderName: dto.accountHolderName,
             isActive: true,
             ...(existingAccount.publicId
@@ -112,7 +127,7 @@ export class PaymentAccountService {
                 provider: dto.provider,
                 accountNumber: dto.accountNumber,
                 accountNumberHash: this.hashAccountNumber(dto.accountNumber),
-                suffix: dto.suffix,
+                suffix,
                 accountHolderName: dto.accountHolderName,
                 branchId: dto.branchId,
               },
@@ -201,47 +216,58 @@ export class PaymentAccountService {
       `[update] Updating payment account for org: ${organizationId}, provider: ${provider}`,
     );
 
-    // Validate suffix if provided
-    if (provider === PaymentProvider.CBE && dto.suffix) {
-      if (dto.suffix.length !== 8) {
-        throw new BadRequestException(
-          'CBE accounts require an 8-digit account suffix.',
-        );
-      }
-    }
-    if (provider === PaymentProvider.ABYSSINIA && dto.suffix) {
-      if (dto.suffix.length !== 5) {
-        throw new BadRequestException(
-          'Abyssinia accounts require a 5-digit account suffix.',
-        );
-      }
-    }
+    const nextProvider = dto.provider ?? provider;
+    const accountNumberChanged = dto.accountNumber !== undefined;
+    const providerChanged = nextProvider !== provider;
 
-    const account = await this.prisma.paymentAccount.updateMany({
+    const existingAccounts = await this.prisma.paymentAccount.findMany({
       where: {
         organizationId,
         provider,
         branchId: branchId ?? undefined,
       },
-      data: {
-        ...dto,
-        // Stage 1: keep the hash in sync when the account number changes.
-        ...(dto.accountNumber !== undefined
-          ? { accountNumberHash: this.hashAccountNumber(dto.accountNumber) }
-          : {}),
-      },
     });
-    if (account.count === 0) {
+    if (existingAccounts.length === 0) {
       throw new NotFoundException(
         'Payment account not found. Please check the details.',
       );
     }
 
-    // Fetch the updated account
+    // Compute all derived values before writing so a bad account number
+    // cannot leave a partially updated set of accounts behind.
+    const updates = existingAccounts.map((current) => {
+      const effectiveAccountNumber = accountNumberChanged
+        ? dto.accountNumber
+        : current.accountNumber;
+      return {
+        id: current.id,
+        data: {
+          ...dto,
+          // Stage 1: keep the hash in sync when the account number changes.
+          ...(accountNumberChanged
+            ? { accountNumberHash: this.hashAccountNumber(dto.accountNumber) }
+            : {}),
+          // Leave a stored suffix untouched for unrelated edits; recompute it
+          // only when the account number or provider actually changes.
+          ...(accountNumberChanged || providerChanged
+            ? {
+                suffix: this.deriveSuffix(nextProvider, effectiveAccountNumber),
+              }
+            : {}),
+        },
+      };
+    });
+    for (const update of updates) {
+      await this.prisma.paymentAccount.update({
+        where: { id: update.id },
+        data: update.data,
+      });
+    }
+
     const updatedAccount = await this.prisma.paymentAccount.findFirst({
       where: {
         organizationId,
-        provider,
+        provider: nextProvider,
         branchId: branchId ?? undefined,
       },
     });

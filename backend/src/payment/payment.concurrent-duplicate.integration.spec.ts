@@ -21,7 +21,9 @@ describeIfDb('concurrent duplicate protection (integration)', () => {
   const ref = `FT-${Date.now()}-CONCURRENT`;
 
   beforeAll(() => {
-    prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } } as never);
+    prisma = new PrismaClient({
+      datasources: { db: { url: TEST_DATABASE_URL } },
+    } as never);
   });
 
   afterAll(async () => {
@@ -50,7 +52,7 @@ describeIfDb('concurrent duplicate protection (integration)', () => {
     const rejected = results.filter((r) => r.status === 'rejected');
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect((rejected[0] as PromiseRejectedResult).reason?.code).toBe('P2002');
+    expect(rejected[0].reason?.code).toBe('P2002');
 
     const count = await prisma.payment.count({
       where: { organizationId: orgId, transactionId: ref },

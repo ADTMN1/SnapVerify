@@ -8,7 +8,6 @@ import '../../providers/reports_provider.dart';
 import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
 import 'payment_activity_screen.dart';
-import 'qr_management_screen.dart';
 import 'reports_screen.dart';
 import 'payment_account_management_screen.dart';
 
@@ -357,17 +356,6 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         onTap: () => _navigateAndRefresh(const PaymentActivityScreen()),
       ),
     );
-
-    if (role.canGenerateQRCode) {
-      actions.add(
-        _QuickAction(
-          icon: Icons.qr_code_2_rounded,
-          label: 'QR',
-          color: TwColors.violet400,
-          onTap: () => _navigateAndRefresh(const QRManagementScreen()),
-        ),
-      );
-    }
 
     if (role.canExportReports) {
       actions.add(

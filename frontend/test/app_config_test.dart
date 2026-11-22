@@ -10,7 +10,7 @@ void main() {
 
   test('preset constants are correct', () {
     expect(AppConstants.emulatorBaseUrl, 'http://10.0.2.2:3000');
-    expect(AppConstants.devDeviceBaseUrl, 'http://192.168.1.5:3000');
+    expect(AppConstants.devDeviceBaseUrl, 'http://192.168.100.93:3000');
     expect(AppConstants.prodBaseUrl, startsWith('https://'));
   });
 

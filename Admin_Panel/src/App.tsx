@@ -24,6 +24,17 @@ import DevicesPage         from './admin/pages/DevicesPage';
 import LoginHistoryPage    from './admin/pages/LoginHistoryPage';
 import SupportPage         from './admin/pages/SupportPage';
 import SettingsPage        from './admin/pages/SettingsPage';
+import PlatformOverviewPage      from './admin/pages/PlatformOverviewPage';
+import PlatformOrganizationsPage from './admin/pages/PlatformOrganizationsPage';
+import PlatformUsersPage         from './admin/pages/PlatformUsersPage';
+import PlatformTransactionsPage  from './admin/pages/PlatformTransactionsPage';
+import PlatformSubscriptionsPage from './admin/pages/PlatformSubscriptionsPage';
+import PlatformActivityPage      from './admin/pages/PlatformActivityPage';
+
+function DashboardRoute() {
+  const { role } = useAuth();
+  return role === 'SUPER_ADMIN' ? <PlatformOverviewPage /> : <DashboardPage />;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -44,7 +55,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
 
-      <Route path="/admin"                element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+      <Route path="/admin"                element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
       <Route path="/admin/transactions"   element={<ProtectedRoute><TransactionsPage /></ProtectedRoute>} />
       <Route path="/admin/live"           element={<ProtectedRoute><LiveMonitorPage /></ProtectedRoute>} />
       <Route path="/admin/fraud"          element={<ProtectedRoute><FraudCenterPage /></ProtectedRoute>} />
@@ -64,6 +75,13 @@ function AppRoutes() {
       <Route path="/admin/login-history"  element={<ProtectedRoute><LoginHistoryPage /></ProtectedRoute>} />
       <Route path="/admin/support"        element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
       <Route path="/admin/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+
+      {/* Platform super-admin routes */}
+      <Route path="/admin/organizations"  element={<ProtectedRoute><PlatformOrganizationsPage /></ProtectedRoute>} />
+      <Route path="/admin/users"          element={<ProtectedRoute><PlatformUsersPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/transactions"   element={<ProtectedRoute><PlatformTransactionsPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/subscriptions"  element={<ProtectedRoute><PlatformSubscriptionsPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/activity"       element={<ProtectedRoute><PlatformActivityPage /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/admin" replace />} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
