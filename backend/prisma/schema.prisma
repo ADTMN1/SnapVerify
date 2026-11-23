@@ -210,10 +210,10 @@ model Payment {
   currency                String            @default("ETB")
   paymentMethod           String
   transactionId           String
-  // Deterministic normalization of transactionId (uppercase, whitespace and
-  // separator-stripped). Null for legacy/empty references. Backed by a unique
-  // constraint with organizationId for database-level duplicate protection.
+  // Trimmed transactionId used for duplicate detection. Null for empty
+  // references. Backed by a unique constraint with organizationId.
   normalizedTransactionId String?
+  paymentDate             DateTime?
   senderName              String?
   receiverName            String?
   status                  PaymentStatus

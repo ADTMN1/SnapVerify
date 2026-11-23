@@ -133,6 +133,34 @@ void main() {
     });
   });
 
+  group('VerificationResult.fromJson payment date', () {
+    test('reads top-level paymentDate from the backend', () {
+      final data = payload('VERIFIED')
+        ..['paymentDate'] = '2026-01-01T10:00:00+03:00';
+      final r = VerificationResult.fromJson(data);
+      expect(r.paymentDate, isNotNull);
+      expect(r.paymentDate!.year, 2026);
+      expect(r.paymentDate!.month, 1);
+      expect(r.paymentDate!.day, 1);
+    });
+
+    test('falls back to raw transactionDate from older responses', () {
+      final data = payload('VERIFIED')
+        ..['raw'] = {'transactionDate': '2026-11-22T10:00:00Z'};
+      final r = VerificationResult.fromJson(data);
+      expect(r.paymentDate, isNotNull);
+      expect(r.paymentDate!.month, 11);
+      expect(r.paymentDate!.day, 22);
+    });
+
+    test('leaves paymentDate null when the provider omits it', () {
+      expect(
+        VerificationResult.fromJson(payload('VERIFIED')).paymentDate,
+        isNull,
+      );
+    });
+  });
+
   group('paymentProviderFromOcrLabel (provider detection)', () {
     test('maps known labels to canonical providers', () {
       expect(paymentProviderFromOcrLabel('Telebirr'), PaymentProvider.TELEBIRR);

@@ -454,6 +454,12 @@ export class PaymentService {
     return clone;
   }
 
+  private _parsePaymentDate(value: unknown): Date | null {
+    if (typeof value !== 'string' || value.trim().length === 0) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
   /**
    * Client-facing copy of the provider result: full receiving-account
    * numbers are ALWAYS masked; only the masked evidence is exposed to the
@@ -521,6 +527,7 @@ export class PaymentService {
         amount: Number(existingPayment.amount),
         currency: 'ETB',
         transactionId: existingPayment.transactionId,
+        paymentDate: existingPayment.paymentDate?.toISOString() ?? null,
         senderName: existingPayment.senderName,
         receiverName: existingPayment.receiverName,
         riskScore: existingPayment.riskScore,
@@ -628,6 +635,7 @@ export class PaymentService {
             amount: 0,
             currency: 'ETB',
             transactionId: referenceNumber,
+            paymentDate: verification.transactionDate,
             senderName: null,
             receiverName: null,
             riskScore: 80,
@@ -1012,6 +1020,7 @@ export class PaymentService {
         amount: 0,
         currency: 'ETB',
         transactionId: verification.transactionNumber ?? `OCR-${Date.now()}`,
+        paymentDate: verification.transactionDate,
         senderName: null,
         receiverName: null,
         riskScore: 80,
@@ -1181,6 +1190,9 @@ export class PaymentService {
           // references — PostgreSQL unique constraints ignore NULLs, so
           // unparseable references can never spuriously block other rows.
           normalizedTransactionId: normalizeTransactionId(meta.transactionId),
+          paymentDate: this._parsePaymentDate(
+            raw?.transactionDate ?? raw?.transaction_date,
+          ),
           senderName,
           receiverName,
           status,
@@ -1222,6 +1234,7 @@ export class PaymentService {
             amount: Number(winner.amount),
             currency: 'ETB',
             transactionId: winner.transactionId,
+            paymentDate: winner.paymentDate?.toISOString() ?? null,
             senderName: winner.senderName,
             receiverName: winner.receiverName,
             riskScore: winner.riskScore,
@@ -1236,6 +1249,7 @@ export class PaymentService {
           {
             verified: false,
             status: 'DUPLICATE_TRANSACTION',
+            paymentDate: null,
             message:
               'This payment has already been verified. Each transaction can only be verified once.',
           },
@@ -1283,6 +1297,7 @@ export class PaymentService {
       amount: Number(payment.amount),
       currency: 'ETB',
       transactionId: payment.transactionId,
+      paymentDate: payment.paymentDate?.toISOString() ?? null,
       senderName: payment.senderName,
       receiverName: payment.receiverName,
       riskScore: verified ? 0 : 80,

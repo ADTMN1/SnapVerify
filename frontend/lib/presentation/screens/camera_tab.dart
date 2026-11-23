@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/tailwind.dart';
@@ -859,7 +860,9 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               ),
             ),
 
-          if (state.result != null && state.result!.transactionId.isNotEmpty)
+          if (state.result != null &&
+              (state.result!.transactionId.isNotEmpty ||
+                  state.result!.paymentDate != null))
             Padding(
               padding: const EdgeInsets.only(top: 20),
               child: Container(
@@ -885,6 +888,16 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                           value:
                               '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
                           valueColor: TwColors.brightGreen,
+                        ),
+                      ),
+                    if (state.result!.paymentDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _DetailRow(
+                          label: 'Payment Date',
+                          value: DateFormat(
+                            'MMM d, yyyy · HH:mm',
+                          ).format(state.result!.paymentDate!.toLocal()),
                         ),
                       ),
                   ],

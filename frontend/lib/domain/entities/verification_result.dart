@@ -19,6 +19,7 @@ class VerificationResult {
   final double amount;
   final String currency;
   final String transactionId;
+  final DateTime? paymentDate;
   final String? senderName;
   final String? receiverName;
   final int riskScore;
@@ -31,6 +32,7 @@ class VerificationResult {
     required this.amount,
     required this.currency,
     required this.transactionId,
+    this.paymentDate,
     this.senderName,
     this.receiverName,
     required this.riskScore,
@@ -41,6 +43,11 @@ class VerificationResult {
       status == VerificationStatus.providerUnavailable ||
       status == VerificationStatus.quotaExhausted ||
       status == VerificationStatus.providerConfigError;
+
+  static DateTime? _parseDate(dynamic value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return DateTime.tryParse(value)?.toLocal();
+  }
 
   factory VerificationResult.fromJson(Map<String, dynamic> json) {
     final rawStatus = (json['status'] as String? ?? '').toUpperCase();
@@ -71,6 +78,9 @@ class VerificationResult {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       currency: json['currency'] as String? ?? 'ETB',
       transactionId: json['transactionId'] as String? ?? '',
+      paymentDate: _parseDate(
+        json['paymentDate'] ?? json['raw']?['transactionDate'],
+      ),
       senderName: json['senderName'] as String?,
       receiverName: json['receiverName'] as String?,
       riskScore: json['riskScore'] as int? ?? 0,
