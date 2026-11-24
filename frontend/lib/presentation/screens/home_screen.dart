@@ -18,21 +18,11 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _activeTabIndex = 0;
-  bool _initialPlanCheckDone = false;
   bool _planSheetOpen = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _maybeShowInitialPlanSheet(),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
-    ref.listen(authNotifierProvider, (_, _) => _maybeShowInitialPlanSheet());
     final isWaiter = authState.role == UserRole.waiter;
     final canManage = authState.role.canManage;
     final cameraIdx = isWaiter ? 1 : 2;
@@ -102,20 +92,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _switchTab(int index) {
+  void _switchTab(int index, {bool closePlanSheet = true}) {
+    if (closePlanSheet) _dismissPlanSheet();
     setState(() {
       _activeTabIndex = index;
     });
   }
 
+  void _dismissPlanSheet() {
+    if (!_planSheetOpen || !mounted) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) navigator.pop(false);
+  }
+
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isActive = _activeTabIndex == index;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _activeTabIndex = index;
-        });
-      },
+      onTap: () => _switchTab(index),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -142,36 +135,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _maybeShowInitialPlanSheet() {
-    if (!mounted || _initialPlanCheckDone || _planSheetOpen) return;
-    final authState = ref.read(authNotifierProvider);
-    if (!authState.isAuthenticated || authState.role == UserRole.unknown) {
-      return;
-    }
-    _initialPlanCheckDone = true;
-    if (authState.role != UserRole.owner || authState.subscription != null) {
-      return;
-    }
-    _showPlanSheet(requireSelection: true);
-  }
-
   void _handleCameraTap(int cameraIdx) {
     if (!mounted) return;
     final subscription = ref.read(authNotifierProvider).subscription;
     if (subscription != null &&
         subscription.isActive &&
         !subscription.isQuotaExceeded) {
-      _switchTab(cameraIdx);
+      _switchTab(cameraIdx, closePlanSheet: false);
       return;
     }
-    _showPlanSheet(cameraIdx: cameraIdx, requireSelection: false);
+    _showPlanSheet(cameraIdx: cameraIdx);
   }
 
-  Future<void> _showPlanSheet({
-    required bool requireSelection,
-    bool startOnPlanList = false,
-    int? cameraIdx,
-  }) async {
+  Future<void> _showPlanSheet({int? cameraIdx}) async {
     if (_planSheetOpen || !mounted) return;
     _planSheetOpen = true;
     final container = ProviderScope.containerOf(context);
@@ -180,31 +156,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       useRootNavigator: true,
-      isDismissible: !requireSelection,
-      enableDrag: !requireSelection,
-      builder: (_) => ProviderScope(
-        parent: container,
-        child: SubscriptionSheet(
-          requireSelection: requireSelection,
-          startOnPlanList: startOnPlanList,
-        ),
-      ),
+      isDismissible: true,
+      enableDrag: true,
+      builder: (_) =>
+          ProviderScope(parent: container, child: const SubscriptionSheet()),
     );
     _planSheetOpen = false;
     if (!mounted) return;
 
     await ref.read(authNotifierProvider.notifier).refreshSubscription();
-    if (requireSelection &&
-        ref.read(authNotifierProvider).subscription == null) {
-      _initialPlanCheckDone = false;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _maybeShowInitialPlanSheet(),
-      );
-      return;
-    }
     if (canOpenCamera == true && cameraIdx != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _switchTab(cameraIdx);
+        if (mounted) _switchTab(cameraIdx, closePlanSheet: false);
       });
     }
   }

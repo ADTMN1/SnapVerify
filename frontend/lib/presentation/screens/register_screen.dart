@@ -17,6 +17,19 @@ class RegisterScreen extends ConsumerStatefulWidget {
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen>
     with SingleTickerProviderStateMixin {
+  static const double _screenPadding = 20;
+  static const double _blockGap = 24;
+  static const double _sectionGap = 20;
+  static const double _fieldGap = 12;
+  static const double _inputRadius = 10;
+  static const double _smallIconSize = 16;
+  static const double _mediumIconSize = 18;
+  static const double _smallTextSize = 11;
+  static const double _bodyTextSize = 13;
+  static const double _buttonTextSize = 14;
+  static const double _titleSize = 24;
+  static const double _sectionTitleSize = 18;
+
   // State
   int _currentStep = 0;
   String _registeredEmail = '';
@@ -31,7 +44,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   final _fullNameController = TextEditingController();
   final _businessNameController = TextEditingController();
   final _businessTypeController = TextEditingController();
-  final _cityController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -40,7 +52,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   final _otpFocusNode = FocusNode();
   final _fullNameFocusNode = FocusNode();
   final _businessNameFocusNode = FocusNode();
-  final _cityFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   final _confirmPasswordFocusNode = FocusNode();
 
@@ -49,9 +60,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   bool _otpFocused = false;
   bool _fullNameFocused = false;
   bool _businessNameFocused = false;
-  bool _cityFocused = false;
   bool _passwordFocused = false;
   bool _confirmPasswordFocused = false;
+  bool _businessTypePickerOpen = false;
+  bool _cityPickerOpen = false;
 
   // Validation Errors
   String? _emailError;
@@ -76,6 +88,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     'Other',
   ];
   String? _selectedBusinessType;
+
+  final List<String> _cities = [
+    'Addis Ababa',
+    'Adama',
+    'Bahir Dar',
+    'Bishoftu',
+    'Debre Markos',
+    'Dessie',
+    'Dire Dawa',
+    'Gambela',
+    'Gondar',
+    'Harar',
+    'Hawassa',
+    'Jimma',
+    'Jijiga',
+    'Mekelle',
+    'Nekemte',
+    'Shashamane',
+    'Wolaita Sodo',
+    'Other',
+  ];
+  String? _selectedCity;
 
   // Animation
   late AnimationController _animationController;
@@ -116,7 +150,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _fullNameController.addListener(_clearError);
     _businessNameController.addListener(_clearError);
     _businessTypeController.addListener(_clearError);
-    _cityController.addListener(_clearError);
     _passwordController.addListener(_clearError);
     _confirmPasswordController.addListener(_clearError);
 
@@ -138,12 +171,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       _passwordError = null;
       _confirmPasswordError = null;
     });
-  }
-
-  void _clearCityError() {
-    if (_cityError != null) {
-      setState(() => _cityError = null);
-    }
   }
 
   void _clearBusinessNameError() {
@@ -183,9 +210,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _businessNameFocusNode.addListener(() {
       setState(() => _businessNameFocused = _businessNameFocusNode.hasFocus);
     });
-    _cityFocusNode.addListener(() {
-      setState(() => _cityFocused = _cityFocusNode.hasFocus);
-    });
     _passwordFocusNode.addListener(() {
       setState(() => _passwordFocused = _passwordFocusNode.hasFocus);
     });
@@ -204,7 +228,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _fullNameController.removeListener(_clearError);
     _businessNameController.removeListener(_clearError);
     _businessTypeController.removeListener(_clearError);
-    _cityController.removeListener(_clearError);
     _passwordController.removeListener(_clearError);
     _confirmPasswordController.removeListener(_clearError);
     _emailController.dispose();
@@ -212,14 +235,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _fullNameController.dispose();
     _businessNameController.dispose();
     _businessTypeController.dispose();
-    _cityController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _emailFocusNode.dispose();
     _otpFocusNode.dispose();
     _fullNameFocusNode.dispose();
     _businessNameFocusNode.dispose();
-    _cityFocusNode.dispose();
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
     _animationController.dispose();
@@ -254,9 +275,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       return;
     }
 
-    final city = _cityController.text.trim();
-    if (city.isEmpty) {
-      setState(() => _cityError = 'City is required.');
+    if (_selectedCity == null) {
+      setState(() => _cityError = 'Please select a city.');
       return;
     }
 
@@ -291,7 +311,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           password: password,
           confirmPassword: confirmPassword,
           type: _selectedBusinessType,
-          city: city,
+          city: _selectedCity!,
         );
 
     if (ok && mounted) {
@@ -366,29 +386,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(
+              horizontal: _screenPadding,
+              vertical: _screenPadding,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header with Language Switcher
                 _buildHeader(size),
 
-                const SizedBox(height: 48),
+                const SizedBox(height: _blockGap),
 
                 // Animated Logo
                 _buildAnimatedLogo(),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: _sectionGap),
 
                 // Current Step Content
                 _buildCurrentStep(),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: _sectionGap),
 
                 // Navigation
                 _buildNavigationButtons(authState),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: _sectionGap),
 
                 // Login Link
                 _buildLoginLink(),
@@ -412,16 +435,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             );
           },
           child: Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: TwColors.cardBg,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
             ),
             child: const Icon(
               Icons.arrow_back_ios_new_rounded,
               color: TwColors.white,
-              size: 20,
+              size: _mediumIconSize,
             ),
           ),
         ),
@@ -432,10 +455,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
   Widget _buildLanguageSwitcher() {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: TwColors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
@@ -446,7 +469,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               margin: EdgeInsets.only(
                 right: lang == AppLanguage.values.last ? 0 : 4,
               ),
@@ -458,7 +481,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                 border: isSelected
                     ? Border.all(
                         color: TwColors.brightGreen.withValues(alpha: 0.4),
-                        width: 1.5,
                       )
                     : null,
               ),
@@ -466,7 +488,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                 lang.shortName,
                 style: TextStyle(
                   color: isSelected ? TwColors.brightGreen : TwColors.slate400,
-                  fontSize: 13,
+                  fontSize: _bodyTextSize,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
@@ -487,18 +509,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             scale: _logoScaleAnimation.value,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: TwColors.brightGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(28),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: TwColors.brightGreen.withValues(alpha: 0.25),
-                    width: 1.5,
                   ),
                 ),
                 child: const Icon(
                   Icons.storefront_rounded,
-                  size: 64,
+                  size: 44,
                   color: TwColors.brightGreen,
                 ),
               ),
@@ -521,19 +542,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildTitle(),
-        const SizedBox(height: 28),
+        const SizedBox(height: _sectionGap),
         _buildEmailField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: _fieldGap),
         _buildFullNameField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: _fieldGap),
         _buildBusinessNameField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: _fieldGap),
         _buildBusinessTypeDropdown(),
-        const SizedBox(height: 20),
-        _buildCityField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: _fieldGap),
+        _buildCityDropdown(),
+        const SizedBox(height: _fieldGap),
         _buildPasswordField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: _fieldGap),
         _buildConfirmPasswordField(),
       ],
     );
@@ -544,18 +565,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildTitle(),
-        const SizedBox(height: 12),
+        const SizedBox(height: _fieldGap),
         Text(
           'We sent a 6-digit code to $_registeredEmail. Enter it below to verify your email.',
           style: TextStyle(
             color: TwColors.slate400,
-            fontSize: 14,
+            fontSize: _bodyTextSize,
             fontWeight: FontWeight.normal,
           ),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: _sectionGap),
         _buildOtpField(),
-        const SizedBox(height: 14),
+        const SizedBox(height: _fieldGap),
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
@@ -564,7 +585,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
               _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
               style: TextStyle(
                 color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
-                fontSize: 14,
+                fontSize: _bodyTextSize,
                 fontWeight: FontWeight.normal,
               ),
             ),
@@ -591,12 +612,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         if (_otpError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 2),
             child: Text(
               _otpError!,
               style: TextStyle(
                 color: TwColors.red500,
-                fontSize: 12,
+                fontSize: _smallTextSize,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -613,19 +634,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           AppLocalizations.of(context)!.createAccount,
           style: const TextStyle(
             color: TwColors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.normal,
+            fontSize: _titleSize,
+            fontWeight: FontWeight.w600,
             letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         Text(
           _currentStep == 0
               ? AppLocalizations.of(context)!.createNewAccount
               : 'Verify your email',
           style: TextStyle(
             color: TwColors.slate400,
-            fontSize: 15,
+            fontSize: _bodyTextSize,
             fontWeight: FontWeight.normal,
           ),
         ),
@@ -649,12 +670,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         if (_emailError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 2),
             child: Text(
               _emailError!,
               style: TextStyle(
                 color: TwColors.red500,
-                fontSize: 12,
+                fontSize: _smallTextSize,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -679,12 +700,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         if (_fullNameError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 2),
             child: Text(
               _fullNameError!,
               style: TextStyle(
                 color: TwColors.red500,
-                fontSize: 12,
+                fontSize: _smallTextSize,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -709,12 +730,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         if (_businessNameError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 2),
             child: Text(
               _businessNameError!,
               style: TextStyle(
                 color: TwColors.red500,
-                fontSize: 12,
+                fontSize: _smallTextSize,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -724,232 +745,355 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   }
 
   Widget _buildBusinessTypeDropdown() {
+    return _buildOptionDropdown(
+      label: AppLocalizations.of(context)!.businessType,
+      placeholder: 'Select business type',
+      icon: Icons.category_outlined,
+      value: _selectedBusinessType,
+      error: _businessTypeError,
+      isOpen: _businessTypePickerOpen,
+      onTap: _openBusinessTypePicker,
+    );
+  }
+
+  Widget _buildCityDropdown() {
+    return _buildOptionDropdown(
+      label: AppLocalizations.of(context)!.city,
+      placeholder: 'Select city',
+      icon: Icons.location_on_outlined,
+      value: _selectedCity,
+      error: _cityError,
+      isOpen: _cityPickerOpen,
+      onTap: _openCityPicker,
+    );
+  }
+
+  Widget _buildOptionDropdown({
+    required String label,
+    required String placeholder,
+    required IconData icon,
+    required String? value,
+    required String? error,
+    required bool isOpen,
+    required VoidCallback onTap,
+  }) {
+    final hasError = error != null;
+    final hasValue = value != null;
+    final borderColor = hasError
+        ? TwColors.red500
+        : isOpen
+        ? TwColors.brightGreen
+        : TwColors.white.withValues(alpha: 0.08);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => _showBusinessTypePicker(),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            decoration: BoxDecoration(
-              color: TwColors.cardBg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _businessTypeError != null
-                    ? TwColors.red500
-                    : _selectedBusinessType != null
-                    ? TwColors.brightGreen
-                    : TwColors.white.withValues(alpha: 0.08),
-                width:
-                    _businessTypeError != null || _selectedBusinessType != null
-                    ? 1.5
-                    : 1,
-              ),
-              boxShadow: _selectedBusinessType != null
-                  ? [
-                      BoxShadow(
-                        color: TwColors.brightGreen.withValues(alpha: 0.1),
-                        blurRadius: 15,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : [],
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: _selectedBusinessType != null
-                        ? TwColors.brightGreen.withValues(alpha: 0.1)
-                        : TwColors.white.withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.category_outlined,
-                    color: _selectedBusinessType != null
-                        ? TwColors.brightGreen
-                        : TwColors.slate400,
-                    size: 20,
-                  ),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: TwColors.cardBg,
+            borderRadius: BorderRadius.circular(_inputRadius),
+            border: Border.all(color: borderColor),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(_inputRadius),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
                 ),
+                child: Row(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: TwColors.white.withValues(alpha: 0.03),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: hasValue
+                            ? TwColors.brightGreen
+                            : TwColors.slate400,
+                        size: _smallIconSize,
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            label,
+                            style: TextStyle(
+                              color: hasValue
+                                  ? TwColors.brightGreen
+                                  : TwColors.slate400,
+                              fontSize: _smallTextSize,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            hasValue ? value : placeholder,
+                            style: TextStyle(
+                              color: hasValue
+                                  ? TwColors.white
+                                  : TwColors.white.withValues(alpha: 0.35),
+                              fontSize: _bodyTextSize,
+                              fontWeight: hasValue
+                                  ? FontWeight.w500
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: TwColors.slate400,
+                      size: _mediumIconSize,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (hasError)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 2),
+            child: Text(
+              error,
+              style: TextStyle(
+                color: TwColors.red500,
+                fontSize: _smallTextSize,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _openBusinessTypePicker() async {
+    if (_businessTypePickerOpen) return;
+    setState(() => _businessTypePickerOpen = true);
+
+    final selected = await _showOptionPicker(
+      title: AppLocalizations.of(context)!.businessType,
+      subtitle: 'Choose the category that best fits your business.',
+      icon: Icons.storefront_outlined,
+      options: _businessTypes,
+      selected: _selectedBusinessType,
+    );
+    if (!mounted) return;
+
+    if (selected != null) {
+      setState(() {
+        _selectedBusinessType = selected;
+        _businessTypeError = null;
+        _businessTypePickerOpen = false;
+      });
+      _clearError();
+      return;
+    }
+
+    setState(() => _businessTypePickerOpen = false);
+  }
+
+  Future<void> _openCityPicker() async {
+    if (_cityPickerOpen) return;
+    setState(() => _cityPickerOpen = true);
+
+    final selected = await _showOptionPicker(
+      title: AppLocalizations.of(context)!.city,
+      subtitle: 'Choose the city where your business operates.',
+      icon: Icons.location_on_outlined,
+      options: _cities,
+      selected: _selectedCity,
+    );
+    if (!mounted) return;
+
+    if (selected != null) {
+      setState(() {
+        _selectedCity = selected;
+        _cityError = null;
+        _cityPickerOpen = false;
+      });
+      _clearError();
+      return;
+    }
+
+    setState(() => _cityPickerOpen = false);
+  }
+
+  Future<String?> _showOptionPicker({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<String> options,
+    required String? selected,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: TwColors.primaryBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: TwColors.slate700,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        AppLocalizations.of(context)!.businessType,
-                        style: TextStyle(
-                          color: _selectedBusinessType != null
-                              ? TwColors.brightGreen
-                              : TwColors.slate400,
-                          fontSize: 14,
-                          fontWeight: FontWeight.normal,
+                        title,
+                        style: const TextStyle(
+                          color: TwColors.white,
+                          fontSize: _sectionTitleSize,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      if (_selectedBusinessType != null)
-                        Text(
-                          _selectedBusinessType!,
-                          style: const TextStyle(
-                            color: TwColors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.normal,
-                          ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: TwColors.slate400,
+                          fontSize: _bodyTextSize,
                         ),
+                      ),
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.arrow_drop_down_rounded,
-                  color: TwColors.slate400,
-                  size: 24,
+                InkWell(
+                  onTap: () => Navigator.of(sheetContext).pop(),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: _mediumIconSize,
+                      color: TwColors.slate400,
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-        ),
-        if (_businessTypeError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _businessTypeError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  void _showBusinessTypePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: TwColors.primaryBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: TwColors.slate700,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              AppLocalizations.of(context)!.businessType,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: _businessTypes.map((type) {
-                    final isSelected = type == _selectedBusinessType;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedBusinessType = type);
-                        _clearError();
-                        setState(() => _businessTypeError = null);
-                        Navigator.pop(context);
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? TwColors.brightGreen.withValues(alpha: 0.1)
-                              : TwColors.cardBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected
-                                ? TwColors.brightGreen.withValues(alpha: 0.4)
-                                : TwColors.white.withValues(alpha: 0.08),
+            const SizedBox(height: 12),
+            Divider(height: 1, color: TwColors.white.withValues(alpha: 0.06)),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: options.length,
+                separatorBuilder: (context, index) => Divider(
+                  height: 1,
+                  color: TwColors.white.withValues(alpha: 0.04),
+                ),
+                itemBuilder: (_, index) {
+                  final option = options[index];
+                  final isSelected = option == selected;
+                  return InkWell(
+                    onTap: () => Navigator.of(sheetContext).pop(option),
+                    borderRadius: BorderRadius.circular(_inputRadius),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? TwColors.brightGreen.withValues(alpha: 0.08)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(_inputRadius),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: TwColors.white.withValues(alpha: 0.03),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              icon,
+                              color: isSelected
+                                  ? TwColors.brightGreen
+                                  : TwColors.slate400,
+                              size: _smallIconSize,
+                            ),
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              type,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              option,
                               style: TextStyle(
                                 color: isSelected
                                     ? TwColors.brightGreen
                                     : TwColors.white,
-                                fontSize: 16,
+                                fontSize: _bodyTextSize,
                                 fontWeight: isSelected
                                     ? FontWeight.w600
-                                    : FontWeight.normal,
+                                    : FontWeight.w400,
                               ),
                             ),
-                            if (isSelected)
-                              const Icon(
-                                Icons.check_rounded,
-                                color: TwColors.brightGreen,
-                                size: 22,
+                          ),
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected
+                                    ? TwColors.brightGreen
+                                    : TwColors.slate500,
                               ),
-                          ],
-                        ),
+                            ),
+                            child: isSelected
+                                ? const Icon(
+                                    Icons.check_rounded,
+                                    color: TwColors.brightGreen,
+                                    size: 12,
+                                  )
+                                : null,
+                          ),
+                        ],
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildCityField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildUniqueInput(
-          controller: _cityController,
-          focusNode: _cityFocusNode,
-          isFocused: _cityFocused,
-          label: AppLocalizations.of(context)!.city,
-          hint: 'Addis Ababa',
-          icon: Icons.location_on_outlined,
-          hasError: _cityError != null,
-          onChanged: (_) => _clearCityError(),
-        ),
-        if (_cityError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              _cityError!,
-              style: TextStyle(
-                color: TwColors.red500,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-      ],
     );
   }
 
@@ -973,7 +1117,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
               color: _passwordFocused
                   ? TwColors.brightGreen
                   : TwColors.slate400,
-              size: 16,
+              size: _smallIconSize,
             ),
             onPressed: () {
               setState(() {
@@ -986,12 +1130,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         if (_passwordError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 2),
             child: Text(
               _passwordError!,
               style: TextStyle(
                 color: TwColors.red500,
-                fontSize: 12,
+                fontSize: _smallTextSize,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1020,7 +1164,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
               color: _confirmPasswordFocused
                   ? TwColors.brightGreen
                   : TwColors.slate400,
-              size: 20,
+              size: _smallIconSize,
             ),
             onPressed: () {
               setState(() {
@@ -1033,12 +1177,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         ),
         if (_confirmPasswordError != null)
           Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
+            padding: const EdgeInsets.only(top: 4, left: 2),
             child: Text(
               _confirmPasswordError!,
               style: TextStyle(
                 color: TwColors.red500,
-                fontSize: 12,
+                fontSize: _smallTextSize,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1067,14 +1211,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(_inputRadius),
         border: Border.all(
           color: hasError
               ? TwColors.red500
               : isFocused
               ? TwColors.brightGreen
               : TwColors.white.withValues(alpha: 0.08),
-          width: hasError || isFocused ? 1.2 : 1,
         ),
         boxShadow: isFocused
             ? [
@@ -1082,7 +1225,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                   color: hasError
                       ? TwColors.red500.withValues(alpha: 0.1)
                       : TwColors.brightGreen.withValues(alpha: 0.1),
-                  blurRadius: 12,
+                  blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
               ]
@@ -1100,17 +1243,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
         onChanged: onChanged,
         style: const TextStyle(
           color: TwColors.white,
-          fontSize: 14,
+          fontSize: _bodyTextSize,
           fontWeight: FontWeight.w400,
         ),
         decoration: InputDecoration(
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
+            horizontal: 12,
+            vertical: 10,
           ),
           prefixIcon: Container(
-            margin: const EdgeInsets.only(left: 8, right: 6),
-            padding: const EdgeInsets.all(8),
+            margin: const EdgeInsets.only(left: 4, right: 4),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: isFocused
                   ? TwColors.brightGreen.withValues(alpha: 0.1)
@@ -1120,7 +1263,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             child: Icon(
               icon,
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 16,
+              size: _smallIconSize,
             ),
           ),
           suffixIcon: suffixIcon,
@@ -1128,14 +1271,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             label,
             style: TextStyle(
               color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              fontSize: 12,
+              fontSize: _smallTextSize,
               fontWeight: FontWeight.w500,
             ),
           ),
           hintText: hint,
           hintStyle: TextStyle(
             color: TwColors.white.withValues(alpha: 0.3),
-            fontSize: 14,
+            fontSize: _bodyTextSize,
             fontWeight: FontWeight.w400,
           ),
           border: InputBorder.none,
@@ -1171,28 +1314,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: TwColors.red500.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_inputRadius),
             border: Border.all(color: TwColors.red500.withValues(alpha: 0.3)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: TwColors.red500.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.error_outline_rounded,
                   color: TwColors.red500,
-                  size: 24,
+                  size: _mediumIconSize,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1201,7 +1344,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                       AppLocalizations.of(context)!.error,
                       style: TextStyle(
                         color: TwColors.red500,
-                        fontSize: 14,
+                        fontSize: _bodyTextSize,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1211,7 +1354,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                           AppLocalizations.of(context)!.anErrorOccurred,
                       style: TextStyle(
                         color: TwColors.red500.withValues(alpha: 0.8),
-                        fontSize: 13,
+                        fontSize: _bodyTextSize,
                         fontWeight: FontWeight.normal,
                       ),
                     ),
@@ -1224,7 +1367,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                         AppLocalizations.of(context)!.retry,
                         style: TextStyle(
                           color: TwColors.red500,
-                          fontSize: 13,
+                          fontSize: _bodyTextSize,
                           fontWeight: FontWeight.w600,
                           decoration: TextDecoration.underline,
                         ),
@@ -1236,7 +1379,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: _fieldGap),
         _buildNextButton(
           onPressed: () {
             // Clear error state
@@ -1261,17 +1404,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           foregroundColor: TwColors.primaryBg,
           disabledBackgroundColor: TwColors.brightGreen,
           disabledForegroundColor: TwColors.primaryBg,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_inputRadius),
           ),
           elevation: 0,
           shadowColor: Colors.transparent,
-          minimumSize: const Size(double.infinity, 52),
+          minimumSize: const Size(double.infinity, 44),
         ),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            fontSize: _buttonTextSize,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -1285,7 +1431,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           AppLocalizations.of(context)!.alreadyHaveAccount,
           style: TextStyle(
             color: TwColors.slate400,
-            fontSize: 14,
+            fontSize: _bodyTextSize,
             fontWeight: FontWeight.normal,
           ),
         ),
@@ -1303,7 +1449,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
             AppLocalizations.of(context)!.loginNow,
             style: TextStyle(
               color: TwColors.brightGreen,
-              fontSize: 14,
+              fontSize: _bodyTextSize,
               fontWeight: FontWeight.w500,
             ),
           ),

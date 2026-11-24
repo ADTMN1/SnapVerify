@@ -53,7 +53,7 @@ const PLANS = [
   {
     id: 'one_month',
     name: '1 Month',
-    price: 580,
+    price: 1500,
     durationDays: 30,
     verificationLimit: null,
     maxUsers: null,
@@ -62,7 +62,7 @@ const PLANS = [
   {
     id: 'three_months',
     name: '3 Months',
-    price: 1500,
+    price: 3000,
     durationDays: 90,
     verificationLimit: null,
     maxUsers: null,
@@ -71,7 +71,7 @@ const PLANS = [
   {
     id: 'six_months',
     name: '6 Months',
-    price: 3000,
+    price: 5000,
     durationDays: 180,
     verificationLimit: null,
     maxUsers: null,
@@ -80,7 +80,7 @@ const PLANS = [
   {
     id: 'one_year',
     name: '1 Year',
-    price: 6000,
+    price: 10000,
     durationDays: 360,
     verificationLimit: null,
     maxUsers: null,
@@ -640,8 +640,8 @@ export class SubscriptionService {
     const maskedTail = receiverAccount?.match(/\*+(\d{3,})$/)?.[1];
     const nameMatches = Boolean(
       account.accountName &&
-        receiverName &&
-        canonical(account.accountName) === canonical(receiverName),
+      receiverName &&
+      canonical(account.accountName) === canonical(receiverName),
     );
 
     if (receiver && receiver === stored) return 'matched';

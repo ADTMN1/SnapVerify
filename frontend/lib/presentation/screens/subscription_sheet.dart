@@ -8,13 +8,8 @@ import '../widgets/sv_loader.dart';
 import 'payment_page.dart';
 
 class SubscriptionSheet extends ConsumerStatefulWidget {
-  const SubscriptionSheet({
-    super.key,
-    this.requireSelection = false,
-    this.startOnPlanList = false,
-  });
+  const SubscriptionSheet({super.key, this.startOnPlanList = false});
 
-  final bool requireSelection;
   final bool startOnPlanList;
 
   @override
@@ -87,8 +82,6 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
     final canUseCamera = isActive && !(subscription?.isQuotaExceeded ?? false);
     final title = widget.startOnPlanList
         ? 'Change plan'
-        : widget.requireSelection
-        ? 'Choose your plan'
         : canUseCamera
         ? 'Plan active'
         : subscription?.isQuotaExceeded ?? false
@@ -144,19 +137,18 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
                       size: 18,
                     ),
                   ),
-                if (!widget.requireSelection)
-                  InkWell(
-                    onTap: () => Navigator.of(context).pop(false),
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 18,
-                        color: TwColors.slate400,
-                      ),
+                InkWell(
+                  onTap: () => Navigator.of(context).pop(false),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: TwColors.slate400,
                     ),
                   ),
+                ),
               ],
             ),
             const SizedBox(height: 4),
