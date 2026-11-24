@@ -195,7 +195,10 @@ export class AdminDashboardService {
    */
   async getProviderStats(organizationId: string) {
     const logs = await this.prisma.verificationLog.findMany({
-      where: { organizationId },
+      where: {
+        organizationId,
+        action: { in: ['VERIFIED', 'REJECTED'] },
+      },
       select: { matchedProvider: true },
     });
 

@@ -1,8 +1,9 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService as NestJwtService } from '@nestjs/jwt';
+import { resolveAdminAuthSecrets } from '../../config/admin-auth-secrets';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as crypto from 'crypto';
-import { Role } from '@prisma/client';
 
 interface AdminJwtPayload {
   sub: string;
@@ -12,16 +13,24 @@ interface AdminJwtPayload {
 
 const MAX_REFRESH_TOKENS_PER_ADMIN = 10;
 
-function hashToken(token: string): string {
-  return crypto.createHash('sha256').update(token).digest('hex');
+function hashAdminRefreshToken(token: string, refreshSecret: string): string {
+  return crypto.createHmac('sha256', refreshSecret).update(token).digest('hex');
 }
 
 @Injectable()
 export class AdminJwtService {
+  private readonly accessSecret: string;
+  private readonly refreshSecret: string;
+
   constructor(
     private jwtService: NestJwtService,
+    config: ConfigService,
     private prisma: PrismaService,
-  ) {}
+  ) {
+    const secrets = resolveAdminAuthSecrets(config);
+    this.accessSecret = secrets.accessSecret;
+    this.refreshSecret = secrets.refreshSecret;
+  }
 
   async generateTokens(
     userId: string,
@@ -33,13 +42,12 @@ export class AdminJwtService {
     const payload: AdminJwtPayload = { sub: userId, email, role };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret:
-        process.env.JWT_ADMIN_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
+      secret: this.accessSecret,
       expiresIn: '15m',
     });
 
     const refreshToken = crypto.randomBytes(64).toString('hex');
-    const tokenHash = hashToken(refreshToken);
+    const tokenHash = hashAdminRefreshToken(refreshToken, this.refreshSecret);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     // Enforce per-admin token cap
@@ -78,7 +86,7 @@ export class AdminJwtService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    const tokenHash = hashToken(refreshToken);
+    const tokenHash = hashAdminRefreshToken(refreshToken, this.refreshSecret);
 
     const token = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
@@ -113,7 +121,7 @@ export class AdminJwtService {
   }
 
   async revokeToken(refreshToken: string) {
-    const tokenHash = hashToken(refreshToken);
+    const tokenHash = hashAdminRefreshToken(refreshToken, this.refreshSecret);
     await this.prisma.refreshToken.deleteMany({
       where: { token: tokenHash, organizationId: 'admin' },
     });
@@ -128,8 +136,7 @@ export class AdminJwtService {
   verifyAccessToken(token: string) {
     try {
       return this.jwtService.verify<AdminJwtPayload>(token, {
-        secret:
-          process.env.JWT_ADMIN_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
+        secret: this.accessSecret,
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

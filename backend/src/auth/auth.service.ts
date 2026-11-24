@@ -164,20 +164,26 @@ export class AuthService {
       data: { emailVerified: true },
     });
 
-    const assignment = user.userAssignments.find((a) => a.status === 'active');
-    if (!assignment) {
+    const activeAssignments = user.userAssignments.filter(
+      (a) => a.status === 'active',
+    );
+    if (activeAssignments.length === 0) {
       throw new BadRequestException(
         'No active business assignment found. Please contact support.',
       );
     }
 
+    if (activeAssignments.length > 1) {
+      return this.buildBusinessSelectionResponse(user, activeAssignments);
+    }
+
     const tokens = await this.jwtService.generateTokens(
       user.id,
-      assignment.organizationId,
-      assignment.role,
-      assignment.branchId ?? undefined,
+      activeAssignments[0].organizationId,
+      activeAssignments[0].role,
+      activeAssignments[0].branchId ?? undefined,
     );
-    return await this.buildAuthResponse(user, assignment, tokens);
+    return await this.buildAuthResponse(user, activeAssignments[0], tokens);
   }
 
   // ── Resend verification OTP ────────────────────────────────────────────────
@@ -291,17 +297,7 @@ export class AuthService {
 
     // Multi-business: if user has multiple orgs and none specified, return selection
     if (activeAssignments.length > 1 && !organizationId) {
-      const businesses = activeAssignments.map((a) => ({
-        organizationId: a.organizationId,
-        organizationName: a.organization.name,
-        role: a.role,
-        branchId: a.branchId,
-      }));
-      return {
-        requiresBusinessSelection: true,
-        businesses,
-        user: this.sanitizeUser(user),
-      };
+      return this.buildBusinessSelectionResponse(user, activeAssignments);
     }
 
     let assignment;
@@ -336,10 +332,13 @@ export class AuthService {
 
   // ── Select Business (called when user has multiple orgs) ─────────────────
   async selectBusiness(
-    userId: string,
+    selectionToken: string,
     organizationId: string,
     rememberMe = false,
   ) {
+    const userId =
+      await this.jwtService.consumeBusinessSelectionChallenge(selectionToken);
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -605,25 +604,32 @@ export class AuthService {
     });
   }
 
-  // ── Get Invitation (Authenticated only — JWT guarded) ────────────────────
-  async getInvitation(phone: string) {
-    const now = new Date();
-    // Clean up expired invitations first
-    await this.prisma.invitation.deleteMany({
-      where: {
-        phone,
-        status: 'PENDING',
-        expiresAt: { lt: now },
-      },
-    });
-
+  async getInvitation(phone: string, organizationId: string) {
     const invitations = await this.prisma.invitation.findMany({
       where: {
         phone,
+        organizationId,
         status: 'PENDING',
-        expiresAt: { gt: now },
+        expiresAt: { gt: new Date() },
       },
-      include: { organization: true, branch: true },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        email: true,
+        phone: true,
+        organizationId: true,
+        branchId: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        expiresAt: true,
+        usedAt: true,
+        revokedAt: true,
+        organization: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
+      },
     });
 
     if (invitations.length === 0) {
@@ -842,7 +848,19 @@ export class AuthService {
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        user: true,
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            username: true,
+            phone: true,
+            email: true,
+            emailVerified: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
         branch: { select: { id: true, name: true } },
       },
     });
@@ -930,6 +948,23 @@ export class AuthService {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  private async buildBusinessSelectionResponse(user: any, assignments: any[]) {
+    const selectionToken =
+      await this.jwtService.generateBusinessSelectionChallenge(user.id);
+
+    return {
+      requiresBusinessSelection: true,
+      selectionToken,
+      businesses: assignments.map((a) => ({
+        organizationId: a.organizationId,
+        organizationName: a.organization?.name,
+        role: a.role,
+        branchId: a.branchId,
+      })),
+      user: this.sanitizeUser(user),
+    };
+  }
 
   private sanitizeUser(user: {
     id: string;

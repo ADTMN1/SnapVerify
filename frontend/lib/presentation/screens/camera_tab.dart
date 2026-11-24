@@ -709,11 +709,37 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               : 'Payment confirmed';
           break;
         case VerificationStatus.alreadyVerified:
+        case VerificationStatus.previouslyVerified:
+          statusColor = TwColors.brightGreen;
+          statusIcon = Icons.verified_rounded;
+          statusTitle = 'Previously Verified';
+          statusSubtitle = state.result!.message.isNotEmpty
+              ? state.result!.message
+              : 'This receipt was already verified for your business. No new record was created.';
+          break;
+        case VerificationStatus.providerDuplicate:
           statusColor = TwColors.amber500;
           statusIcon = Icons.warning_amber_rounded;
-          statusTitle = 'Already Used';
-          statusSubtitle =
-              state.result!.message ?? 'This payment has already been verified';
+          statusTitle = 'Provider Duplicate';
+          statusSubtitle = state.result!.message.isNotEmpty
+              ? state.result!.message
+              : 'The provider recognizes this receipt, but no matching payment record exists for your business.';
+          break;
+        case VerificationStatus.identityMismatch:
+          statusColor = TwColors.red500;
+          statusIcon = Icons.cancel_rounded;
+          statusTitle = 'Details Do Not Match';
+          statusSubtitle = state.result!.message.isNotEmpty
+              ? state.result!.message
+              : 'The submitted details differ from the original verified payment.';
+          break;
+        case VerificationStatus.recheckFailed:
+          statusColor = TwColors.amber500;
+          statusIcon = Icons.cloud_off_rounded;
+          statusTitle = 'Recheck Inconclusive';
+          statusSubtitle = state.result!.message.isNotEmpty
+              ? state.result!.message
+              : 'The previous payment could not be re-confirmed. Please try again.';
           break;
         case VerificationStatus.needsReview:
           statusColor = TwColors.amber500;
@@ -862,7 +888,8 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
 
           if (state.result != null &&
               (state.result!.transactionId.isNotEmpty ||
-                  state.result!.paymentDate != null))
+                  state.result!.paymentDate != null ||
+                  state.result!.verifiedAt != null))
             Padding(
               padding: const EdgeInsets.only(top: 20),
               child: Container(
@@ -877,8 +904,10 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _DetailRow(
-                      label: 'Transaction ID',
-                      value: state.result!.transactionId,
+                      label: 'Reference',
+                      value:
+                          state.result!.reference ??
+                          state.result!.transactionId,
                     ),
                     if (state.result!.amount > 0)
                       Padding(
@@ -898,6 +927,16 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                           value: DateFormat(
                             'MMM d, yyyy · HH:mm',
                           ).format(state.result!.paymentDate!.toLocal()),
+                        ),
+                      ),
+                    if (state.result!.verifiedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _DetailRow(
+                          label: 'Verified On',
+                          value: DateFormat(
+                            'MMM d, yyyy · HH:mm',
+                          ).format(state.result!.verifiedAt!.toLocal()),
                         ),
                       ),
                   ],

@@ -36,7 +36,12 @@ const mockPrisma = {
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     findUnique: jest.fn().mockResolvedValue(null),
   },
+  $transaction: jest.fn(),
 };
+mockPrisma.$transaction.mockImplementation(
+  (callback: (client: typeof mockPrisma) => unknown) =>
+    Promise.resolve(callback(mockPrisma)),
+);
 
 const mockCheckEt = {
   verifyReference: jest.fn(),
@@ -80,6 +85,21 @@ const account = (overrides: Record<string, unknown> = {}) => ({
   createdAt: new Date(),
   updatedAt: new Date(),
   branchId: null,
+  ...overrides,
+});
+
+const verifiedWinner = (overrides: Record<string, unknown> = {}) => ({
+  id: 'winner-1',
+  status: PaymentStatus.VERIFIED,
+  verificationProvider: 'check_et',
+  rawData: { provider: PaymentProvider.CBE },
+  amount: 100,
+  transactionId: 'FT123',
+  senderName: 'Payer',
+  receiverName: 'Test Business',
+  riskScore: 0,
+  createdAt: new Date('2026-01-01T10:00:00+03:00'),
+  updatedAt: new Date('2026-01-01T10:05:00+03:00'),
   ...overrides,
 });
 
@@ -153,6 +173,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     // normalized reference stored alongside the original (raw reference is
     // preserved verbatim; no destructive rewriting of client data)
     const dupCheck = mockPrisma.payment.findFirst.mock.calls[0][0];
+    expect(dupCheck.where.status).toBe(PaymentStatus.VERIFIED);
     expect(dupCheck.where.OR).toEqual(
       expect.arrayContaining([
         { normalizedTransactionId: 'ft 1234-5678' },
@@ -161,19 +182,11 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     );
   });
 
-  it('maps a Prisma P2002 unique-constraint error to a DUPLICATE_TRANSACTION outcome', async () => {
+  it('maps a P2002 duplicate winner stored with check_et vendor to PREVIOUSLY_VERIFIED', async () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     mockPrisma.payment.findFirst
       .mockResolvedValueOnce(null) // pre-check: no duplicate
-      .mockResolvedValueOnce({
-        // winner lookup after constraint violation (concurrent request won)
-        id: 'winner-1',
-        amount: 100,
-        transactionId: 'FT123',
-        senderName: 'A',
-        receiverName: 'B',
-        riskScore: 0,
-      });
+      .mockResolvedValueOnce(verifiedWinner());
     mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
     mockPrisma.payment.create.mockRejectedValue({
       code: 'P2002',
@@ -187,20 +200,16 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       undefined,
       'CBE',
     );
-    expect(result.verified).toBe(false);
-    expect(result.status).toBe('DUPLICATE_TRANSACTION');
-    expect(result.paymentId).toBe('winner-1');
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result).toHaveProperty('paymentId', 'winner-1');
   });
 
   it('scopes the concurrent-winner lookup to the requesting organization (isolation)', async () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     mockPrisma.payment.findFirst
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 'winner-1',
-        amount: 100,
-        transactionId: 'FT123',
-      });
+      .mockResolvedValueOnce(verifiedWinner());
     mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
     mockPrisma.payment.create.mockRejectedValue({
       code: 'P2002',
@@ -247,7 +256,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
   it('does NOT treat an unrelated P2002 (different constraint) as a duplicate payment', async () => {
     // Review finding: any future unique violation (e.g. a global id or other
     // unique index) must follow the normal error path, never masquerade as
-    // DUPLICATE_TRANSACTION.
+    // previously-verified recheck outcome.
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
@@ -267,11 +276,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
     mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
     mockPrisma.payment.findFirst
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 'winner-1',
-        amount: 100,
-        transactionId: 'FT123',
-      });
+      .mockResolvedValueOnce(verifiedWinner());
     mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
     mockPrisma.payment.create.mockRejectedValue({
       code: 'P2002',
@@ -287,7 +292,39 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
       undefined,
       'CBE',
     );
-    expect(result.status).toBe('DUPLICATE_TRANSACTION');
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+  });
+
+  it('treats a P2002 winner with NULL verificationProvider as previously verified', async () => {
+    mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
+    mockPrisma.payment.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        verifiedWinner({
+          verificationProvider: null,
+          senderName: null,
+          receiverName: null,
+        }),
+      );
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
+    mockPrisma.payment.create.mockRejectedValue({
+      code: 'P2002',
+      meta: { target: ['organizationId', 'normalizedTransactionId'] },
+    });
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result).toHaveProperty('paymentId', 'winner-1');
+    expect(mockPrisma.payment.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.payment.findFirst).toHaveBeenCalledTimes(2);
   });
 });
 

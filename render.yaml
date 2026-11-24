@@ -12,8 +12,8 @@
 #
 # Notes
 # - There is deliberately NO `preDeployCommand`. The database is an existing,
-#   populated Postgres instance (Neon in production), so migrations are a
-#   deliberate, manually triggered step (see docs/DEPLOY_RENDER_SUPABASE.md).
+#   populated Supabase PostgreSQL instance, so migrations are a deliberate,
+#   manually triggered step (see docs/DEPLOY_RENDER_SUPABASE.md).
 #   Adding `preDeployCommand: npx prisma migrate deploy` here would run
 #   migrations on every deploy and requires a paid instance type.
 # - `autoDeploy` is off for the same reason: a code push must not reach
@@ -41,13 +41,13 @@ services:
       - key: NODE_VERSION
         value: "22"
 
-      # ── Database (existing Postgres — do not provision one here) ──────────
-      # Use the provider's pooled connection string. For Neon this is the
-      # `…-pooler.<region>.aws.neon.tech` host; for Supabase use the SHARED
-      # SESSION POOLER (port 5432, host aws-<n>-<region>.pooler.supabase.com).
+      # ── Database (existing Supabase PostgreSQL — do not provision here) ───
+      # One DATABASE_URL is used by the app and by Prisma CLI/migrations.
+      # Use Supabase's SHARED SESSION POOLER (port 5432,
+      # host aws-<region>.pooler.supabase.com) and the default database "postgres".
       # Render has no outbound IPv6, so direct IPv6-only hosts fail with
-      # ENOTFOUND. Do NOT use transaction mode (port 6543 on Supabase) — it
-      # does not support the prepared statements Prisma uses.
+      # ENOTFOUND. Do NOT use transaction mode (port 6543) — it does not support
+      # the prepared statements Prisma uses.
       # The app strips sslmode/channel_binding and configures pg TLS directly.
       - key: DATABASE_URL
         sync: false
@@ -84,10 +84,12 @@ services:
       - key: CHECK_ET_TIMEOUT_MS
         value: "45000"
 
-      # ── Optional ─────────────────────────────────────────────────────────
-      # Separate signing secret for the admin console. Falls back to
-      # JWT_ACCESS_SECRET when unset.
+      # ── Required admin-console JWT secrets (distinct, >= 32 chars) ───────
       - key: JWT_ADMIN_ACCESS_SECRET
         sync: false
+      - key: JWT_ADMIN_REFRESH_SECRET
+        sync: false
+
+      # ── Optional ─────────────────────────────────────────────────────────
       - key: BREVO_SMS_SENDER
         value: SnapVerify

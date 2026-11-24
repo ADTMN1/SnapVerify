@@ -16,6 +16,9 @@ const MAX_REFRESH_TOKENS_PER_USER = 10;
 
 export const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const REMEMBERED_REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const BUSINESS_SELECTION_ORG_ID = 'business-selection';
+export const BUSINESS_SELECTION_ROLE = 'BUSINESS_SELECTION';
+export const BUSINESS_SELECTION_TTL_MS = 5 * 60 * 1000;
 
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -105,6 +108,81 @@ export class JwtService {
     return { accessToken, refreshToken };
   }
 
+  async generateBusinessSelectionChallenge(userId: string) {
+    const selectionToken = crypto.randomBytes(48).toString('hex');
+    const tokenHash = hashToken(selectionToken);
+    const now = new Date();
+
+    await this.prisma.refreshToken.deleteMany({
+      where: {
+        userId,
+        organizationId: BUSINESS_SELECTION_ORG_ID,
+        expiresAt: { lt: now },
+      },
+    });
+
+    await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        token: tokenHash,
+        organizationId: BUSINESS_SELECTION_ORG_ID,
+        role: BUSINESS_SELECTION_ROLE,
+        expiresAt: new Date(now.getTime() + BUSINESS_SELECTION_TTL_MS),
+      },
+    });
+
+    return selectionToken;
+  }
+
+  async consumeBusinessSelectionChallenge(selectionToken: string) {
+    if (!selectionToken || selectionToken.trim().length === 0) {
+      throw new UnauthorizedException(
+        'Business selection session is missing or invalid. Please log in again.',
+      );
+    }
+
+    const tokenHash = hashToken(selectionToken);
+    const challenge = await this.prisma.refreshToken.findUnique({
+      where: { token: tokenHash },
+    });
+
+    if (
+      !challenge ||
+      challenge.organizationId !== BUSINESS_SELECTION_ORG_ID ||
+      challenge.role !== BUSINESS_SELECTION_ROLE
+    ) {
+      throw new UnauthorizedException(
+        'Business selection session is invalid. Please log in again.',
+      );
+    }
+
+    if (challenge.expiresAt < new Date()) {
+      await this.prisma.refreshToken.deleteMany({
+        where: { id: challenge.id },
+      });
+      throw new UnauthorizedException(
+        'Business selection session expired. Please log in again.',
+      );
+    }
+
+    const consumed = await this.prisma.refreshToken.deleteMany({
+      where: {
+        id: challenge.id,
+        token: tokenHash,
+        organizationId: BUSINESS_SELECTION_ORG_ID,
+        role: BUSINESS_SELECTION_ROLE,
+      },
+    });
+
+    if (consumed.count !== 1) {
+      throw new UnauthorizedException(
+        'Business selection session was already used. Please log in again.',
+      );
+    }
+
+    return challenge.userId;
+  }
+
   private async findRefreshToken(tokenHash: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
@@ -149,6 +227,16 @@ export class JwtService {
     if (!token || token.expiresAt < new Date()) {
       throw new UnauthorizedException(
         'Your session has expired. Please log in again.',
+      );
+    }
+
+    if (
+      token.organizationId === BUSINESS_SELECTION_ORG_ID ||
+      token.role === BUSINESS_SELECTION_ROLE
+    ) {
+      await this.prisma.refreshToken.delete({ where: { id: token.id } });
+      throw new UnauthorizedException(
+        'Business selection sessions cannot be used as refresh tokens.',
       );
     }
 

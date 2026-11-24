@@ -11,6 +11,7 @@
  *     payment.concurrent-duplicate.integration.spec.ts
  */
 import { PrismaClient, PaymentStatus } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const describeIfDb = TEST_DATABASE_URL ? describe : describe.skip;
@@ -22,8 +23,8 @@ describeIfDb('concurrent duplicate protection (integration)', () => {
 
   beforeAll(() => {
     prisma = new PrismaClient({
-      datasources: { db: { url: TEST_DATABASE_URL } },
-    } as never);
+      adapter: new PrismaPg(TEST_DATABASE_URL!),
+    });
   });
 
   afterAll(async () => {

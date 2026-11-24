@@ -8,6 +8,8 @@ const VALID_PROD: Record<string, string> = {
   DATABASE_URL: 'postgresql://user:pass@host:5432/db',
   JWT_ACCESS_SECRET: 'a'.repeat(64),
   JWT_REFRESH_SECRET: 'b'.repeat(64),
+  JWT_ADMIN_ACCESS_SECRET: 'd'.repeat(64),
+  JWT_ADMIN_REFRESH_SECRET: 'e'.repeat(64),
   ACCOUNT_HASH_SECRET: 'c'.repeat(64),
   ALLOWED_ORIGINS: 'https://app.example.com',
   BREVO_API_KEY: 'xkeysib-test',
@@ -42,6 +44,36 @@ describe('validateEnvironment', () => {
   it('rejects weak signing secrets', () => {
     const env = { ...VALID_PROD, JWT_ACCESS_SECRET: 'short' };
     expect(() => validateEnvironment(env)).toThrow(/JWT_ACCESS_SECRET/);
+  });
+
+  it('fails fast when admin JWT secrets are missing', () => {
+    const noAccess = { ...VALID_PROD };
+    delete noAccess.JWT_ADMIN_ACCESS_SECRET;
+    expect(() => validateEnvironment(noAccess)).toThrow(
+      /JWT_ADMIN_ACCESS_SECRET is required/,
+    );
+
+    const noRefresh = { ...VALID_PROD };
+    delete noRefresh.JWT_ADMIN_REFRESH_SECRET;
+    expect(() => validateEnvironment(noRefresh)).toThrow(
+      /JWT_ADMIN_REFRESH_SECRET is required/,
+    );
+  });
+
+  it('rejects admin and application JWT secret reuse', () => {
+    const env = {
+      ...VALID_PROD,
+      JWT_ADMIN_ACCESS_SECRET: VALID_PROD.JWT_ACCESS_SECRET,
+    };
+    expect(() => validateEnvironment(env)).toThrow(/must all be distinct/);
+  });
+
+  it('rejects identical admin JWT secrets', () => {
+    const env = {
+      ...VALID_PROD,
+      JWT_ADMIN_REFRESH_SECRET: VALID_PROD.JWT_ADMIN_ACCESS_SECRET,
+    };
+    expect(() => validateEnvironment(env)).toThrow(/must all be distinct/);
   });
 
   it('refuses to boot without any email transport', () => {

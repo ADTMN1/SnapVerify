@@ -148,13 +148,13 @@ model Invitation {
   // token and resets this.
   expiresAt      DateTime
   // Set when the staff member completes activation (single-use guard).
-  usedAt         DateTime?
+  usedAt         DateTime?    @db.Timestamptz(3)
   // Set when an owner/manager revokes the invitation.
-  revokedAt      DateTime?
+  revokedAt      DateTime?    @db.Timestamptz(3)
   branch         Branch?      @relation(fields: [branchId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@index([organizationId, status])
+  @@index([organizationId, status], map: "invitations_organization_status_idx")
   @@map("invitations")
 }
 

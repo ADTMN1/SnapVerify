@@ -42,6 +42,11 @@ const PAYMENT_REFERENCE_INDEX_NAME =
   'payments_organizationId_normalizedTransactionId_key';
 const PAYMENT_REFERENCE_FIELDS = ['organizationId', 'normalizedTransactionId'];
 
+const RECHECK_ACTION = 'RECHECKED';
+const RECHECK_MISMATCH_ACTION = 'RECHECK_MISMATCH';
+const RECHECK_FAILED_ACTION = 'RECHECK_FAILED';
+const PROVIDER_DUPLICATE_ACTION = 'PROVIDER_DUPLICATE';
+
 function isPaymentReferenceDuplicateError(err: any): boolean {
   const target = err?.meta?.target;
   if (!target) return false;
@@ -460,6 +465,317 @@ export class PaymentService {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
+  private _normalizeIdentityText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private _normalizeProviderName(value: unknown): string | null {
+    const normalized = this._normalizeIdentityText(value);
+    return normalized ? normalized.replace(/[\s-]+/g, '_') : null;
+  }
+
+  private _bankProviderMatches(
+    existingProvider: unknown,
+    candidateProvider: unknown,
+  ): boolean | null {
+    const existing = this._normalizeProviderName(existingProvider);
+    const candidate = this._normalizeProviderName(candidateProvider);
+    if (!existing || !candidate) return null;
+    return existing === candidate;
+  }
+
+  private _storedBankProvider(existing: any): string | null {
+    const raw = existing?.rawData;
+    if (!raw || typeof raw !== 'object') return null;
+    const provider =
+      raw.provider ??
+      raw.paymentProvider ??
+      raw.bank ??
+      raw.checkEtBank ??
+      null;
+    return typeof provider === 'string' || typeof provider === 'number'
+      ? String(provider)
+      : null;
+  }
+
+  private _identityTextEquals(left: unknown, right: unknown): boolean | null {
+    const a = this._normalizeIdentityText(left);
+    const b = this._normalizeIdentityText(right);
+    if (!a || !b) return null;
+    return a === b;
+  }
+
+  private _amountMatches(
+    existingAmount: unknown,
+    candidate: unknown,
+  ): boolean | null {
+    if (candidate === null || candidate === undefined) return null;
+    const parsed = typeof candidate === 'number' ? candidate : Number(candidate);
+    if (!Number.isFinite(parsed)) return null;
+    return Math.abs(Number(existingAmount) - parsed) <= 0.01;
+  }
+
+  private _verifyShapeFromRaw(
+    raw: any,
+  ): Partial<NormalizedVerification> | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const amountCheck = parseVerifiedAmount(
+      raw?.amount ?? raw?.transactionAmount ?? raw?.settledAmount,
+    );
+    return {
+      amount: amountCheck.ok ? Number(amountCheck.amount) : null,
+      provider: raw?.provider ?? raw?.bank ?? null,
+      payer: raw?.payer ?? raw?.senderName ?? null,
+      receiver: raw?.receiver ?? raw?.receiverName ?? null,
+    };
+  }
+
+  private _assessExistingIdentity(
+    existing: any,
+    input: {
+      amount?: number | null;
+      provider?: string | null;
+      verification?: Partial<NormalizedVerification> | null;
+    },
+  ): { ok: boolean; mismatch: boolean; reason: string; matched: string[] } {
+    const checks: Array<{ label: string; result: boolean | null }> = [
+      { label: 'amount', result: this._amountMatches(existing?.amount, input.amount) },
+      {
+        label: 'provider',
+        result: this._bankProviderMatches(
+          this._storedBankProvider(existing),
+          input.provider,
+        ),
+      },
+    ];
+
+    const verification = input.verification;
+    if (verification) {
+      checks.push({
+        label: 'provider evidence',
+        result: this._bankProviderMatches(
+          this._storedBankProvider(existing),
+          verification.provider,
+        ),
+      });
+      checks.push({
+        label: 'amount evidence',
+        result: this._amountMatches(existing?.amount, verification.amount),
+      });
+      checks.push({
+        label: 'payer',
+        result: this._identityTextEquals(existing?.senderName, verification.payer),
+      });
+      checks.push({
+        label: 'receiver',
+        result: this._identityTextEquals(
+          existing?.receiverName,
+          verification.receiver,
+        ),
+      });
+    }
+
+    const failed = checks.find((check) => check.result === false);
+    if (failed) {
+      return {
+        ok: false,
+        mismatch: true,
+        reason: `The ${failed.label} does not match the previously verified payment.`,
+        matched: [],
+      };
+    }
+
+    const matched = checks
+      .filter((check) => check.result === true)
+      .map((check) => check.label);
+    if (matched.length === 0) {
+      return {
+        ok: false,
+        mismatch: false,
+        reason:
+          'Provide the payment amount or receipt details to confirm this is the same transaction.',
+        matched,
+      };
+    }
+
+    return { ok: true, mismatch: false, reason: '', matched };
+  }
+
+  private async _findExistingVerifiedPayment(
+    organizationId: string,
+    referenceNumber: string,
+    normalizedReference: string | null = normalizeTransactionId(referenceNumber),
+  ): Promise<any | null> {
+    return this.prisma.payment.findFirst({
+      where: {
+        organizationId,
+        status: PaymentStatus.VERIFIED,
+        OR: [
+          { transactionId: referenceNumber },
+          ...(normalizedReference
+            ? [{ normalizedTransactionId: normalizedReference }]
+            : []),
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  private _recheckResponse(existing: any, message?: string) {
+    return {
+      verified: true,
+      status: 'PREVIOUSLY_VERIFIED',
+      recheck: true,
+      paymentId: existing.id,
+      amount: Number(existing.amount),
+      currency: existing.currency ?? 'ETB',
+      transactionId: existing.transactionId,
+      reference: existing.transactionId,
+      paymentDate: existing.paymentDate?.toISOString() ?? null,
+      verifiedAt: (existing.updatedAt ?? existing.createdAt)?.toISOString() ?? null,
+      senderName: existing.senderName,
+      receiverName: existing.receiverName,
+      riskScore: existing.riskScore,
+      message:
+        message ??
+        'Previously verified. Showing the original payment record.',
+      raw: null,
+    };
+  }
+
+  private _identityMismatchResponse(
+    reason: string,
+    transactionId: string,
+    paymentDate?: string | null,
+  ) {
+    return {
+      verified: false,
+      status: 'IDENTITY_MISMATCH',
+      recheck: true,
+      amount: 0,
+      currency: 'ETB',
+      transactionId,
+      reference: transactionId,
+      paymentDate: paymentDate ?? null,
+      riskScore: 80,
+      message: reason,
+      raw: null,
+    };
+  }
+
+  private _providerDuplicateResponse(
+    transactionId: string,
+    verification?: Partial<NormalizedVerification> | null,
+  ) {
+    return {
+      verified: false,
+      status: 'PROVIDER_DUPLICATE',
+      amount: 0,
+      currency: 'ETB',
+      transactionId,
+      reference: transactionId,
+      paymentDate: verification?.transactionDate ?? null,
+      riskScore: 80,
+      message:
+        'This receipt was already verified by the provider, but no matching payment record exists in your business. Contact support if you need the original receipt details.',
+      raw: null,
+    };
+  }
+
+  private _recheckFailedResponse(existing: any, transactionId: string) {
+    return {
+      ...this._recheckResponse(
+        existing,
+        'A previous payment record exists, but the fresh provider check did not confirm it. Showing the original record.',
+      ),
+      verified: false,
+      status: 'RECHECK_FAILED',
+    };
+  }
+
+  private async _writeVerificationAudit(input: {
+    organizationId: string;
+    paymentId?: string | null;
+    userId?: string | null;
+    action: string;
+    reason: string;
+    riskScore?: number;
+  }) {
+    try {
+      await this.prisma.verificationLog.create({
+        data: {
+          organizationId: input.organizationId,
+          paymentId: input.paymentId ?? null,
+          userId: input.userId ?? null,
+          action: input.action,
+          reason: input.reason,
+          riskScore: input.riskScore ?? null,
+          matchedProvider: null,
+          matchedAccountNumber: null,
+          matchedSuffix: null,
+          matchedBranchId: null,
+          matchedPaymentAccountId: null,
+        },
+      });
+    } catch {}
+  }
+
+  private async _resolveExistingRecheck(
+    existingPayment: any,
+    input: {
+      organizationId: string;
+      userId: string;
+      referenceNumber: string;
+      amount?: number | null;
+      provider?: string | null;
+      verification?: Partial<NormalizedVerification> | null;
+    },
+  ) {
+    const assessment = this._assessExistingIdentity(existingPayment, {
+      amount: input.amount,
+      provider: input.provider,
+      verification: input.verification,
+    });
+    if (assessment.ok) {
+      await this._writeVerificationAudit({
+        organizationId: input.organizationId,
+        paymentId: existingPayment.id,
+        userId: input.userId,
+        action: RECHECK_ACTION,
+        reason: 'Provider-confirmed recheck of a previously verified payment.',
+      });
+      return this._recheckResponse(existingPayment);
+    }
+    if (assessment.mismatch) {
+      await this._writeVerificationAudit({
+        organizationId: input.organizationId,
+        paymentId: existingPayment.id,
+        userId: input.userId,
+        action: RECHECK_MISMATCH_ACTION,
+        reason: assessment.reason,
+        riskScore: 80,
+      });
+      return this._identityMismatchResponse(
+        assessment.reason,
+        input.referenceNumber,
+        input.verification?.transactionDate ??
+          existingPayment.paymentDate?.toISOString() ??
+          null,
+      );
+    }
+    await this._writeVerificationAudit({
+      organizationId: input.organizationId,
+      paymentId: existingPayment.id,
+      userId: input.userId,
+      action: RECHECK_FAILED_ACTION,
+      reason: assessment.reason,
+      riskScore: 80,
+    });
+    return this._recheckFailedResponse(existingPayment, input.referenceNumber);
+  }
+
   /**
    * Client-facing copy of the provider result: full receiving-account
    * numbers are ALWAYS masked; only the masked evidence is exposed to the
@@ -503,38 +819,44 @@ export class PaymentService {
     void _extractedSuffix;
 
     const normalizedReference = normalizeTransactionId(referenceNumber);
+    const suppliedAmount = amount && amount > 0 ? amount : null;
 
-    // Stage 1 (duplicate protection): check the app-level guard on BOTH the
-    // raw reference (legacy rows) and the normalized reference (the field
-    // protected by the database unique constraint).
-    const existingPayment = await this.prisma.payment.findFirst({
-      where: {
-        organizationId,
-        OR: [
-          { transactionId: referenceNumber },
-          ...(normalizedReference
-            ? [{ normalizedTransactionId: normalizedReference }]
-            : []),
-        ],
-      },
-    });
+    const existingPayment = await this._findExistingVerifiedPayment(
+      organizationId,
+      referenceNumber,
+      normalizedReference,
+    );
 
     if (existingPayment) {
-      return {
-        verified: false,
-        status: 'DUPLICATE_TRANSACTION',
-        paymentId: existingPayment.id,
-        amount: Number(existingPayment.amount),
-        currency: 'ETB',
-        transactionId: existingPayment.transactionId,
-        paymentDate: existingPayment.paymentDate?.toISOString() ?? null,
-        senderName: existingPayment.senderName,
-        receiverName: existingPayment.receiverName,
-        riskScore: existingPayment.riskScore,
-        message:
-          'This payment has already been verified. Each transaction can only be verified once.',
-        raw: null,
-      };
+      const cachedAssessment = this._assessExistingIdentity(existingPayment, {
+        amount: suppliedAmount,
+        provider,
+      });
+      if (cachedAssessment.ok) {
+        await this._writeVerificationAudit({
+          organizationId,
+          paymentId: existingPayment.id,
+          userId,
+          action: RECHECK_ACTION,
+          reason: 'Cached recheck of a previously verified payment.',
+        });
+        return this._recheckResponse(existingPayment);
+      }
+      if (cachedAssessment.mismatch) {
+        await this._writeVerificationAudit({
+          organizationId,
+          paymentId: existingPayment.id,
+          userId,
+          action: RECHECK_MISMATCH_ACTION,
+          reason: cachedAssessment.reason,
+          riskScore: 80,
+        });
+        return this._identityMismatchResponse(
+          cachedAssessment.reason,
+          referenceNumber,
+          existingPayment.paymentDate?.toISOString() ?? null,
+        );
+      }
     }
 
     const paymentAccounts = await this.prisma.paymentAccount.findMany({
@@ -629,20 +951,55 @@ export class PaymentService {
 
         // Check.et's own branch-scoped duplicate detection.
         if (verification.duplicate) {
-          return {
-            verified: false,
-            status: 'DUPLICATE_TRANSACTION',
-            amount: 0,
-            currency: 'ETB',
-            transactionId: referenceNumber,
-            paymentDate: verification.transactionDate,
-            senderName: null,
-            receiverName: null,
+          if (existingPayment) {
+            const assessment = this._assessExistingIdentity(existingPayment, {
+              amount: suppliedAmount,
+              provider,
+              verification,
+            });
+            if (assessment.ok) {
+              await this._writeVerificationAudit({
+                organizationId,
+                paymentId: existingPayment.id,
+                userId,
+                action: RECHECK_ACTION,
+                reason: 'Provider-confirmed recheck of a previously verified payment.',
+              });
+              return this._recheckResponse(existingPayment);
+            }
+            if (assessment.mismatch) {
+              await this._writeVerificationAudit({
+                organizationId,
+                paymentId: existingPayment.id,
+                userId,
+                action: RECHECK_MISMATCH_ACTION,
+                reason: assessment.reason,
+                riskScore: 80,
+              });
+              return this._identityMismatchResponse(
+                assessment.reason,
+                referenceNumber,
+                verification.transactionDate,
+              );
+            }
+            await this._writeVerificationAudit({
+              organizationId,
+              paymentId: existingPayment.id,
+              userId,
+              action: RECHECK_FAILED_ACTION,
+              reason: assessment.reason,
+              riskScore: 80,
+            });
+            return this._recheckFailedResponse(existingPayment, referenceNumber);
+          }
+          await this._writeVerificationAudit({
+            organizationId,
+            userId,
+            action: PROVIDER_DUPLICATE_ACTION,
+            reason: 'Provider reported a duplicate with no local verified payment.',
             riskScore: 80,
-            message:
-              'This payment has already been verified. Each transaction can only be verified once.',
-            raw: null,
-          };
+          });
+          return this._providerDuplicateResponse(referenceNumber, verification);
         }
 
         if (
@@ -695,7 +1052,12 @@ export class PaymentService {
           rejectionRaw,
           organizationId,
           userId,
-          { method: 'REFERENCE', transactionId: referenceNumber },
+          {
+        method: 'REFERENCE',
+        transactionId: referenceNumber,
+        amount: suppliedAmount,
+        provider,
+      },
           null,
         );
       }
@@ -751,6 +1113,59 @@ export class PaymentService {
       `[verifyByReference] outcome=${raw?.success ? 'VERIFIED' : 'FAILED'} matched=${matchedAccount?.provider ?? 'none'}`,
     );
 
+    if (existingPayment) {
+      if (!raw?.success) {
+        await this._writeVerificationAudit({
+          organizationId,
+          paymentId: existingPayment.id,
+          userId,
+          action: RECHECK_FAILED_ACTION,
+          reason: 'Fresh provider check did not confirm the previous payment.',
+          riskScore: 80,
+        });
+        return this._recheckFailedResponse(existingPayment, referenceNumber);
+      }
+      const assessment = this._assessExistingIdentity(existingPayment, {
+        amount: suppliedAmount,
+        provider,
+        verification: this._verifyShapeFromRaw(raw),
+      });
+      if (assessment.ok) {
+        await this._writeVerificationAudit({
+          organizationId,
+          paymentId: existingPayment.id,
+          userId,
+          action: RECHECK_ACTION,
+          reason: 'Provider-confirmed recheck of a previously verified payment.',
+        });
+        return this._recheckResponse(existingPayment);
+      }
+      if (assessment.mismatch) {
+        await this._writeVerificationAudit({
+          organizationId,
+          paymentId: existingPayment.id,
+          userId,
+          action: RECHECK_MISMATCH_ACTION,
+          reason: assessment.reason,
+          riskScore: 80,
+        });
+        return this._identityMismatchResponse(
+          assessment.reason,
+          referenceNumber,
+          existingPayment.paymentDate?.toISOString() ?? null,
+        );
+      }
+      await this._writeVerificationAudit({
+        organizationId,
+        paymentId: existingPayment.id,
+        userId,
+        action: RECHECK_FAILED_ACTION,
+        reason: assessment.reason,
+        riskScore: 80,
+      });
+      return this._recheckFailedResponse(existingPayment, referenceNumber);
+    }
+
     if (!raw) {
       raw = {
         success: false,
@@ -763,7 +1178,12 @@ export class PaymentService {
       raw,
       organizationId,
       userId,
-      { method: 'REFERENCE', transactionId: referenceNumber },
+      {
+        method: 'REFERENCE',
+        transactionId: referenceNumber,
+        amount: suppliedAmount,
+        provider,
+      },
       matchedAccount,
     );
   }
@@ -1012,22 +1432,45 @@ export class PaymentService {
       throw e;
     }
 
+    const verificationReference =
+      verification.transactionNumber ?? `OCR-${Date.now()}`;
+    const verificationNormalized = normalizeTransactionId(verificationReference);
+    const existingPayment = verificationNormalized
+      ? await this._findExistingVerifiedPayment(
+          organizationId,
+          verificationReference,
+          verificationNormalized,
+        )
+      : null;
+    const parsedVerificationAmount =
+      verification.amount === null || verification.amount === undefined
+        ? Number.NaN
+        : Number(verification.amount);
+    const verificationAmount =
+      Number.isFinite(parsedVerificationAmount) && parsedVerificationAmount > 0
+        ? parsedVerificationAmount
+        : null;
+
     // Check.et's own branch-scoped duplicate detection.
     if (verification.duplicate) {
-      return {
-        verified: false,
-        status: 'DUPLICATE_TRANSACTION',
-        amount: 0,
-        currency: 'ETB',
-        transactionId: verification.transactionNumber ?? `OCR-${Date.now()}`,
-        paymentDate: verification.transactionDate,
-        senderName: null,
-        receiverName: null,
+      if (existingPayment) {
+        return this._resolveExistingRecheck(existingPayment, {
+          organizationId,
+          userId,
+          referenceNumber: verificationReference,
+          amount: verificationAmount,
+          provider: verification.provider,
+          verification,
+        });
+      }
+      await this._writeVerificationAudit({
+        organizationId,
+        userId,
+        action: PROVIDER_DUPLICATE_ACTION,
+        reason: 'Provider reported a duplicate with no local verified payment.',
         riskScore: 80,
-        message:
-          'This payment has already been verified. Each transaction can only be verified once.',
-        raw: null,
-      };
+      });
+      return this._providerDuplicateResponse(verificationReference, verification);
     }
 
     let raw: any = this._toRawShape(verification);
@@ -1058,6 +1501,31 @@ export class PaymentService {
       }
     }
 
+    if (existingPayment) {
+      if (!verification.success || !matchedAccount) {
+        await this._writeVerificationAudit({
+          organizationId,
+          paymentId: existingPayment.id,
+          userId,
+          action: RECHECK_FAILED_ACTION,
+          reason: 'Fresh provider check did not confirm the previous payment.',
+          riskScore: 80,
+        });
+        return this._recheckFailedResponse(
+          existingPayment,
+          verificationReference,
+        );
+      }
+      return this._resolveExistingRecheck(existingPayment, {
+        organizationId,
+        userId,
+        referenceNumber: verificationReference,
+        amount: verificationAmount,
+        provider: verification.provider,
+        verification,
+      });
+    }
+
     return this._saveAndReturn(
       raw,
       organizationId,
@@ -1070,8 +1538,11 @@ export class PaymentService {
     );
   }
 
-  private async consumeVerificationQuota(organizationId: string) {
-    const subscription = await this.prisma.subscription.findFirst({
+  private async consumeVerificationQuota(
+    organizationId: string,
+    client: Prisma.TransactionClient,
+  ) {
+    const subscription = await client.subscription.findFirst({
       where: {
         organizationId,
         status: 'ACTIVE',
@@ -1086,7 +1557,7 @@ export class PaymentService {
     }
 
     const periodStart = usagePeriodStart(subscription);
-    const usage = await this.prisma.subscriptionUsage.upsert({
+    const usage = await client.subscriptionUsage.upsert({
       where: {
         subscriptionId_periodStart: {
           subscriptionId: subscription.id,
@@ -1104,7 +1575,7 @@ export class PaymentService {
       );
     }
 
-    const incremented = await this.prisma.subscriptionUsage.updateMany({
+    const incremented = await client.subscriptionUsage.updateMany({
       where: {
         id: usage.id,
         ...(limit === null ? {} : { count: { lt: limit } }),
@@ -1122,7 +1593,12 @@ export class PaymentService {
     raw: any,
     organizationId: string,
     userId: string,
-    meta: { method: string; transactionId: string },
+    meta: {
+      method: string;
+      transactionId: string;
+      amount?: number | null;
+      provider?: string | null;
+    },
     matchedAccount: PaymentAccount | null,
   ) {
     let verified: boolean = raw?.success === true;
@@ -1156,10 +1632,6 @@ export class PaymentService {
       }
     }
 
-    if (verified) {
-      await this.consumeVerificationQuota(organizationId);
-    }
-
     const status: PaymentStatus = verified
       ? PaymentStatus.VERIFIED
       : PaymentStatus.FAILED;
@@ -1176,82 +1648,66 @@ export class PaymentService {
     const senderName = raw?.payer ?? raw?.senderName ?? raw?.payerName ?? null;
     const receiverName = raw?.receiver ?? raw?.receiverName ?? null;
 
+    const paymentData: Prisma.PaymentUncheckedCreateInput = {
+      organizationId,
+      userId,
+      amount,
+      currency: 'ETB',
+      paymentMethod: meta.method,
+      transactionId: meta.transactionId,
+      normalizedTransactionId: verified
+        ? normalizeTransactionId(meta.transactionId)
+        : null,
+      paymentDate: this._parsePaymentDate(
+        raw?.transactionDate ?? raw?.transaction_date,
+      ),
+      senderName,
+      receiverName,
+      status,
+      riskScore: verified ? 0 : 80,
+      rawData: this._sanitizeRawForPersistence(raw),
+      verificationProvider: this.verificationProvider,
+    };
+
     let payment: any;
     try {
-      payment = await this.prisma.payment.create({
-        data: {
-          organizationId,
-          userId,
-          amount,
-          currency: 'ETB',
-          paymentMethod: meta.method,
-          transactionId: meta.transactionId,
-          // Stage 1: deterministic normalized reference. Null for empty
-          // references — PostgreSQL unique constraints ignore NULLs, so
-          // unparseable references can never spuriously block other rows.
-          normalizedTransactionId: normalizeTransactionId(meta.transactionId),
-          paymentDate: this._parsePaymentDate(
-            raw?.transactionDate ?? raw?.transaction_date,
-          ),
-          senderName,
-          receiverName,
-          status,
-          riskScore: verified ? 0 : 80,
-          // Sanitized BEFORE persistence: no unmasked bank account numbers
-          // are stored (see _sanitizeRawForPersistence).
-          rawData: this._sanitizeRawForPersistence(raw),
-          // Record the active verification vendor on new rows (NULL for
-          // legacy Veritas-era rows — historical data is never rewritten).
-          verificationProvider: this.verificationProvider,
-        },
-      });
+      if (verified) {
+        payment = await this.prisma.$transaction(async (tx) => {
+          await this.consumeVerificationQuota(organizationId, tx);
+          return tx.payment.create({ data: paymentData });
+        });
+      } else {
+        payment = await this.prisma.payment.create({ data: paymentData });
+      }
     } catch (dbErr: any) {
-      // Stage 1 review fix: ONLY a unique-constraint violation on the
-      // payment-reference constraint means a concurrent request verified the
-      // same transaction first (DUPLICATE_TRANSACTION outcome). Any OTHER
-      // unique violation — current or future — must follow the normal error
-      // path, never masquerade as a duplicate payment.
+      if (dbErr instanceof ForbiddenException) {
+        throw dbErr;
+      }
       if (dbErr?.code === 'P2002' && isPaymentReferenceDuplicateError(dbErr)) {
         this.logger.warn(
           `[_saveAndReturn] Concurrent duplicate blocked by database constraint (org=${organizationId})`,
         );
-        const normalized = normalizeTransactionId(meta.transactionId);
-        const winner = await this.prisma.payment.findFirst({
-          where: {
-            organizationId,
-            OR: [
-              { transactionId: meta.transactionId },
-              ...(normalized ? [{ normalizedTransactionId: normalized }] : []),
-            ],
-          },
-          orderBy: { createdAt: 'asc' },
-        });
+        const winner = await this._findExistingVerifiedPayment(
+          organizationId,
+          meta.transactionId,
+        );
         if (winner) {
-          return {
-            verified: false,
-            status: 'DUPLICATE_TRANSACTION',
-            paymentId: winner.id,
-            amount: Number(winner.amount),
-            currency: 'ETB',
-            transactionId: winner.transactionId,
-            paymentDate: winner.paymentDate?.toISOString() ?? null,
-            senderName: winner.senderName,
-            receiverName: winner.receiverName,
-            riskScore: winner.riskScore,
-            message:
-              'This payment has already been verified. Each transaction can only be verified once.',
-            raw: null,
-          };
+          return this._resolveExistingRecheck(winner, {
+            organizationId,
+            userId,
+            referenceNumber: meta.transactionId,
+            amount: meta.amount,
+            provider: meta.provider,
+            verification: this._verifyShapeFromRaw(raw),
+          });
         }
-        // Constraint fired but the winning row is not visible (should not
-        // happen); fail closed rather than double-record.
         throw new HttpException(
           {
             verified: false,
-            status: 'DUPLICATE_TRANSACTION',
+            status: 'RECHECK_FAILED',
             paymentDate: null,
             message:
-              'This payment has already been verified. Each transaction can only be verified once.',
+              'A matching payment record exists but could not be loaded. Please try again.',
           },
           HttpStatus.CONFLICT,
         );
@@ -1297,7 +1753,9 @@ export class PaymentService {
       amount: Number(payment.amount),
       currency: 'ETB',
       transactionId: payment.transactionId,
+      reference: payment.transactionId,
       paymentDate: payment.paymentDate?.toISOString() ?? null,
+      verifiedAt: (payment.updatedAt ?? payment.createdAt)?.toISOString() ?? null,
       senderName: payment.senderName,
       receiverName: payment.receiverName,
       riskScore: verified ? 0 : 80,
@@ -1339,10 +1797,13 @@ export class PaymentService {
       status: p.status,
       paymentMethod: p.paymentMethod,
       transactionId: p.transactionId,
+      reference: p.transactionId,
+      paymentDate: p.paymentDate,
       senderName: p.senderName,
       receiverName: p.receiverName,
       riskScore: p.riskScore,
       createdAt: p.createdAt,
+      verifiedAt: p.updatedAt ?? p.createdAt,
       verifiedBy: p.user
         ? {
             id: p.user.id,

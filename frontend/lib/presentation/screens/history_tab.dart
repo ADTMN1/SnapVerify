@@ -610,7 +610,15 @@ class _HistoryItem {
       case 'PENDING':
         return 'Pending';
       case 'DUPLICATE_TRANSACTION':
-        return 'Duplicate';
+      case 'ALREADY_VERIFIED':
+      case 'PREVIOUSLY_VERIFIED':
+        return 'Previously verified';
+      case 'PROVIDER_DUPLICATE':
+        return 'Provider duplicate';
+      case 'IDENTITY_MISMATCH':
+        return 'Details mismatch';
+      case 'RECHECK_FAILED':
+        return 'Recheck inconclusive';
       default:
         return status.isEmpty ? 'Unknown' : _titleCase(status);
     }

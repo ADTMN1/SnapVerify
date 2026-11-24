@@ -114,7 +114,23 @@ function build(attempts = 0) {
     prisma as never,
     checkEt as unknown as never,
   );
-  jest.spyOn(service, 'getCurrent').mockResolvedValue({ id: 'subscription-1' });
+  jest.spyOn(service, 'getCurrent').mockResolvedValue({
+    id: 'subscription-1',
+    organizationId: 'org-1',
+    planName: 'one_month',
+    status: 'ACTIVE',
+    startDate: new Date(),
+    endDate: null,
+    maxUsers: null,
+    maxDevices: null,
+    verificationLimit: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    verificationUsed: 0,
+    verificationRemaining: null,
+    usagePeriodStart: new Date().toISOString(),
+    usagePeriodEnd: null,
+  });
 
   return { service, prisma, checkEt, tx };
 }

@@ -8,6 +8,7 @@ import { AdminAuthController } from './controllers/admin-auth.controller';
 import { AdminJwtAuthGuard } from './guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from './guards/admin-roles.guard';
 import { PasswordService } from '../auth/password.service';
+import { resolveAdminAuthSecrets } from '../config/admin-auth-secrets';
 
 @Module({
   imports: [
@@ -16,9 +17,7 @@ import { PasswordService } from '../auth/password.service';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret:
-          config.get<string>('JWT_ADMIN_ACCESS_SECRET') ||
-          config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        secret: resolveAdminAuthSecrets(config).accessSecret,
       }),
     }),
   ],

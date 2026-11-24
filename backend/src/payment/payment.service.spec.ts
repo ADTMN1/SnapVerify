@@ -39,7 +39,12 @@ const mockPrisma = {
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     findUnique: jest.fn().mockResolvedValue(null),
   },
+  $transaction: jest.fn(),
 };
+mockPrisma.$transaction.mockImplementation(
+  (callback: (client: typeof mockPrisma) => unknown) =>
+    Promise.resolve(callback(mockPrisma)),
+);
 
 const mockCheckEt = {
   verifyReference: jest.fn(),
@@ -170,15 +175,21 @@ describe('PaymentService security (Check.et provider)', () => {
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 
-  it('rejects duplicate transactions without calling the provider', async () => {
+  it('re-verifies an existing VERIFIED payment stored with check_et vendor metadata', async () => {
     mockPrisma.payment.findFirst.mockResolvedValue({
       id: 'existing',
+      status: PaymentStatus.VERIFIED,
+      verificationProvider: 'check_et',
+      rawData: { provider: PaymentProvider.CBE },
       amount: 100,
       transactionId: 'FT123',
+      paymentDate: new Date('2026-01-01T10:00:00+03:00'),
+      updatedAt: new Date('2026-01-01T10:05:00+03:00'),
       senderName: 'A',
       receiverName: 'B',
       riskScore: 0,
     });
+    mockPrisma.verificationLog.create.mockResolvedValue({});
 
     const result = await service.verifyByReference(
       'FT123',
@@ -187,17 +198,57 @@ describe('PaymentService security (Check.et provider)', () => {
       undefined,
       'CBE',
     );
-    expect(result.verified).toBe(false);
-    expect(result.status).toBe('DUPLICATE_TRANSACTION');
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result).toHaveProperty('recheck', true);
+    expect(result).toHaveProperty('paymentId', 'existing');
     expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.verificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'RECHECKED',
+          matchedProvider: null,
+        }),
+      }),
+    );
   });
 
-  it('treats a provider-reported duplicate as an app-level duplicate (fail closed)', async () => {
+  it('returns an identity mismatch when a cached recheck has conflicting details', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue({
+      id: 'existing',
+      status: PaymentStatus.VERIFIED,
+      verificationProvider: 'check_et',
+      rawData: { provider: PaymentProvider.CBE },
+      amount: 100,
+      transactionId: 'FT123',
+      paymentDate: new Date('2026-01-01T10:00:00+03:00'),
+      senderName: 'A',
+      receiverName: 'B',
+      riskScore: 0,
+    });
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      250,
+      'CBE',
+    );
+    expect(result.verified).toBe(false);
+    expect(result.status).toBe('IDENTITY_MISMATCH');
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('treats a provider-reported duplicate as a provider duplicate when no local payment exists', async () => {
     mockPrisma.payment.findFirst.mockResolvedValue(null);
     mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
     mockCheckEt.verifyReference.mockResolvedValue(
       validNormalized({ duplicate: true }),
     );
+    mockPrisma.verificationLog.create.mockResolvedValue({});
 
     const result = await service.verifyByReference(
       'FT123',
@@ -207,8 +258,13 @@ describe('PaymentService security (Check.et provider)', () => {
       'CBE',
     );
     expect(result.verified).toBe(false);
-    expect(result.status).toBe('DUPLICATE_TRANSACTION');
+    expect(result.status).toBe('PROVIDER_DUPLICATE');
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.verificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'PROVIDER_DUPLICATE' }),
+      }),
+    );
   });
 
   it('passes bank code and reference — never the client amount — to the provider', async () => {
@@ -225,6 +281,195 @@ describe('PaymentService security (Check.et provider)', () => {
       'FT123',
       '1000516323381',
     );
+  });
+});
+
+describe('PaymentService legacy verified-payment rechecks', () => {
+  let service: PaymentService;
+
+  const legacyVerifiedPayment = (overrides: Record<string, unknown> = {}) => ({
+    id: 'legacy',
+    status: PaymentStatus.VERIFIED,
+    verificationProvider: null,
+    amount: 100,
+    transactionId: 'FT123',
+    paymentDate: new Date('2026-01-01T10:00:00+03:00'),
+    createdAt: new Date('2026-01-01T10:00:00+03:00'),
+    updatedAt: new Date('2026-01-01T10:05:00+03:00'),
+    senderName: null,
+    receiverName: null,
+    riskScore: 0,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    service = await build();
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+  });
+
+  it('returns PREVIOUSLY_VERIFIED for a legacy payment with NULL verificationProvider', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(legacyVerifiedPayment());
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      100,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result).toHaveProperty('paymentId', 'legacy');
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.verificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'RECHECKED' }),
+      }),
+    );
+  });
+
+  it('returns PREVIOUSLY_VERIFIED for a check_et payment with matching bank-provider evidence', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(
+      legacyVerifiedPayment({
+        verificationProvider: 'check_et',
+        rawData: { provider: PaymentProvider.CBE },
+        senderName: 'Payer',
+        receiverName: 'Test Business',
+      }),
+    );
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      100,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('returns IDENTITY_MISMATCH for a known conflicting bank provider', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(
+      legacyVerifiedPayment({
+        verificationProvider: 'check_et',
+        rawData: { provider: PaymentProvider.CBE },
+        senderName: 'Payer',
+        receiverName: 'Test Business',
+      }),
+    );
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      100,
+      'TELEBIRR',
+    );
+
+    expect(result.verified).toBe(false);
+    expect(result.status).toBe('IDENTITY_MISMATCH');
+    expect(mockCheckEt.verifyReference).not.toHaveBeenCalled();
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('returns PREVIOUSLY_VERIFIED for a legacy record with missing optional metadata', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(
+      legacyVerifiedPayment({
+        paymentDate: null,
+        createdAt: null,
+        updatedAt: null,
+        senderName: null,
+        receiverName: null,
+        riskScore: null,
+      }),
+    );
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      100,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result.paymentDate).toBeNull();
+    expect(result).toHaveProperty('verifiedAt', null);
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('uses the post-provider recheck path for a legacy payment with NULL verificationProvider', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(legacyVerifiedPayment());
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
+    mockCheckEt.verifyReference.mockResolvedValue(validNormalized());
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
+
+    expect(mockCheckEt.verifyReference).toHaveBeenCalledTimes(1);
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('uses _resolveExistingRecheck for a legacy provider duplicate with NULL verificationProvider', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(
+      legacyVerifiedPayment({
+        senderName: 'Payer',
+        receiverName: 'Test Business',
+      }),
+    );
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([registeredAccount]);
+    mockCheckEt.verifyReceiptFile.mockResolvedValue(
+      validNormalized({ duplicate: true }),
+    );
+
+    const result = await service.verifyByImage(
+      Buffer.from('fake-pdf'),
+      'application/pdf',
+      'org-1',
+      'user-1',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.verificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'RECHECKED' }),
+      }),
+    );
+  });
+
+  it('keeps legacy rechecks organization-scoped', async () => {
+    mockPrisma.payment.findFirst.mockImplementation(async (args: any) => {
+      expect(args.where.organizationId).toBe('org-2');
+      expect(args.where.status).toBe(PaymentStatus.VERIFIED);
+      return null;
+    });
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.verifyByReference('FT123', 'org-2', 'user-1', 100, 'CBE'),
+    ).rejects.toMatchObject({
+      response: { status: 'PAYMENT_ACCOUNT_NOT_CONFIGURED' },
+    });
+
+    expect(mockPrisma.payment.findFirst).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 });
 
@@ -268,7 +513,10 @@ describe('verifyByReference validation rejection classification', () => {
     expect(result.message).toContain('not made to the receiving account');
     expect(mockPrisma.payment.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: PaymentStatus.FAILED }),
+        data: expect.objectContaining({
+          status: PaymentStatus.FAILED,
+          normalizedTransactionId: null,
+        }),
       }),
     );
   });
@@ -863,6 +1111,37 @@ describe('PaymentService image verification (Check.et receipt_file + receipt_tex
         'CBE FT123',
       ),
     ).rejects.toMatchObject({ response: { status: 'PROVIDER_UNAVAILABLE' } });
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('re-verifies an image receipt against a check_et VERIFIED payment without a false identity mismatch', async () => {
+    const svc = await buildWithAccount();
+    mockPrisma.payment.findFirst.mockResolvedValue({
+      id: 'existing',
+      status: PaymentStatus.VERIFIED,
+      verificationProvider: 'check_et',
+      rawData: { provider: PaymentProvider.CBE },
+      amount: 100,
+      transactionId: 'FT123',
+      paymentDate: new Date('2026-01-01T10:00:00+03:00'),
+      senderName: 'Payer',
+      receiverName: 'Test Business',
+      riskScore: 0,
+    });
+    mockCheckEt.verifyReceiptFile.mockResolvedValue(validNormalized());
+
+    const result = await svc.verifyByImage(
+      Buffer.from('fake-image'),
+      'image/jpeg',
+      'org-1',
+      'user-1',
+      'CBE FT123',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result).toHaveProperty('recheck', true);
+    expect(result).toHaveProperty('paymentId', 'existing');
     expect(mockPrisma.payment.create).not.toHaveBeenCalled();
   });
 

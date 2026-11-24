@@ -1,29 +1,27 @@
-# Deploying the SnapVerify backend to Render with an existing Postgres
+# Deploying the SnapVerify backend to Render with an existing Supabase PostgreSQL database
 
-Target: NestJS backend (`backend/`) on Render, using the **existing** Neon
-Postgres database. Nothing here creates a database, resets schema, or deletes
-data. Supabase-specific notes are kept where they differ.
+Target: NestJS backend (`backend/`) on Render, using the **existing** Supabase
+PostgreSQL database. Nothing here creates a database, resets schema, or deletes
+data. The database name is the PostgreSQL default: `postgres`.
 
 ## 1. Connection string (do this first)
 
-Use your provider's **pooled** connection string (Neon's `-pooler` host). It is
-in `backend/.env` locally, but must be set as a Render secret — never commit it.
+Use Supabase's **shared session pooler** connection string. The same single
+`DATABASE_URL` is used by the running app and by Prisma CLI commands such as
+`npx prisma migrate status`.
 
 ```text
-postgresql://<user>:<password>@<host>-pooler.<region>.aws.neon.tech/<database>?sslmode=require
+postgresql://postgres.<project-ref>:<url-encoded-password>@aws-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
-For Supabase use the **shared session pooler** instead:
+Store it in `backend/.env` locally and as a Render secret. Never commit it.
 
-```text
-postgresql://postgres.<project-ref>:<password>@aws-<n>-<region>.pooler.supabase.com:5432/postgres
-```
-
+- Use the default PostgreSQL database name `postgres`.
 - Do **not** use Supabase's direct host `db.<project-ref>.supabase.co`: it is
   IPv6-only (unless the project has the paid IPv4 add-on) and Render has no
   outbound IPv6, which fails as `getaddrinfo ENOTFOUND`.
-- Do **not** use transaction mode (port `6543` on Supabase): it does not support
-  the prepared statements Prisma issues.
+- Do **not** use transaction mode (port `6543`): it does not support the
+  prepared statements Prisma issues.
 - URL-encode special characters in the password (`@` → `%40`, `#` → `%23`).
 
 The app strips `sslmode` / `channel_binding` from the URL and enables TLS itself
@@ -47,7 +45,7 @@ This only reads `_prisma_migrations`; it changes nothing. Interpret the result:
 | `P3005` — database schema is not empty | Tables exist, no migration history | **Do not run `migrate deploy`.** Baseline by hand (§4) |
 | Connection error | Wrong URL / IPv6 / password | Re-check §1 |
 
-Also confirm the table list, e.g. in the provider's SQL editor:
+Also confirm the table list, e.g. in the Supabase SQL editor:
 
 ```sql
 select table_name from information_schema.tables
@@ -121,11 +119,15 @@ changes (§3).
 
 Required for boot:
 
-`DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ACCOUNT_HASH_SECRET`,
+`DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`,
+`JWT_ADMIN_ACCESS_SECRET`, `JWT_ADMIN_REFRESH_SECRET`, `ACCOUNT_HASH_SECRET`,
 `ALLOWED_ORIGINS`, `APP_URL`, `QR_PUBLIC_BASE_URL`, `EMAIL_FROM`,
 `CHECK_ET_API_KEY`, and `BREVO_API_KEY` (or `SMTP_HOST`, plus `SMTP_USER` /
 `SMTP_PASS` when the relay authenticates).
 
+- `DATABASE_URL` is the only database connection variable. Keep the database
+  name `postgres` and use the Supabase shared session pooler.
+- `JWT_ADMIN_ACCESS_SECRET` and `JWT_ADMIN_REFRESH_SECRET` must be distinct.
 - `APP_URL` and `QR_PUBLIC_BASE_URL` must be the **public HTTPS URL of this
   service** (`https://<service>.onrender.com`), not a localhost address. They
   are embedded in staff-invitation links and payment QR codes.
@@ -135,9 +137,8 @@ Required for boot:
 Provided by the blueprint: `NODE_ENV`, `NODE_VERSION`, `CHECK_ET_BASE_URL`,
 `CHECK_ET_TIMEOUT_MS`, `BREVO_SMS_SENDER`.
 
-Optional: `JWT_ADMIN_ACCESS_SECRET`, `ALLOW_CREDENTIALS`, `SMTP_*`,
-`DATABASE_SSL_*`, `THROTTLE_TTL_MS`, `THROTTLE_LIMIT`,
-`PAYMENT_VERIFY_RATE_LIMIT`, `PAYMENT_VERIFY_IMAGE_RATE_LIMIT`,
+Optional: `ALLOW_CREDENTIALS`, `SMTP_*`, `DATABASE_SSL_*`, `THROTTLE_TTL_MS`,
+`THROTTLE_LIMIT`, `PAYMENT_VERIFY_RATE_LIMIT`, `PAYMENT_VERIFY_IMAGE_RATE_LIMIT`,
 `QR_RESOLVE_RATE_LIMIT`.
 
 Secrets must be ≥ 32 characters; `APP_URL`, `QR_PUBLIC_BASE_URL` and

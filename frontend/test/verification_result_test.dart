@@ -26,14 +26,41 @@ void main() {
       expect(r.status, VerificationStatus.failed);
     });
 
-    test('DUPLICATE_TRANSACTION maps to alreadyVerified (not invalid)', () {
+    test('DUPLICATE_TRANSACTION maps to previouslyVerified (not invalid)', () {
       final r = VerificationResult.fromJson(payload('DUPLICATE_TRANSACTION'));
-      expect(r.status, VerificationStatus.alreadyVerified);
+      expect(r.status, VerificationStatus.previouslyVerified);
+      expect(r.isSuccess, isTrue);
     });
 
-    test('ALREADY_VERIFIED maps to alreadyVerified', () {
+    test('PREVIOUSLY_VERIFIED maps to previouslyVerified', () {
+      final r = VerificationResult.fromJson(payload('PREVIOUSLY_VERIFIED'));
+      expect(r.status, VerificationStatus.previouslyVerified);
+      expect(r.isSuccess, isTrue);
+    });
+
+    test('legacy ALREADY_VERIFIED maps to previouslyVerified', () {
       final r = VerificationResult.fromJson(payload('ALREADY_VERIFIED'));
-      expect(r.status, VerificationStatus.alreadyVerified);
+      expect(r.status, VerificationStatus.previouslyVerified);
+      expect(r.isSuccess, isTrue);
+    });
+
+    test('recheck statuses map distinctly', () {
+      expect(
+        VerificationResult.fromJson(payload('PROVIDER_DUPLICATE')).status,
+        VerificationStatus.providerDuplicate,
+      );
+      expect(
+        VerificationResult.fromJson(payload('IDENTITY_MISMATCH')).status,
+        VerificationStatus.identityMismatch,
+      );
+      expect(
+        VerificationResult.fromJson(payload('RECHECK_FAILED')).status,
+        VerificationStatus.recheckFailed,
+      );
+      expect(
+        VerificationResult.fromJson(payload('RECHECK_FAILED')).isSuccess,
+        isFalse,
+      );
     });
 
     test('NEEDS_REVIEW maps to needsReview', () {
@@ -158,6 +185,25 @@ void main() {
         VerificationResult.fromJson(payload('VERIFIED')).paymentDate,
         isNull,
       );
+    });
+  });
+
+  group('VerificationResult.fromJson recheck details', () {
+    test('reads top-level reference and verifiedAt', () {
+      final data = payload('PREVIOUSLY_VERIFIED')
+        ..['reference'] = 'REF-ORIGINAL'
+        ..['verifiedAt'] = '2026-01-02T08:30:00Z';
+      final r = VerificationResult.fromJson(data);
+      expect(r.reference, 'REF-ORIGINAL');
+      expect(r.verifiedAt, isNotNull);
+      expect(r.verifiedAt!.year, 2026);
+      expect(r.verifiedAt!.month, 1);
+      expect(r.verifiedAt!.day, 2);
+    });
+
+    test('falls back to transactionId when reference is absent', () {
+      final r = VerificationResult.fromJson(payload('PREVIOUSLY_VERIFIED'));
+      expect(r.reference, 'REF-****');
     });
   });
 

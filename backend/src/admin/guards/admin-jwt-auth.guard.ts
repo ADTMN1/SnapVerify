@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { resolveAdminAuthSecrets } from '../../config/admin-auth-secrets';
 import { AdminJwtPayload } from '../interfaces/admin-jwt-payload.interface';
 
 /**
@@ -15,10 +16,14 @@ import { AdminJwtPayload } from '../interfaces/admin-jwt-payload.interface';
  */
 @Injectable()
 export class AdminJwtAuthGuard implements CanActivate {
+  private readonly accessSecret: string;
+
   constructor(
     private jwtService: JwtService,
-    private config: ConfigService,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.accessSecret = resolveAdminAuthSecrets(config).accessSecret;
+  }
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
@@ -33,12 +38,8 @@ export class AdminJwtAuthGuard implements CanActivate {
     const token = authHeader.slice(7);
 
     try {
-      const secret =
-        this.config.get<string>('JWT_ADMIN_ACCESS_SECRET') ||
-        this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
-
       const payload = this.jwtService.verify<AdminJwtPayload>(token, {
-        secret,
+        secret: this.accessSecret,
       });
 
       // Attach admin context to the request

@@ -30,6 +30,7 @@ import {
 } from './dto/email-auth.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { SelectBusinessDto } from './dto/select-business.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AddStaffDto } from './dto/add-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -135,18 +136,12 @@ export class AuthController {
   @Public()
   @Post('select-business')
   @HttpCode(HttpStatus.OK)
-  async selectBusiness(
-    @Body()
-    body: {
-      userId: string;
-      organizationId: string;
-      rememberMe?: boolean;
-    },
-  ) {
+  @Throttle({ default: { limit: 5, ttl: 60 } })
+  async selectBusiness(@Body() dto: SelectBusinessDto) {
     return this.authService.selectBusiness(
-      body.userId,
-      body.organizationId,
-      body.rememberMe,
+      dto.selectionToken,
+      dto.organizationId,
+      dto.rememberMe,
     );
   }
 
@@ -251,6 +246,7 @@ export class AuthController {
 
   @Get('staff')
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
   @HttpCode(HttpStatus.OK)
   async getStaff(@Request() req: { user: JwtPayload; branchFilter?: string }) {
     return this.authService.getStaff(req.user.organizationId, req.branchFilter);
@@ -288,9 +284,13 @@ export class AuthController {
   // JWT-authenticated invitation lookup — for owners/staff to view invitations
   // for a given phone. Pre-login staff MUST use POST /check-invitation instead.
   @Get('invitations/:phone')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
   @HttpCode(HttpStatus.OK)
-  async getInvitations(@Param('phone') phone: string) {
-    return this.authService.getInvitation(phone);
+  async getInvitations(
+    @Param('phone') phone: string,
+    @Request() req: { user: JwtPayload },
+  ) {
+    return this.authService.getInvitation(phone, req.user.organizationId);
   }
 }

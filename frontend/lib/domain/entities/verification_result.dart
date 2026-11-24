@@ -3,6 +3,10 @@ enum VerificationStatus {
   pending,
   failed,
   alreadyVerified,
+  previouslyVerified,
+  providerDuplicate,
+  identityMismatch,
+  recheckFailed,
   needsReview,
   providerUnavailable,
   quotaExhausted,
@@ -19,7 +23,9 @@ class VerificationResult {
   final double amount;
   final String currency;
   final String transactionId;
+  final String? reference;
   final DateTime? paymentDate;
+  final DateTime? verifiedAt;
   final String? senderName;
   final String? receiverName;
   final int riskScore;
@@ -32,7 +38,9 @@ class VerificationResult {
     required this.amount,
     required this.currency,
     required this.transactionId,
+    this.reference,
     this.paymentDate,
+    this.verifiedAt,
     this.senderName,
     this.receiverName,
     required this.riskScore,
@@ -43,6 +51,10 @@ class VerificationResult {
       status == VerificationStatus.providerUnavailable ||
       status == VerificationStatus.quotaExhausted ||
       status == VerificationStatus.providerConfigError;
+
+  bool get isSuccess =>
+      status == VerificationStatus.verified ||
+      status == VerificationStatus.previouslyVerified;
 
   static DateTime? _parseDate(dynamic value) {
     if (value is! String || value.trim().isEmpty) return null;
@@ -58,7 +70,11 @@ class VerificationResult {
       'VERIFIED' => VerificationStatus.verified,
       'FAILED' => VerificationStatus.failed,
       'DUPLICATE_TRANSACTION' ||
-      'ALREADY_VERIFIED' => VerificationStatus.alreadyVerified,
+      'ALREADY_VERIFIED' ||
+      'PREVIOUSLY_VERIFIED' => VerificationStatus.previouslyVerified,
+      'PROVIDER_DUPLICATE' => VerificationStatus.providerDuplicate,
+      'IDENTITY_MISMATCH' => VerificationStatus.identityMismatch,
+      'RECHECK_FAILED' => VerificationStatus.recheckFailed,
       'NEEDS_REVIEW' || 'MANUAL_REVIEW' => VerificationStatus.needsReview,
       'PROVIDER_UNAVAILABLE' ||
       'SERVICE_UNAVAILABLE' => VerificationStatus.providerUnavailable,
@@ -78,9 +94,12 @@ class VerificationResult {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       currency: json['currency'] as String? ?? 'ETB',
       transactionId: json['transactionId'] as String? ?? '',
+      reference:
+          json['reference'] as String? ?? json['transactionId'] as String?,
       paymentDate: _parseDate(
         json['paymentDate'] ?? json['raw']?['transactionDate'],
       ),
+      verifiedAt: _parseDate(json['verifiedAt']),
       senderName: json['senderName'] as String?,
       receiverName: json['receiverName'] as String?,
       riskScore: json['riskScore'] as int? ?? 0,

@@ -22,7 +22,7 @@ async function main() {
     });
     if (!user) continue;
     for (const a of user.userAssignments) {
-      await prisma.device.deleteMany({ where: { assignmentId: a.id } });
+      await prisma.device.deleteMany({ where: { userAssignmentId: a.id } });
     }
     await prisma.userBusinessAssignment.deleteMany({ where: { userId: user.id } });
     await prisma.emailOtp.deleteMany({ where: { email } });

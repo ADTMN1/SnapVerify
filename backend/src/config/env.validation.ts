@@ -16,6 +16,8 @@ export const REQUIRED_PRODUCTION_VARS = [
   'DATABASE_URL',
   'JWT_ACCESS_SECRET',
   'JWT_REFRESH_SECRET',
+  'JWT_ADMIN_ACCESS_SECRET',
+  'JWT_ADMIN_REFRESH_SECRET',
   'ALLOWED_ORIGINS',
   'ACCOUNT_HASH_SECRET',
 ] as const;
@@ -24,6 +26,8 @@ export const REQUIRED_PRODUCTION_VARS = [
 const SIGNING_SECRET_VARS = [
   'JWT_ACCESS_SECRET',
   'JWT_REFRESH_SECRET',
+  'JWT_ADMIN_ACCESS_SECRET',
+  'JWT_ADMIN_REFRESH_SECRET',
   'ACCOUNT_HASH_SECRET',
 ] as const;
 
@@ -72,6 +76,15 @@ export function collectProductionConfigErrors(
     if (secret && secret.length < MIN_SECRET_LENGTH) {
       errors.push(`${key} must be at least ${MIN_SECRET_LENGTH} characters`);
     }
+  }
+
+  const configuredSigningSecrets = SIGNING_SECRET_VARS.map((key) =>
+    value(config, key),
+  ).filter((secret) => secret.length > 0);
+  if (
+    new Set(configuredSigningSecrets).size !== configuredSigningSecrets.length
+  ) {
+    errors.push('JWT and account signing secrets must all be distinct');
   }
 
   // Email transport — without one, EmailService only logs messages to the
