@@ -693,7 +693,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           focusNode: _fullNameFocusNode,
           isFocused: _fullNameFocused,
           label: AppLocalizations.of(context)!.fullName,
-          hint: 'John Doe',
+          hint: 'e.g. Abebe Bekele',
           icon: Icons.person_outline_rounded,
           hasError: _fullNameError != null,
           onChanged: (_) => _clearFullNameError(),

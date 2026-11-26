@@ -671,7 +671,7 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
               _BranchFormField(
                 controller: _managerCtrl,
                 label: 'Manager Name (Optional)',
-                hint: 'e.g. David Mekonnen',
+                hint: 'e.g. Abebe Bekele',
                 icon: Icons.manage_accounts_rounded,
               ),
               const SizedBox(height: 16),

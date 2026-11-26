@@ -932,7 +932,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
               _FormField(
                 controller: _fullNameCtrl,
                 label: 'Full Name',
-                hint: 'e.g. David Mekonnen',
+                hint: 'e.g. Abebe Bekele',
                 icon: Icons.person_outline_rounded,
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Required' : null,
@@ -941,7 +941,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
               _FormField(
                 controller: _usernameCtrl,
                 label: 'Username (staff logs in with this)',
-                hint: 'e.g. david.cashier',
+                hint: 'e.g. abebe.cashier',
                 icon: Icons.badge_outlined,
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Required';
@@ -1406,7 +1406,7 @@ class _EditStaffSheetState extends ConsumerState<_EditStaffSheet> {
               _FormField(
                 controller: _fullNameCtrl,
                 label: 'Full Name',
-                hint: 'e.g. David Mekonnen',
+                hint: 'e.g. Abebe Bekele',
                 icon: Icons.person_outline_rounded,
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Required' : null,
