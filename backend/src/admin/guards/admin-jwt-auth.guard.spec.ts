@@ -27,18 +27,40 @@ function makeContext(token: string, request: Record<string, unknown> = {}) {
   } as unknown as ExecutionContext;
 }
 
-describe('AdminJwtAuthGuard — secret separation', () => {
-  const jwt = new JwtService();
+function makeUser(overrides: Record<string, unknown> = {}) {
+  return {
+    status: 'active',
+    isPlatformAdmin: true,
+    userAssignments: [{ role: 'OWNER', status: 'active' }],
+    ...overrides,
+  };
+}
 
-  it('accepts a token signed with the dedicated admin access secret', () => {
-    const guard = new AdminJwtAuthGuard(jwt, makeConfig());
+describe('AdminJwtAuthGuard — session validation', () => {
+  const jwt = new JwtService();
+  let prisma: { user: { findUnique: jest.Mock } };
+
+  beforeEach(() => {
+    prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue(makeUser()) },
+    };
+  });
+
+  function makeGuard(config = makeConfig()) {
+    return new AdminJwtAuthGuard(jwt, config, prisma as never);
+  }
+
+  it('accepts a token signed with the dedicated admin access secret', async () => {
+    const guard = makeGuard();
     const token = jwt.sign(
       { sub: 'admin-1', email: 'admin@example.com', role: 'SUPER_ADMIN' },
       { secret: ADMIN_ACCESS_SECRET, expiresIn: '15m' },
     );
     const request: Record<string, unknown> = {};
 
-    expect(() => guard.canActivate(makeContext(token, request))).not.toThrow();
+    await expect(guard.canActivate(makeContext(token, request))).resolves.toBe(
+      true,
+    );
     expect(request.admin).toEqual(
       expect.objectContaining({
         sub: 'admin-1',
@@ -48,16 +70,65 @@ describe('AdminJwtAuthGuard — secret separation', () => {
     );
   });
 
-  it('rejects a token signed with the application access secret', () => {
-    const guard = new AdminJwtAuthGuard(jwt, makeConfig());
+  it('rejects a token signed with the application access secret', async () => {
     const token = jwt.sign(
       { sub: 'user-1', email: 'owner@example.com', role: 'OWNER' },
       { secret: ACCESS_SECRET, expiresIn: '15m' },
     );
 
-    expect(() => guard.canActivate(makeContext(token))).toThrow(
-      UnauthorizedException,
+    await expect(
+      makeGuard().canActivate(makeContext(token)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects a demoted admin even if the token still says SUPER_ADMIN', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(
+      makeUser({ isPlatformAdmin: false, userAssignments: [] }),
     );
+    const token = jwt.sign(
+      { sub: 'admin-1', email: 'admin@example.com', role: 'SUPER_ADMIN' },
+      { secret: ADMIN_ACCESS_SECRET, expiresIn: '15m' },
+    );
+
+    await expect(
+      makeGuard().canActivate(makeContext(token)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('uses the current database role for an OWNER admin', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(
+      makeUser({
+        isPlatformAdmin: false,
+        userAssignments: [{ role: 'OWNER', status: 'active' }],
+      }),
+    );
+    const token = jwt.sign(
+      { sub: 'admin-1', email: 'admin@example.com', role: 'SUPER_ADMIN' },
+      { secret: ADMIN_ACCESS_SECRET, expiresIn: '15m' },
+    );
+    const request: Record<string, unknown> = {};
+
+    await expect(
+      makeGuard().canActivate(makeContext(token, request)),
+    ).resolves.toBe(true);
+    expect(request.admin).toEqual(
+      expect.objectContaining({ role: 'BUSINESS_OWNER' }),
+    );
+  });
+
+  it('rejects an inactive admin', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(
+      makeUser({ status: 'inactive' }),
+    );
+    const token = jwt.sign(
+      { sub: 'admin-1', email: 'admin@example.com', role: 'SUPER_ADMIN' },
+      { secret: ADMIN_ACCESS_SECRET, expiresIn: '15m' },
+    );
+
+    await expect(
+      makeGuard().canActivate(makeContext(token)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('fails closed when the dedicated admin secret is missing', () => {
@@ -69,16 +140,12 @@ describe('AdminJwtAuthGuard — secret separation', () => {
       return key === 'JWT_ADMIN_REFRESH_SECRET' ? ADMIN_REFRESH_SECRET : '';
     });
 
-    expect(() => new AdminJwtAuthGuard(jwt, config)).toThrow();
+    expect(() => makeGuard(config)).toThrow();
   });
 
   it('fails closed when admin and application secrets are reused', () => {
-    expect(
-      () =>
-        new AdminJwtAuthGuard(
-          jwt,
-          makeConfig({ JWT_ADMIN_ACCESS_SECRET: ACCESS_SECRET }),
-        ),
+    expect(() =>
+      makeGuard(makeConfig({ JWT_ADMIN_ACCESS_SECRET: ACCESS_SECRET })),
     ).toThrow(/distinct/);
   });
 });

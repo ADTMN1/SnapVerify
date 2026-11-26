@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import '../../core/http_client.dart';
 import '../../core/utils/jwt_utils.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../domain/entities/auth_tokens.dart';
@@ -12,7 +12,8 @@ import '../../domain/entities/organization.dart';
 import '../../domain/entities/subscription.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/auth_repository_impl.dart';
-import '../../data/datasources/auth_remote_datasource.dart';
+
+const _unset = Object();
 
 // ── DI Providers ──────────────────────────────────────────────────────────────
 
@@ -23,7 +24,26 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 });
 
 final authRemoteDatasourceProvider = Provider<AuthRemoteDatasource>((ref) {
-  return AuthRemoteDatasource(client: http.Client());
+  return AuthRemoteDatasource(client: ref.watch(httpClientProvider));
+});
+
+/// Shared HTTP client that retries once on HTTP 401 by refreshing the access
+/// token. All remote datasources use this single client so connections are
+/// pooled and expired tokens are retried transparently.
+final httpClientProvider = Provider<http.Client>((ref) {
+  final inner = http.Client();
+  return RefreshingHttpClient(
+    inner: inner,
+    // `ref.read` is used inside the closure (called at request time, not
+    // provider creation time) so Riverpod does not track
+    // authNotifierProvider as a dependency of this provider — avoiding a
+    // circular dependency through authRepositoryProvider.
+    onRefresh: () async {
+      final tokens =
+          await ref.read(authNotifierProvider.notifier).silentRefresh();
+      return tokens?.accessToken;
+    },
+  );
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -205,6 +225,8 @@ class AuthState {
   final List<UserRoleAssignment> roles;
   final List<UserBusinessMembership> availableOrganizations;
   final User? pendingUser;
+  final String? pendingSelectionToken;
+  final String? currentBranchId;
 
   const AuthState({
     required this.status,
@@ -217,6 +239,8 @@ class AuthState {
     this.roles = const [],
     this.availableOrganizations = const [],
     this.pendingUser,
+    this.pendingSelectionToken,
+    this.currentBranchId,
   });
 
   /// Convenience: is the user currently logged in?
@@ -232,7 +256,9 @@ class AuthState {
     Subscription? subscription,
     List<UserRoleAssignment>? roles,
     List<UserBusinessMembership>? availableOrganizations,
-    User? pendingUser,
+    Object? pendingUser = _unset,
+    Object? pendingSelectionToken = _unset,
+    String? currentBranchId,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -244,7 +270,13 @@ class AuthState {
       subscription: subscription ?? this.subscription,
       roles: roles ?? this.roles,
       availableOrganizations: availableOrganizations ?? this.availableOrganizations,
-      pendingUser: pendingUser ?? this.pendingUser,
+      pendingUser: identical(pendingUser, _unset)
+          ? this.pendingUser
+          : pendingUser as User?,
+      pendingSelectionToken: identical(pendingSelectionToken, _unset)
+          ? this.pendingSelectionToken
+          : pendingSelectionToken as String?,
+      currentBranchId: currentBranchId ?? this.currentBranchId,
     );
   }
 
@@ -300,7 +332,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// screen for the full HTTP timeout (30s per call, twice).
   static const Duration _restoreTimeout = Duration(seconds: 8);
 
+  Future<void>? _restoreInFlight;
+  int _sessionGeneration = 0;
+
   Future<void> _restoreSession() async {
+    final pending = _restoreInFlight;
+    if (pending != null) return pending;
+
+    final future = _restoreSessionOnce();
+    _restoreInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_restoreInFlight, future)) _restoreInFlight = null;
+    }
+  }
+
+  Future<void> _restoreSessionOnce() async {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         final restored = await _restoreStoredSession().timeout(
@@ -313,6 +361,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       } catch (e) {
         if (!_isTransientError(e)) {
           debugPrint('[Auth] session restore rejected: $e');
+          _sessionGeneration++;
           await _repo.clearTokens();
           state = AuthState.unauthenticated;
           return;
@@ -343,8 +392,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     AuthTokens finalTokens;
     if (JwtUtils.isExpired(tokens.accessToken)) {
       debugPrint('[Auth] access token expired on restore — refreshing');
-      final refreshData = await _repo.refreshToken(tokens.refreshToken);
-      finalTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
+      final refreshed = await _refreshTokensSingleFlight(storedTokens: tokens);
+      if (refreshed == null) return null;
+      finalTokens = refreshed;
     } else {
       finalTokens = tokens;
     }
@@ -398,8 +448,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
         organizationId: organizationId,
         rememberMe: rememberMe,
       );
-      debugPrint('[Auth] Login data received: $data');
-
       // Check if multi-business selection is required
       if (data['requiresBusinessSelection'] == true) {
         final businesses = (data['businesses'] as List<dynamic>)
@@ -412,6 +460,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           status: AuthStatus.requiresBusinessSelection,
           availableOrganizations: businesses,
           pendingUser: pendingUser,
+          pendingSelectionToken: data['selectionToken']?.toString(),
           errorMessage: null,
         );
         return;
@@ -457,11 +506,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // ── Select Business (for multi-org users) ─────────────────────────────────
 
   Future<void> selectBusiness(String organizationId) async {
-    final pendingUserId = state.pendingUser?.id ?? state.user?.id;
-    if (pendingUserId == null) {
+    final selectionToken = state.pendingSelectionToken;
+    if (selectionToken == null || selectionToken.isEmpty) {
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'User not authenticated',
+        errorMessage: 'Business selection session is missing. Please log in again.',
       );
       return;
     }
@@ -470,53 +519,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final rememberMe = await _repo.getRememberMe();
       final data = await _repo.selectBusiness(
-        userId: pendingUserId,
+        selectionToken: selectionToken,
         organizationId: organizationId,
         rememberMe: rememberMe,
       );
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      final user = data['user'] != null 
-          ? User.fromJson(data['user'] as Map<String, dynamic>) 
-          : state.pendingUser ?? state.user;
-      final org = data['organization'] != null 
-          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
-          : null;
-      final subscription = _parseSubscription(data['subscription']);
-      final rolesList = (data['roles'] as List<dynamic>?) 
-          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
-          .toList() ?? state.roles;
-
-      // Convert roles to available orgs for in-app switching
-      final availableOrgs = rolesList
-          .map((r) => UserBusinessMembership(
-                organizationId: r.businessId,
-                organizationName: org?.name ?? r.businessId,
-                role: r.role,
-                branchId: r.branchId,
-              ))
-          .toList();
-      // If we have org name in the currently selected one, fill from list if only this org
-      if (availableOrgs.length == 1 && org != null) {
-        availableOrgs[0] = UserBusinessMembership(
-          organizationId: availableOrgs[0].organizationId,
-          organizationName: org.name,
-          role: availableOrgs[0].role,
-          branchId: availableOrgs[0].branchId,
-        );
-      }
-
-      state = _authenticatedState(
-        tokens, 
-        user: user, 
-        organization: org,
-        subscription: subscription,
-        roles: rolesList,
-      ).copyWith(
-        availableOrganizations: state.availableOrganizations.isNotEmpty 
-            ? state.availableOrganizations 
-            : availableOrgs,
-        pendingUser: null,
-      );
+      _applySelectedBusiness(data, state.availableOrganizations);
     } catch (e) {
       state = state.copyWith(
         status: AuthStatus.error,
@@ -528,8 +535,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // ── In-app: Switch to another existing organization ───────────────────────
 
   Future<void> switchBusiness(String organizationId) async {
-    final currentUserId = state.user?.id;
-    if (currentUserId == null) {
+    if (state.tokens == null) {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'User not authenticated',
@@ -539,39 +545,65 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
+      final accessToken = await ensureFreshAccessToken();
+      if (accessToken == null) {
+        throw Exception('Session expired. Please log in again.');
+      }
+      // A selection challenge is single-use, so in-app switching needs a new
+      // one issued for the currently authenticated user.
+      final challenge = await _repo.getBusinessSelectionChallenge(accessToken);
+      final selectionToken = challenge['selectionToken']?.toString();
+      if (selectionToken == null || selectionToken.isEmpty) {
+        throw Exception('Could not start business switch. Please try again.');
+      }
       final rememberMe = await _repo.getRememberMe();
       final data = await _repo.selectBusiness(
-        userId: currentUserId,
+        selectionToken: selectionToken,
         organizationId: organizationId,
         rememberMe: rememberMe,
       );
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      final user = data['user'] != null 
-          ? User.fromJson(data['user'] as Map<String, dynamic>) 
-          : state.user;
-      final org = data['organization'] != null 
-          ? Organization.fromJson(data['organization'] as Map<String, dynamic>) 
-          : null;
-      final subscription = _parseSubscription(data['subscription']);
-      final rolesList = (data['roles'] as List<dynamic>?) 
-          ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
-          .toList() ?? state.roles;
-
-      state = _authenticatedState(
-        tokens, 
-        user: user, 
-        organization: org,
-        subscription: subscription,
-        roles: rolesList,
-      ).copyWith(
-        availableOrganizations: state.availableOrganizations,
-      );
+      final challengeBusinesses =
+          (challenge['businesses'] as List<dynamic>?)
+              ?.map(
+                (b) => UserBusinessMembership.fromJson(
+                  b as Map<String, dynamic>,
+                ),
+              )
+              .toList() ??
+          state.availableOrganizations;
+      _applySelectedBusiness(data, challengeBusinesses);
     } catch (e) {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: _friendly(e),
       );
     }
+  }
+
+  void _applySelectedBusiness(
+    Map<String, dynamic> data,
+    List<UserBusinessMembership> organizations,
+  ) {
+    final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
+    final user = data['user'] != null
+        ? User.fromJson(data['user'] as Map<String, dynamic>)
+        : state.user ?? state.pendingUser;
+    final org = data['organization'] != null
+        ? Organization.fromJson(data['organization'] as Map<String, dynamic>)
+        : null;
+    final subscription = _parseSubscription(data['subscription']);
+    final rolesList = (data['roles'] as List<dynamic>?)
+        ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
+        .toList();
+
+    state = _authenticatedState(
+      tokens,
+      user: user,
+      organization: org,
+      subscription: subscription,
+      roles: rolesList,
+      availableOrganizations: organizations,
+    );
   }
 
   // ── Owner registration (step 1: create account → email OTP) ───────────────
@@ -665,21 +697,47 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // ── Silent token refresh (called by API layer when a 401 is received) ────
 
   Future<AuthTokens?> silentRefresh() async {
-    final current = state.tokens;
-    if (current == null) return null;
+    final pending = _refreshInFlight;
+    if (pending != null) {
+      try {
+        return await pending;
+      } catch (e) {
+        return _handleRefreshError(e);
+      }
+    }
 
-    // Single-flight: concurrent callers share one refresh request instead of
-    // hammering /auth/refresh-token in parallel.
-    final inFlight = _refreshInFlight;
-    if (inFlight != null) return inFlight;
+    try {
+      return await _refreshTokensSingleFlight();
+    } catch (e) {
+      return _handleRefreshError(e);
+    }
+  }
 
-    final future = _doSilentRefresh(current);
+  Future<AuthTokens?> _refreshTokensSingleFlight({
+    AuthTokens? storedTokens,
+  }) async {
+    final pending = _refreshInFlight;
+    if (pending != null) return pending;
+
+    final future = _refreshTokens(storedTokens);
     _refreshInFlight = future;
     try {
       return await future;
     } finally {
-      _refreshInFlight = null;
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
     }
+  }
+
+  Future<AuthTokens?> _handleRefreshError(Object e) async {
+    if (_isTransientError(e)) {
+      debugPrint('[Auth] silent refresh failed (transient), keeping session: $e');
+      return null;
+    }
+    debugPrint('[Auth] silent refresh rejected, clearing session: $e');
+    _sessionGeneration++;
+    await _repo.clearTokens();
+    state = AuthState.unauthenticated;
+    return null;
   }
 
   /// Returns a valid access token, silently refreshing first when the current
@@ -702,31 +760,38 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<AuthTokens?>? _refreshInFlight;
 
-  Future<AuthTokens?> _doSilentRefresh(AuthTokens current) async {
-    try {
-      final refreshData = await _repo.refreshToken(current.refreshToken);
-      final refreshedTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
-      // Discard the result if the session changed while the refresh was in
-      // flight (logout, switch business, or another login) — otherwise a
-      // late response would silently resurrect a logged-out session.
-      if (state.tokens?.refreshToken != current.refreshToken) {
-        debugPrint('[Auth] refresh result discarded — session changed');
-        return null;
-      }
-      state = _authenticatedState(refreshedTokens, user: state.user, organization: state.organization, roles: state.roles);
-      return refreshedTokens;
-    } catch (e) {
-      if (_isTransientError(e)) {
-        // A dead network or a 5xx must not destroy a valid stored session.
-        // Keep the tokens so the next request/timer can retry the refresh.
-        debugPrint('[Auth] silent refresh failed (transient), keeping session: $e');
-        return null;
-      }
-      debugPrint('[Auth] silent refresh rejected, clearing session: $e');
-      await _repo.clearTokens();
-      state = AuthState.unauthenticated;
+  Future<AuthTokens?> _refreshTokens(AuthTokens? storedTokens) async {
+    final current = state.tokens ?? storedTokens ?? await _repo.getTokens();
+    if (current == null) return null;
+
+    final generation = _sessionGeneration;
+    final startedAuthenticated = state.status == AuthStatus.authenticated;
+    final startedRefreshToken = state.tokens?.refreshToken;
+
+    final refreshData = await _repo.refreshToken(current.refreshToken);
+    final refreshedTokens = _tokensFromMap(refreshData['tokens'] as Map<String, dynamic>);
+
+    final tokenChanged =
+        startedAuthenticated && state.tokens?.refreshToken != startedRefreshToken;
+    final anotherLogin = !startedAuthenticated &&
+        state.status == AuthStatus.authenticated &&
+        state.tokens?.refreshToken != refreshedTokens.refreshToken;
+    final sessionChanged = generation != _sessionGeneration || tokenChanged || anotherLogin;
+    if (sessionChanged) {
+      debugPrint('[Auth] refresh result discarded — session changed');
       return null;
     }
+
+    final roles = (refreshData['roles'] as List<dynamic>?)
+        ?.map((r) => UserRoleAssignment.fromJson(r as Map<String, dynamic>))
+        .toList();
+    state = _authenticatedState(
+      refreshedTokens,
+      roles: roles ?? state.roles,
+      availableOrganizations: state.availableOrganizations,
+      branchId: state.currentBranchId,
+    );
+    return refreshedTokens;
   }
 
   // ── Logout ────────────────────────────────────────────────────────────────
@@ -737,8 +802,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await _repo.logout(state.tokens!.refreshToken);
       }
     } catch (e) {
-      debugPrint('[Auth] logout server revocation failed — token may remain active until its TTL expires: $e');
+      debugPrint('[Auth] logout server revocation failed — local session still cleared: $e');
     } finally {
+      // Repeated/offline logout must never leave a stored session behind.
+      _sessionGeneration++;
+      await _repo.clearTokens();
       state = AuthState.unauthenticated;
     }
   }
@@ -819,15 +887,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     Organization? organization,
     Subscription? subscription,
     List<UserRoleAssignment>? roles,
+    List<UserBusinessMembership>? availableOrganizations,
+    String? branchId,
   }) =>
       AuthState(
         status: AuthStatus.authenticated,
         tokens: tokens,
         role: _parseRole(tokens.role),
-        user: user,
-        organization: organization,
+        user: user ?? state.user,
+        organization: organization ?? state.organization,
         subscription: subscription ?? state.subscription,
         roles: roles ?? state.roles,
+        availableOrganizations: availableOrganizations ?? state.availableOrganizations,
+        currentBranchId:
+            JwtUtils.extractBranchId(tokens.accessToken) ?? branchId ?? state.currentBranchId,
       );
 
   Subscription? _parseSubscription(dynamic value) {

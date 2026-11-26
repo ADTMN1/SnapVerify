@@ -12,6 +12,7 @@ import {
   Param,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { AUTH_THROTTLE_TTL_MS } from '../config/throttling.config';
 import { AuthService } from './auth.service';
 import { JwtService } from './jwt.service';
 import { JwtAuthGuard, JwtPayload } from './guards/jwt-auth.guard';
@@ -45,7 +46,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async login(@Body() dto: LoginDto, @Request() req: { ip: string }) {
     return this.authService.login(
       dto.identifier,
@@ -60,7 +61,7 @@ export class AuthController {
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -68,7 +69,7 @@ export class AuthController {
   @Public()
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.authService.verifyEmail(dto.email, dto.otpCode);
   }
@@ -76,7 +77,7 @@ export class AuthController {
   @Public()
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
   async resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerificationOtp(dto.email);
   }
@@ -86,7 +87,7 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
   }
@@ -94,7 +95,7 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(
       dto.email,
@@ -108,7 +109,7 @@ export class AuthController {
   @Public()
   @Post('check-invitation')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 6, ttl: 60 } })
+  @Throttle({ default: { limit: 6, ttl: AUTH_THROTTLE_TTL_MS } })
   async checkInvitationPublic(
     @Body() body: { token?: string; phone?: string },
   ) {
@@ -118,7 +119,7 @@ export class AuthController {
   @Public()
   @Post('staff-activation-otp')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
   async staffActivationOtp(@Body() dto: StaffActivationOtpDto) {
     return this.authService.sendStaffActivationOtp(dto.email, dto.token);
   }
@@ -126,17 +127,25 @@ export class AuthController {
   @Public()
   @Post('activate-invitation')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async activateInvitation(@Body() dto: ActivateInvitationDto) {
     return this.authService.activateInvitation(dto);
   }
 
   // ── Session management ──────────────────────────────────────────────────────
 
+  @Post('business-selection-challenge')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async issueBusinessSelectionChallenge(@Request() req: { user: JwtPayload }) {
+    return this.authService.issueBusinessSelectionChallenge(req.user.sub);
+  }
+
   @Public()
   @Post('select-business')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async selectBusiness(@Body() dto: SelectBusinessDto) {
     return this.authService.selectBusiness(
       dto.selectionToken,
@@ -158,7 +167,7 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async logout(@Body() dto: RefreshTokenDto) {
     await this.jwtService.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };

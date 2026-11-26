@@ -115,6 +115,52 @@ describe('AuthService — secure business selection', () => {
     expect(jwtService.generateTokens).not.toHaveBeenCalled();
   });
 
+  it('issues tokens directly for a single-business login', async () => {
+    prisma.user.findFirst.mockResolvedValueOnce(
+      makeUser([makeAssignment('org-1')]),
+    );
+
+    const result = await service.login('owner@example.com', 'pw');
+
+    expect(result.requiresBusinessSelection).toBe(false);
+    expect(result).toHaveProperty('tokens');
+    expect(result).not.toHaveProperty('selectionToken');
+    expect(
+      jwtService.generateBusinessSelectionChallenge,
+    ).not.toHaveBeenCalled();
+    expect(jwtService.generateTokens).toHaveBeenCalled();
+  });
+
+  it('issues a fresh challenge for in-app business switching', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(
+      makeUser([
+        makeAssignment('org-1'),
+        makeAssignment('org-2', Role.MANAGER),
+      ]),
+    );
+
+    const result = await service.issueBusinessSelectionChallenge('user-1');
+
+    expect(result.selectionToken).toBe('selection-token');
+    expect(result.businesses).toHaveLength(2);
+    expect(jwtService.generateBusinessSelectionChallenge).toHaveBeenCalledWith(
+      'user-1',
+    );
+  });
+
+  it('refuses to issue a switching challenge for a single-org user', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(
+      makeUser([makeAssignment('org-1')]),
+    );
+
+    await expect(
+      service.issueBusinessSelectionChallenge('user-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(
+      jwtService.generateBusinessSelectionChallenge,
+    ).not.toHaveBeenCalled();
+  });
+
   it('issues tokens only after the challenge is consumed', async () => {
     prisma.user.findUnique.mockResolvedValueOnce(
       makeUser([makeAssignment('org-1')]),
@@ -129,6 +175,41 @@ describe('AuthService — secure business selection', () => {
       'user-1',
       'org-1',
       Role.OWNER,
+      undefined,
+      undefined,
+      undefined,
+      expect.any(Number),
+    );
+  });
+
+  it('returns tokens, organization and roles after a successful selection', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(
+      makeUser([
+        makeAssignment('org-1'),
+        makeAssignment('org-2', Role.MANAGER),
+      ]),
+    );
+
+    const result = await service.selectBusiness(
+      'selection-token',
+      'org-2',
+      true,
+    );
+
+    expect(result.requiresBusinessSelection).toBe(false);
+    expect(result.tokens).toEqual({ accessToken: 'a' });
+    expect(result.organization).toEqual(
+      expect.objectContaining({ id: 'org-2' }),
+    );
+    expect(result.roles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ businessId: 'org-2', role: Role.MANAGER }),
+      ]),
+    );
+    expect(jwtService.generateTokens).toHaveBeenCalledWith(
+      'user-1',
+      'org-2',
+      Role.MANAGER,
       undefined,
       undefined,
       undefined,

@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import '../../data/datasources/payment_remote_datasource.dart';
 import '../../domain/entities/verification_result.dart';
 import 'auth_provider.dart';
@@ -9,7 +8,7 @@ import 'notifications_provider.dart';
 import 'reports_provider.dart';
 
 final paymentDatasourceProvider = Provider<PaymentRemoteDatasource>((ref) {
-  return PaymentRemoteDatasource(client: http.Client());
+  return PaymentRemoteDatasource(client: ref.watch(httpClientProvider));
 });
 
 // ── State ─────────────────────────────────────────────────────────────────────

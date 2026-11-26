@@ -1324,7 +1324,7 @@ describe('receiver matching with canonicalized Ethiopian phone numbers', () => {
       validNormalized({
         provider: PaymentProvider.TELEBIRR,
         checkEtBank: 'telebirr',
-        receiverAccount: '25****97',
+        receiverAccount: '25****6897',
       }),
     );
 
@@ -1560,7 +1560,7 @@ describe('payment-provider detection and account matching (strict, no fallback)'
       validNormalized({
         provider: PaymentProvider.TELEBIRR,
         checkEtBank: 'telebirr',
-        receiverAccount: '25****97',
+        receiverAccount: '25****6897',
       }),
     );
 

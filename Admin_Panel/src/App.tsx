@@ -26,11 +26,13 @@ import DevicesPage         from './admin/pages/DevicesPage';
 import LoginHistoryPage    from './admin/pages/LoginHistoryPage';
 import SupportPage         from './admin/pages/SupportPage';
 import SettingsPage        from './admin/pages/SettingsPage';
+import AccountPage         from './admin/pages/AccountPage';
 import PlatformOverviewPage      from './admin/pages/PlatformOverviewPage';
 import PlatformOrganizationsPage from './admin/pages/PlatformOrganizationsPage';
 import PlatformUsersPage         from './admin/pages/PlatformUsersPage';
 import PlatformTransactionsPage  from './admin/pages/PlatformTransactionsPage';
 import PlatformSubscriptionsPage from './admin/pages/PlatformSubscriptionsPage';
+import PlatformPlansPage        from './admin/pages/PlatformPlansPage';
 import PlatformActivityPage      from './admin/pages/PlatformActivityPage';
 
 function DashboardRoute() {
@@ -79,12 +81,14 @@ function AppRoutes() {
       <Route path="/admin/login-history"  element={<ProtectedRoute><LoginHistoryPage /></ProtectedRoute>} />
       <Route path="/admin/support"        element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
       <Route path="/admin/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/admin/account"        element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
 
       {/* Platform super-admin routes */}
       <Route path="/admin/organizations"  element={<ProtectedRoute><PlatformOrganizationsPage /></ProtectedRoute>} />
       <Route path="/admin/users"          element={<ProtectedRoute><PlatformUsersPage /></ProtectedRoute>} />
       <Route path="/admin/platform/transactions"   element={<ProtectedRoute><PlatformTransactionsPage /></ProtectedRoute>} />
       <Route path="/admin/platform/subscriptions"  element={<ProtectedRoute><PlatformSubscriptionsPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/plans"          element={<ProtectedRoute><PlatformPlansPage /></ProtectedRoute>} />
       <Route path="/admin/platform/activity"       element={<ProtectedRoute><PlatformActivityPage /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/admin" replace />} />

@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
-import { X, Search, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { X, Search, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
@@ -174,14 +174,30 @@ interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-export function FormInput({ label, error, className = '', ...props }: FormInputProps) {
+export function FormInput({ label, error, className = '', type, ...props }: FormInputProps) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (show ? 'text' : 'password') : type;
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-slate-300 text-sm font-medium">{label}</label>
-      <input
-        {...props}
-        className={`bg-slate-900 border rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition-colors ${error ? 'border-red-500 focus:border-red-400' : 'border-slate-700 focus:border-slate-500'} ${className}`}
-      />
+      <div className="relative">
+        <input
+          {...props}
+          type={inputType}
+          className={`w-full bg-slate-900 border rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition-colors ${isPassword ? 'pr-11' : ''} ${error ? 'border-red-500 focus:border-red-400' : 'border-slate-700 focus:border-slate-500'} ${className}`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShow(s => !s)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+            aria-label={show ? 'Hide password' : 'Show password'}
+          >
+            {show ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        )}
+      </div>
       {error && <p className="text-red-400 text-xs">{error}</p>}
     </div>
   );

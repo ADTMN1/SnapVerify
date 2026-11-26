@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   UseGuards,
   HttpCode,
@@ -22,6 +23,7 @@ import {
   AdminLogoutDto,
   AdminForgotPasswordDto,
   AdminResetPasswordDto,
+  AdminUpdateProfileDto,
 } from '../dto/admin-login.dto';
 
 @Controller('api/admin/auth')
@@ -115,6 +117,20 @@ export class AdminAuthController {
       dto.currentPassword,
       dto.newPassword,
       ipAddress,
+    );
+  }
+
+  @Patch('profile')
+  @UseGuards(AdminJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @Body() dto: AdminUpdateProfileDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminAuthService.updateProfile(
+      admin.sub,
+      dto.currentPassword,
+      dto.newEmail,
     );
   }
 }

@@ -330,6 +330,40 @@ export class AuthService {
     return await this.buildAuthResponse(user, assignment, tokens);
   }
 
+  // ── Business switching (fresh single-use challenge) ─────────────────────
+  async issueBusinessSelectionChallenge(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userAssignments: {
+          where: { status: 'active' },
+          include: { organization: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Account not found.');
+    }
+    if (user.userAssignments.length < 2) {
+      throw new BadRequestException(
+        'Business switching requires more than one organization.',
+      );
+    }
+
+    const selectionToken =
+      await this.jwtService.generateBusinessSelectionChallenge(user.id);
+    return {
+      selectionToken,
+      businesses: user.userAssignments.map((a) => ({
+        organizationId: a.organizationId,
+        organizationName: a.organization?.name,
+        role: a.role,
+        branchId: a.branchId,
+      })),
+    };
+  }
+
   // ── Select Business (called when user has multiple orgs) ─────────────────
   async selectBusiness(
     selectionToken: string,

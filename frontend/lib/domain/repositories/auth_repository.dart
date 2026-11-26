@@ -109,9 +109,14 @@ abstract class AuthRepository {
   /// Remove all stored tokens (clears session).
   Future<void> clearTokens();
 
-  /// Select business (for users in multiple orgs)
+  /// Issue a fresh single-use challenge for in-app business switching.
+  Future<Map<String, dynamic>> getBusinessSelectionChallenge(
+    String accessToken,
+  );
+
+  /// Select business (for users in multiple orgs).
   Future<Map<String, dynamic>> selectBusiness({
-    required String userId,
+    required String selectionToken,
     required String organizationId,
     required bool rememberMe,
   });

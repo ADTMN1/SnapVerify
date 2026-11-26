@@ -8,6 +8,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -51,7 +52,14 @@ export class PaymentController {
   @Roles(Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER)
   async verifyByReference(@Body() dto: VerifyReferenceDto, @Req() req: any) {
     const { sub: userId, organizationId, role, branchId } = req.user;
-    const userBranchId = role === 'OWNER' ? undefined : (branchId ?? undefined);
+    // A missing branch ID for non-OWNER staff is never treated as
+    // unrestricted access to every receiving account in the organization.
+    if (role !== Role.OWNER && !branchId) {
+      throw new ForbiddenException(
+        'You must be assigned to a branch to verify payments.',
+      );
+    }
+    const userBranchId = role === 'OWNER' ? undefined : branchId;
     return this.paymentService.verifyByReference(
       dto.referenceNumber,
       organizationId,
@@ -96,7 +104,14 @@ export class PaymentController {
     if (!file)
       throw new BadRequestException('Please select an image file to upload.');
     const { sub: userId, organizationId, role, branchId } = req.user;
-    const userBranchId = role === 'OWNER' ? undefined : (branchId ?? undefined);
+    // A missing branch ID for non-OWNER staff is never treated as
+    // unrestricted access to every receiving account in the organization.
+    if (role !== Role.OWNER && !branchId) {
+      throw new ForbiddenException(
+        'You must be assigned to a branch to verify payments.',
+      );
+    }
+    const userBranchId = role === 'OWNER' ? undefined : branchId;
     return this.paymentService.verifyByImage(
       file.buffer,
       file.mimetype,

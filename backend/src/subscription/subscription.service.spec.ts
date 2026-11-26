@@ -1,6 +1,8 @@
 import { BadRequestException, HttpException } from '@nestjs/common';
 import { CheckoutStatus, PaymentProvider } from '@prisma/client';
+import { validate } from 'class-validator';
 import { SubscriptionService } from './subscription.service';
+import { CreateSubscriptionCheckoutDto } from './dto/create-subscription-checkout.dto';
 import { NormalizedVerification } from '../payment/check-et/check-et.service';
 
 const checkout = {
@@ -22,6 +24,19 @@ const checkout = {
 const account = {
   accountNumber: '0912345678',
   accountName: 'abebaw',
+};
+
+const plan = {
+  id: 'one_month',
+  name: '1 Month',
+  price: 1500,
+  currency: 'ETB',
+  durationDays: 30,
+  verificationLimit: null,
+  maxUsers: null,
+  maxDevices: null,
+  isActive: true,
+  sortOrder: 1,
 };
 
 const raw = {
@@ -68,7 +83,7 @@ function verification(
   } as NormalizedVerification;
 }
 
-function build(attempts = 0) {
+function build(attempts = 0, planOverride = plan) {
   const tx = {
     paymentReceiptUsage: { create: jest.fn().mockResolvedValue({}) },
     subscription: {
@@ -82,6 +97,7 @@ function build(attempts = 0) {
 
   const prisma = {
     subscriptionCheckout: {
+      create: jest.fn(),
       findFirst: jest
         .fn()
         .mockResolvedValueOnce(checkout)
@@ -90,6 +106,9 @@ function build(attempts = 0) {
     },
     platformPaymentAccount: {
       findFirst: jest.fn().mockResolvedValue(account),
+    },
+    subscriptionPlan: {
+      findUnique: jest.fn().mockResolvedValue(planOverride),
     },
     activityLog: {
       count: jest.fn().mockResolvedValue(attempts),
@@ -230,5 +249,255 @@ describe('SubscriptionService payment verification hardening', () => {
       ),
     ).rejects.toThrow(HttpException);
     expect(checkEt.verifyReference).not.toHaveBeenCalled();
+  });
+});
+
+describe('CreateSubscriptionCheckoutDto dynamic plan ids', () => {
+  it('accepts all legacy plan ids', async () => {
+    for (const id of ['one_month', 'three_months', 'six_months', 'one_year']) {
+      const dto = Object.assign(new CreateSubscriptionCheckoutDto(), { planId: id });
+      expect(await validate(dto)).toEqual([]);
+    }
+  });
+
+  it('accepts database-created plan ids', async () => {
+    const dto = Object.assign(new CreateSubscriptionCheckoutDto(), {
+      planId: 'promo_2026_plan',
+    });
+    expect(await validate(dto)).toEqual([]);
+  });
+});
+
+describe('SubscriptionService dynamic plan checkout', () => {
+  const existingPlans = [
+    { id: 'one_month', price: 1500, currency: 'ETB' },
+    { id: 'three_months', price: 3000, currency: 'ETB' },
+    { id: 'six_months', price: 5000, currency: 'ETB' },
+    { id: 'one_year', price: 10000, currency: 'ETB' },
+  ];
+
+  const dynamicPlan = {
+    id: 'promo_2026_plan',
+    name: 'Promo 2026',
+    price: 777,
+    currency: 'ETB',
+    durationDays: 45,
+    verificationLimit: 12,
+    maxUsers: 3,
+    maxDevices: 2,
+    isActive: true,
+  };
+
+  function buildCheckoutService(planOverride = plan) {
+    const prisma = {
+      subscriptionPlan: {
+        findUnique: jest.fn().mockResolvedValue(planOverride),
+      },
+      subscriptionCheckout: {
+        create: jest.fn().mockResolvedValue({
+          ...checkout,
+          id: 'checkout-dynamic',
+          planName: planOverride.id,
+          amount: planOverride.price,
+          currency: planOverride.currency,
+        }),
+      },
+      platformPaymentAccount: {
+        findFirst: jest.fn().mockResolvedValue(account),
+      },
+    };
+
+    const service = new SubscriptionService(prisma as never, {} as never);
+    return { service, prisma };
+  }
+
+  it.each(existingPlans)(
+    'uses database terms for legacy plan $id',
+    async (planFixture) => {
+      const { service, prisma } = buildCheckoutService({
+        ...plan,
+        ...planFixture,
+      });
+
+      await service.createCheckout('user-1', 'org-1', planFixture.id);
+
+      expect(prisma.subscriptionPlan.findUnique).toHaveBeenCalledWith({
+        where: { id: planFixture.id },
+      });
+      expect(prisma.subscriptionCheckout.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          planName: planFixture.id,
+          amount: planFixture.price,
+          currency: planFixture.currency,
+          provider: PaymentProvider.TELEBIRR,
+        }),
+      });
+    },
+  );
+
+  it('checks out a database-created plan by its actual id', async () => {
+    const { service, prisma } = buildCheckoutService(dynamicPlan);
+
+    await service.createCheckout('user-1', 'org-1', dynamicPlan.id);
+
+    expect(prisma.subscriptionPlan.findUnique).toHaveBeenCalledWith({
+      where: { id: dynamicPlan.id },
+    });
+    expect(prisma.subscriptionCheckout.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planName: dynamicPlan.id,
+        amount: dynamicPlan.price,
+        currency: dynamicPlan.currency,
+        provider: PaymentProvider.TELEBIRR,
+      }),
+    });
+  });
+
+  it('rejects a nonexistent plan with a clear error', async () => {
+    const { service, prisma } = buildCheckoutService();
+    prisma.subscriptionPlan.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.createCheckout('user-1', 'org-1', 'missing_plan'),
+    ).rejects.toThrow(/does not exist/);
+    expect(prisma.subscriptionCheckout.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive plan with a clear error', async () => {
+    const { service, prisma } = buildCheckoutService({
+      ...dynamicPlan,
+      isActive: false,
+    });
+
+    await expect(
+      service.createCheckout('user-1', 'org-1', dynamicPlan.id),
+    ).rejects.toThrow(/is inactive/);
+    expect(prisma.subscriptionCheckout.create).not.toHaveBeenCalled();
+  });
+
+  it('uses database duration and limits when the payment is verified', async () => {
+    const { service, tx } = build(0, dynamicPlan);
+
+    await service.verifyCheckout(
+      'user-1',
+      'org-1',
+      checkout.id,
+      checkout.reference,
+    );
+
+    expect(tx.subscription.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planName: dynamicPlan.id,
+        startDate: expect.any(Date),
+        endDate: expect.any(Date),
+        verificationLimit: dynamicPlan.verificationLimit,
+        maxUsers: dynamicPlan.maxUsers,
+        maxDevices: dynamicPlan.maxDevices,
+      }),
+    });
+  });
+});
+
+describe('SubscriptionService duration-based expiration', () => {
+  const activation = new Date('2026-01-31T10:00:00.000Z');
+  const basePlan = {
+    id: 'duration_plan',
+    name: 'Duration Plan',
+    price: 1500,
+    currency: 'ETB',
+    durationDays: null as number | null,
+    durationMonths: null as number | null,
+    isLifetime: false,
+    verificationLimit: null,
+    maxUsers: null,
+    maxDevices: null,
+    isActive: true,
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(activation);
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('expires a five-month subscription five calendar months after activation', async () => {
+    const fiveMonthPlan = {
+      ...basePlan,
+      id: 'five_months',
+      durationMonths: 5,
+    };
+    const { service, tx } = build(0, fiveMonthPlan);
+
+    await service.verifyCheckout(
+      'user-1',
+      'org-1',
+      checkout.id,
+      checkout.reference,
+    );
+
+    expect(tx.subscription.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planName: 'five_months',
+        startDate: activation,
+        endDate: new Date('2026-06-30T10:00:00.000Z'),
+      }),
+    });
+  });
+
+  it.each([
+    ['1 Month', 30],
+    ['3 Months', 90],
+    ['6 Months', 180],
+    ['1 Year', 360],
+  ])('expires the %s legacy plan from its database durationDays', async (_label, days) => {
+    const legacyPlan = {
+      ...basePlan,
+      id: 'legacy_duration_plan',
+      durationDays: days,
+    };
+    const { service, tx } = build(0, legacyPlan);
+
+    await service.verifyCheckout(
+      'user-1',
+      'org-1',
+      checkout.id,
+      checkout.reference,
+    );
+
+    expect(tx.subscription.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planName: 'legacy_duration_plan',
+        startDate: activation,
+        endDate: new Date(activation.getTime() + days * 86_400_000),
+      }),
+    });
+  });
+
+  it('keeps an explicitly configured lifetime subscription without expiry', async () => {
+    const lifetimePlan = {
+      ...basePlan,
+      id: 'lifetime_plan',
+      isLifetime: true,
+    };
+    const { service, tx } = build(0, lifetimePlan);
+
+    await service.verifyCheckout(
+      'user-1',
+      'org-1',
+      checkout.id,
+      checkout.reference,
+    );
+
+    expect(tx.subscription.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planName: 'lifetime_plan',
+        startDate: activation,
+        endDate: null,
+      }),
+    });
   });
 });

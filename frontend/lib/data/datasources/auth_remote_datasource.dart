@@ -553,10 +553,29 @@ class AuthRemoteDatasource {
     }
   }
 
-  // ── Select Business ──────────────────────────────────────────────────────
+  // ── Business selection ───────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getBusinessSelectionChallenge(
+    String accessToken,
+  ) async {
+    try {
+      final response = await client.post(
+        Uri.parse('${AppConstants.baseUrl}/auth/business-selection-challenge'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(_timeout);
+      _throwIfError(response, 'getBusinessSelectionChallenge');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      _handleConnectionError(e, 'getBusinessSelectionChallenge');
+      rethrow;
+    }
+  }
 
   Future<Map<String, dynamic>> selectBusiness({
-    required String userId,
+    required String selectionToken,
     required String organizationId,
     required bool rememberMe,
   }) async {
@@ -565,7 +584,7 @@ class AuthRemoteDatasource {
         Uri.parse('${AppConstants.baseUrl}/auth/select-business'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'userId': userId,
+          'selectionToken': selectionToken,
           'organizationId': organizationId,
           'rememberMe': rememberMe,
         }),

@@ -211,6 +211,46 @@ export class AdminAuthService {
   }
 
   /**
+   * Update the signed-in admin's profile (email). Requires the current
+   * password to authorize the change.
+   */
+  async updateProfile(
+    adminId: string,
+    currentPassword: string,
+    newEmail?: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: adminId } });
+    if (!user || !user.passwordHash) {
+      throw new BadRequestException('Admin not found');
+    }
+
+    const { valid: isCurrentValid } = await this.passwordService.verify(
+      user.passwordHash,
+      currentPassword,
+    );
+    if (!isCurrentValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const normalized = newEmail?.trim().toLowerCase();
+    if (normalized && normalized !== user.email) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email: normalized },
+      });
+      if (existing && existing.id !== adminId) {
+        throw new BadRequestException('Email already in use');
+      }
+      await this.prisma.user.update({
+        where: { id: adminId },
+        data: { email: normalized },
+      });
+      this.logger.log(`Admin changed email: id=${adminId}`);
+    }
+
+    return this.getCurrentAdmin(adminId);
+  }
+
+  /**
    * Admin logout - revoke refresh token.
    */
   async logout(refreshToken: string, adminId: string, ipAddress?: string) {

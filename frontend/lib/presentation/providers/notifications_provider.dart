@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 import '../../data/datasources/notifications_remote_datasource.dart';
 import '../../domain/entities/notification_item.dart';
@@ -7,7 +6,7 @@ import 'auth_provider.dart';
 
 final notificationsDatasourceProvider =
     Provider<NotificationsRemoteDatasource>((ref) {
-  return NotificationsRemoteDatasource(client: http.Client());
+  return NotificationsRemoteDatasource(client: ref.watch(httpClientProvider));
 });
 
 /// Notification feed for the current user.

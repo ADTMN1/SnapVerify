@@ -26,6 +26,7 @@ import {
   RETRYABLE_PROVIDER_ERRORS,
 } from '../payment/provider-error';
 import { subscriptionDto, usagePeriodStart } from './subscription-usage';
+import { calculateEndDate } from './plan-duration';
 
 const CHECKOUT_TTL_MINUTES = 30;
 const VERIFY_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -40,54 +41,6 @@ function maskReference(value: string): string {
   return `${value.slice(0, 2)}****${value.slice(-2)}`;
 }
 
-const PLANS = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    durationDays: null,
-    verificationLimit: 20,
-    maxUsers: 5,
-    maxDevices: 10,
-  },
-  {
-    id: 'one_month',
-    name: '1 Month',
-    price: 1500,
-    durationDays: 30,
-    verificationLimit: null,
-    maxUsers: null,
-    maxDevices: null,
-  },
-  {
-    id: 'three_months',
-    name: '3 Months',
-    price: 3000,
-    durationDays: 90,
-    verificationLimit: null,
-    maxUsers: null,
-    maxDevices: null,
-  },
-  {
-    id: 'six_months',
-    name: '6 Months',
-    price: 5000,
-    durationDays: 180,
-    verificationLimit: null,
-    maxUsers: null,
-    maxDevices: null,
-  },
-  {
-    id: 'one_year',
-    name: '1 Year',
-    price: 10000,
-    durationDays: 360,
-    verificationLimit: null,
-    maxUsers: null,
-    maxDevices: null,
-  },
-] as const;
-
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
@@ -97,11 +50,11 @@ export class SubscriptionService {
     private readonly checkEt: CheckEtService,
   ) {}
 
-  getPlans() {
-    return PLANS.map((plan) => ({
-      ...plan,
-      currency: 'ETB',
-    }));
+  async getPlans() {
+    return this.prisma.subscriptionPlan.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
   }
 
   async getCurrent(organizationId: string) {
@@ -122,11 +75,13 @@ export class SubscriptionService {
   }
 
   async activateFree(organizationId: string) {
-    const plan = PLANS.find((p) => p.id === 'free');
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: 'free' },
+    });
     if (!plan) throw new BadRequestException('Unknown subscription plan');
 
     const now = new Date();
-    const endDate = null;
+    const endDate = calculateEndDate(plan, now);
 
     await this.prisma.$transaction([
       this.prisma.subscription.updateMany({
@@ -155,8 +110,20 @@ export class SubscriptionService {
   }
 
   async createCheckout(userId: string, organizationId: string, planId: string) {
-    const plan = PLANS.find((p) => p.id === planId);
-    if (!plan) throw new BadRequestException('Unknown subscription plan');
+    const normalizedPlanId = planId.trim();
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: normalizedPlanId },
+    });
+    if (!plan) {
+      throw new BadRequestException(
+        `Subscription plan "${normalizedPlanId}" does not exist`,
+      );
+    }
+    if (!plan.isActive) {
+      throw new BadRequestException(
+        `Subscription plan "${normalizedPlanId}" is inactive`,
+      );
+    }
 
     const account = await this.platformAccount();
     const reference = `SV-SUB-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
@@ -168,6 +135,7 @@ export class SubscriptionService {
         userId,
         planName: plan.id,
         amount: plan.price,
+        currency: plan.currency,
         provider: PaymentProvider.TELEBIRR,
         reference,
         expiresAt,
@@ -435,14 +403,18 @@ export class SubscriptionService {
       );
     }
 
-    const plan = PLANS.find((p) => p.id === checkout.planName);
-    if (!plan) throw new BadRequestException('Unknown subscription plan');
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: checkout.planName },
+    });
+    if (!plan) {
+      throw new BadRequestException('Subscription plan does not exist');
+    }
+    if (!plan.isActive) {
+      throw new BadRequestException('Subscription plan is no longer active');
+    }
 
     const now = new Date();
-    const endDate =
-      plan.durationDays === null
-        ? null
-        : new Date(now.getTime() + plan.durationDays * 86_400_000);
+    const endDate = calculateEndDate(plan, now);
 
     try {
       await this.prisma.$transaction(async (tx) => {

@@ -75,7 +75,7 @@ class PaymentRemoteDatasource {
 
     http.Response response;
     try {
-      final streamed = await request.send().timeout(
+      final streamed = await client.send(request).timeout(
         _timeout,
         onTimeout: () => throw Exception(
           'Timed out after ${_timeout.inSeconds}s — '

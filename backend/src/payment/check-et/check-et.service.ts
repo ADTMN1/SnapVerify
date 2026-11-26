@@ -159,6 +159,19 @@ const BANKS_REQUIRING_ACCOUNT_NUMBER: ReadonlySet<CheckEtBank> = new Set([
   'boa',
 ]);
 
+/**
+ * Whether verifyReference forwards the receiving account number for this
+ * provider. For other providers the upstream request is (bank, reference)
+ * only, so probing a second account of the same provider would send an
+ * IDENTICAL request and cannot produce new evidence.
+ */
+export function checkEtForwardsAccountNumber(
+  provider: PaymentProvider,
+): boolean {
+  const bank = SNAP_TO_CHECK_ET_BANK[provider];
+  return !!bank && BANKS_REQUIRING_ACCOUNT_NUMBER.has(bank);
+}
+
 const SUCCESSFUL_RECEIPT_STATUSES: ReadonlySet<string> = new Set([
   'completed',
   'success',

@@ -70,7 +70,10 @@ describe('AdminJwtService — dedicated secrets', () => {
       'admin@example.com',
       'SUPER_ADMIN',
     );
-    const data = prisma.refreshToken.create.mock.calls[0][0].data;
+    const calls = prisma.refreshToken.create.mock.calls as Array<
+      [{ data: { token: string; organizationId: string } }]
+    >;
+    const data = calls[0][0].data;
 
     expect(data.token).toBe(hmacAdminRefreshToken(result.refreshToken));
     expect(data.token).not.toBe(result.refreshToken);
@@ -89,6 +92,8 @@ describe('AdminJwtService — dedicated secrets', () => {
         id: 'admin-1',
         email: 'admin@example.com',
         status: 'active',
+        isPlatformAdmin: true,
+        userAssignments: [],
       },
     });
 
@@ -107,7 +112,13 @@ describe('AdminJwtService — dedicated secrets', () => {
       organizationId: 'org-1',
       role: 'OWNER',
       expiresAt: new Date(Date.now() + 60_000),
-      user: { id: 'user-1', email: 'owner@example.com', status: 'active' },
+      user: {
+        id: 'user-1',
+        email: 'owner@example.com',
+        status: 'active',
+        isPlatformAdmin: false,
+        userAssignments: [],
+      },
     });
 
     await expect(
@@ -120,5 +131,82 @@ describe('AdminJwtService — dedicated secrets', () => {
     expect(jwt.verify).toHaveBeenCalledWith('admin-access-token', {
       secret: ADMIN_ACCESS_SECRET,
     });
+  });
+
+  it('preserves the remaining refresh lifetime instead of extending it', async () => {
+    const remaining = 3 * 60_000;
+    prisma.refreshToken.findUnique.mockResolvedValueOnce({
+      id: 'rt-3',
+      token: hmacAdminRefreshToken('admin-refresh-token'),
+      organizationId: 'admin',
+      role: 'SUPER_ADMIN',
+      expiresAt: new Date(Date.now() + remaining),
+      user: {
+        id: 'admin-1',
+        email: 'admin@example.com',
+        status: 'active',
+        isPlatformAdmin: true,
+        userAssignments: [],
+      },
+    });
+
+    await service.refreshTokens('admin-refresh-token');
+
+    const calls = prisma.refreshToken.create.mock.calls as Array<
+      [{ data: { expiresAt: Date } }]
+    >;
+    const createData = calls[0][0].data;
+    const ttl = createData.expiresAt.getTime() - Date.now();
+    expect(ttl).toBeLessThanOrEqual(remaining);
+    expect(ttl).toBeGreaterThan(remaining - 5_000);
+  });
+
+  it('rejects refresh for a demoted platform admin and deletes the token', async () => {
+    prisma.refreshToken.findUnique.mockResolvedValueOnce({
+      id: 'rt-4',
+      token: hmacAdminRefreshToken('admin-refresh-token'),
+      organizationId: 'admin',
+      role: 'SUPER_ADMIN',
+      expiresAt: new Date(Date.now() + 60_000),
+      user: {
+        id: 'admin-1',
+        email: 'admin@example.com',
+        status: 'active',
+        isPlatformAdmin: false,
+        userAssignments: [],
+      },
+    });
+
+    await expect(
+      service.refreshTokens('admin-refresh-token'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.refreshToken.delete).toHaveBeenCalledWith({
+      where: { id: 'rt-4' },
+    });
+    expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it('re-issues the current role when an OWNER admin refreshes', async () => {
+    prisma.refreshToken.findUnique.mockResolvedValueOnce({
+      id: 'rt-5',
+      token: hmacAdminRefreshToken('admin-refresh-token'),
+      organizationId: 'admin',
+      role: 'SUPER_ADMIN',
+      expiresAt: new Date(Date.now() + 60_000),
+      user: {
+        id: 'admin-1',
+        email: 'admin@example.com',
+        status: 'active',
+        isPlatformAdmin: false,
+        userAssignments: [{ role: 'OWNER', status: 'active' }],
+      },
+    });
+
+    await service.refreshTokens('admin-refresh-token');
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'BUSINESS_OWNER' }),
+      expect.any(Object),
+    );
   });
 });

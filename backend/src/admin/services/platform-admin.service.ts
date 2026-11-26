@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentStatus, Prisma } from '@prisma/client';
+import { validatePlanDuration } from '../../subscription/plan-duration';
 
 interface ListParams {
   search?: string;
@@ -318,5 +319,132 @@ export class PlatformAdminService {
         organization: { select: { id: true, name: true } },
       },
     });
+  }
+
+  async listPlans() {
+    return this.prisma.subscriptionPlan.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
+    });
+  }
+
+  async createPlan(data: {
+    id?: string;
+    name: string;
+    price: number;
+    currency?: string;
+    durationDays?: number | null;
+    durationMonths?: number | null;
+    isLifetime?: boolean;
+    verificationLimit?: number | null;
+    maxUsers?: number | null;
+    maxDevices?: number | null;
+    isActive?: boolean;
+    sortOrder?: number;
+  }) {
+    validatePlanDuration(data);
+    let id = data.id?.trim();
+    if (!id) {
+      const base =
+        data.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '') || 'plan';
+      id = base;
+      const existing = await this.prisma.subscriptionPlan.findUnique({
+        where: { id },
+      });
+      if (existing) {
+        id = `${base}_${Math.random().toString(36).slice(2, 6)}`;
+      }
+    }
+
+    const created = await this.prisma.subscriptionPlan.create({
+      data: {
+        id,
+        name: data.name,
+        price: data.price,
+        currency: data.currency ?? 'ETB',
+        durationDays: data.durationDays ?? null,
+        durationMonths: data.durationMonths ?? null,
+        isLifetime: data.isLifetime ?? false,
+        verificationLimit: data.verificationLimit ?? null,
+        maxUsers: data.maxUsers ?? null,
+        maxDevices: data.maxDevices ?? null,
+        isActive: data.isActive ?? true,
+        sortOrder: data.sortOrder ?? 0,
+      },
+    });
+    this.logger.log(`Platform admin created subscription plan ${created.id}`);
+    return created;
+  }
+
+  async updatePlan(id: string, data: {
+    name?: string;
+    price?: number;
+    currency?: string;
+    durationDays?: number | null;
+    durationMonths?: number | null;
+    isLifetime?: boolean;
+    verificationLimit?: number | null;
+    maxUsers?: number | null;
+    maxDevices?: number | null;
+    isActive?: boolean;
+    sortOrder?: number;
+  }) {
+    const existing = await this.prisma.subscriptionPlan.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Subscription plan not found');
+
+    const durationFields = [
+      'durationDays',
+      'durationMonths',
+      'isLifetime',
+    ] as const;
+    if (durationFields.some((field) => data[field] !== undefined)) {
+      validatePlanDuration({
+        durationDays:
+          data.durationDays !== undefined
+            ? data.durationDays
+            : existing.durationDays,
+        durationMonths:
+          data.durationMonths !== undefined
+            ? data.durationMonths
+            : existing.durationMonths,
+        isLifetime:
+          data.isLifetime !== undefined
+            ? data.isLifetime
+            : existing.isLifetime,
+      });
+    }
+
+    const updated = await this.prisma.subscriptionPlan.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.price !== undefined ? { price: data.price } : {}),
+        ...(data.currency !== undefined ? { currency: data.currency } : {}),
+        ...(data.durationDays !== undefined
+          ? { durationDays: data.durationDays }
+          : {}),
+        ...(data.durationMonths !== undefined
+          ? { durationMonths: data.durationMonths }
+          : {}),
+        ...(data.isLifetime !== undefined
+          ? { isLifetime: data.isLifetime }
+          : {}),
+        ...(data.verificationLimit !== undefined
+          ? { verificationLimit: data.verificationLimit }
+          : {}),
+        ...(data.maxUsers !== undefined ? { maxUsers: data.maxUsers } : {}),
+        ...(data.maxDevices !== undefined
+          ? { maxDevices: data.maxDevices }
+          : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+        ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+      },
+    });
+    this.logger.log(`Platform admin updated subscription plan ${id}`);
+    return updated;
   }
 }

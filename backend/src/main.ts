@@ -78,7 +78,7 @@ export function resolveCorsConfig(
   return {
     origin: allowedOrigins,
     credentials: allowCredentials,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   };
 }

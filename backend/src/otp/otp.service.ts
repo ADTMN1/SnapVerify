@@ -87,7 +87,7 @@ export class OtpService {
     });
 
     await this.emailService.sendOtpEmail(normalized, code, purpose);
-    this.logger.debug(`[DEV ONLY] OTP for ${normalized} (${purpose}): ${code}`);
+    this.logger.debug(`[DEV ONLY] OTP generated for ${normalized} (${purpose})`);
   }
 
   /**

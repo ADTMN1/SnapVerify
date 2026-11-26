@@ -29,6 +29,7 @@ import {
   NormalizedVerification,
   CHECK_ET_SUPPORTED_PDF_MIMES,
   SNAP_TO_CHECK_ET_BANK,
+  checkEtForwardsAccountNumber,
 } from './check-et/check-et.service';
 
 /**
@@ -41,6 +42,14 @@ import {
 const PAYMENT_REFERENCE_INDEX_NAME =
   'payments_organizationId_normalizedTransactionId_key';
 const PAYMENT_REFERENCE_FIELDS = ['organizationId', 'normalizedTransactionId'];
+
+/**
+ * Display-only label for an OCR receipt the provider returned without a
+ * transaction reference. It contains a per-attempt timestamp and is therefore
+ * NEVER a transaction identity: rows carrying it are FAILED, and approval with
+ * such a reference is rejected as a defense-in-depth measure.
+ */
+const SYNTHETIC_REFERENCE_PATTERN = /^OCR-\d+$/;
 
 const RECHECK_ACTION = 'RECHECKED';
 const RECHECK_MISMATCH_ACTION = 'RECHECK_MISMATCH';
@@ -366,7 +375,10 @@ export class PaymentService {
       if (maskedSuffixMatch) {
         const extractedSuffix = maskedSuffixMatch[1];
         if (account.suffix === extractedSuffix) return true;
-        if (account.suffix.endsWith(extractedSuffix)) {
+        if (
+          extractedSuffix.length >= 4 &&
+          account.suffix.endsWith(extractedSuffix)
+        ) {
           // Heuristic only: partial digits of a masked number. Logged so that
           // reliance on this tier is auditable.
           this.logger.warn(
@@ -400,7 +412,10 @@ export class PaymentService {
           (v): v is string => !!v,
         );
         const extractedSuffix = maskedTailMatch[1];
-        if (candidates.some((c) => c.endsWith(extractedSuffix))) {
+        if (
+          extractedSuffix.length >= 4 &&
+          candidates.some((c) => c.endsWith(extractedSuffix))
+        ) {
           this.logger.warn(
             `[_isPaymentToAccount] Matched via provider-masked wallet tail (partial evidence, no stored suffix)`,
           );
@@ -436,6 +451,45 @@ export class PaymentService {
     if (!value) return 'null';
     if (value.length <= 4) return '****';
     return value.substring(0, 2) + '****' + value.substring(value.length - 2);
+  }
+
+  /**
+   * Most-specific destination first: branch-scoped accounts before
+   * organization-wide ones. Ordering only — the candidate set is unchanged.
+   */
+  private _orderAccountsBySpecificity(
+    accounts: PaymentAccount[],
+  ): PaymentAccount[] {
+    return [...accounts].sort(
+      (a, b) => (a.branchId ? 0 : 1) - (b.branchId ? 0 : 1),
+    );
+  }
+
+  /**
+   * Plan the upstream probes for a reference verification.
+   *
+   * Check.et receives the receiving account number only for banks that
+   * require it (CBE, BOA). For every other provider the request is
+   * (bank, reference), so a second account of the same provider would send
+   * the exact same request and consume quota without adding any evidence.
+   * Accounts that map to an identical upstream request are therefore probed
+   * once, while every genuinely distinct request is still executed.
+   */
+  private _planAccountProbes(
+    accounts: PaymentAccount[],
+  ): PaymentAccount[] {
+    const seen = new Set<string>();
+    const probes: PaymentAccount[] = [];
+    for (const account of this._orderAccountsBySpecificity(accounts)) {
+      const accountNumber = checkEtForwardsAccountNumber(account.provider)
+        ? (this._normalizeAccountNumber(account.accountNumber) ?? '')
+        : '';
+      const key = `${account.provider}|${accountNumber}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      probes.push(account);
+    }
+    return probes;
   }
 
   /**
@@ -777,6 +831,41 @@ export class PaymentService {
   }
 
   /**
+   * Shared post-provider conclusion for a verification that matched an
+   * EXISTING verified payment.
+   *
+   * A fresh provider rejection keeps the original record (RECHECK_FAILED);
+   * a confirmation is resolved through _resolveExistingRecheck. Both entry
+   * points (reference and receipt/image) use this so the duplicate rules
+   * cannot drift apart.
+   */
+  private async _concludeExistingRecheck(
+    existingPayment: any,
+    raw: any,
+    input: {
+      organizationId: string;
+      userId: string;
+      referenceNumber: string;
+      amount?: number | null;
+      provider?: string | null;
+      verification?: Partial<NormalizedVerification> | null;
+    },
+  ) {
+    if (!raw?.success) {
+      await this._writeVerificationAudit({
+        organizationId: input.organizationId,
+        paymentId: existingPayment.id,
+        userId: input.userId,
+        action: RECHECK_FAILED_ACTION,
+        reason: 'Fresh provider check did not confirm the previous payment.',
+        riskScore: 80,
+      });
+      return this._recheckFailedResponse(existingPayment, input.referenceNumber);
+    }
+    return this._resolveExistingRecheck(existingPayment, input);
+  }
+
+  /**
    * Client-facing copy of the provider result: full receiving-account
    * numbers are ALWAYS masked; only the masked evidence is exposed to the
    * requesting staff member.
@@ -821,7 +910,7 @@ export class PaymentService {
     const normalizedReference = normalizeTransactionId(referenceNumber);
     const suppliedAmount = amount && amount > 0 ? amount : null;
 
-    const existingPayment = await this._findExistingVerifiedPayment(
+    let existingPayment = await this._findExistingVerifiedPayment(
       organizationId,
       referenceNumber,
       normalizedReference,
@@ -832,7 +921,8 @@ export class PaymentService {
         amount: suppliedAmount,
         provider,
       });
-      if (cachedAssessment.ok) {
+      const storedProvider = this._storedBankProvider(existingPayment);
+      if (cachedAssessment.ok && (!storedProvider || provider)) {
         await this._writeVerificationAudit({
           organizationId,
           paymentId: existingPayment.id,
@@ -923,6 +1013,7 @@ export class PaymentService {
     let matchedAccount: PaymentAccount | null = null;
     let raw: any = null;
     let providerConfirmedUnmatchedRaw: any = null;
+    let providerConfirmedTransactionId: string | null = null;
     const authoritativeNegativeProviders = new Set<PaymentProvider>();
     let hadAnyApiSuccess = false;
     let lastUpstreamError: string | null = null;
@@ -938,9 +1029,15 @@ export class PaymentService {
         `accounts=${candidateAccounts.length}`,
     );
 
+    // Probe each DISTINCT upstream request once. Accounts of providers that
+    // do not forward an account number collapse to a single call, avoiding
+    // redundant Check.et requests (and quota use) when an organization has
+    // several accounts for the same provider.
+    const probeAccounts = this._planAccountProbes(candidateAccounts);
+
     // SECURITY: the client-supplied suffix is never sent upstream. Receiving-
     // account evidence comes exclusively from the REGISTERED account rows.
-    for (const account of candidateAccounts) {
+    for (const account of probeAccounts) {
       try {
         const verification = await this.checkEt.verifyReference(
           account.provider,
@@ -952,45 +1049,14 @@ export class PaymentService {
         // Check.et's own branch-scoped duplicate detection.
         if (verification.duplicate) {
           if (existingPayment) {
-            const assessment = this._assessExistingIdentity(existingPayment, {
+            return this._resolveExistingRecheck(existingPayment, {
+              organizationId,
+              userId,
+              referenceNumber,
               amount: suppliedAmount,
               provider,
               verification,
             });
-            if (assessment.ok) {
-              await this._writeVerificationAudit({
-                organizationId,
-                paymentId: existingPayment.id,
-                userId,
-                action: RECHECK_ACTION,
-                reason: 'Provider-confirmed recheck of a previously verified payment.',
-              });
-              return this._recheckResponse(existingPayment);
-            }
-            if (assessment.mismatch) {
-              await this._writeVerificationAudit({
-                organizationId,
-                paymentId: existingPayment.id,
-                userId,
-                action: RECHECK_MISMATCH_ACTION,
-                reason: assessment.reason,
-                riskScore: 80,
-              });
-              return this._identityMismatchResponse(
-                assessment.reason,
-                referenceNumber,
-                verification.transactionDate,
-              );
-            }
-            await this._writeVerificationAudit({
-              organizationId,
-              paymentId: existingPayment.id,
-              userId,
-              action: RECHECK_FAILED_ACTION,
-              reason: assessment.reason,
-              riskScore: 80,
-            });
-            return this._recheckFailedResponse(existingPayment, referenceNumber);
           }
           await this._writeVerificationAudit({
             organizationId,
@@ -1002,15 +1068,37 @@ export class PaymentService {
           return this._providerDuplicateResponse(referenceNumber, verification);
         }
 
-        if (
-          verification.success &&
-          this._isPaymentToVerification(verification, account)
-        ) {
-          raw = this._toRawShape(verification);
-          matchedAccount = account;
-          break;
-        }
         if (verification.success) {
+          // Which accounts the answer may be attributed to depends on the
+          // request that produced it:
+          //
+          //  - Account-specific probes (CBE, BOA forward the receiving
+          //    account number): the provider looked the destination up for
+          //    THAT number, so a success belongs to the probed account.
+          //    Matching it against other registered accounts could approve
+          //    on weaker (name-only) evidence for a different destination.
+          //  - Shared probes (all other providers send bank + reference):
+          //    the answer is not tied to the account that happened to be
+          //    probed, so match the provider-reported destination against
+          //    ALL registered candidate accounts (branch-scoped first).
+          const matchCandidates = checkEtForwardsAccountNumber(account.provider)
+            ? [account]
+            : this._orderAccountsBySpecificity(candidateAccounts);
+          const match = matchCandidates.find((candidate) =>
+            this._isPaymentToVerification(verification, candidate),
+          );
+          if (match) {
+            // Reconcile using the provider-confirmed transaction reference
+            // (Check.et's transaction_number), not the submitted reference,
+            // so the same provider transaction verified under a different
+            // submitted format is recognized as one transaction.
+            providerConfirmedTransactionId =
+              verification.transactionNumber ?? null;
+            raw = this._toRawShape(verification);
+            matchedAccount = match;
+            break;
+          }
+
           // Provider CONFIRMED the transaction but it went to a different
           // account. This is the most informative failure evidence — keep it
           // so the final message reflects the actual provider verdict
@@ -1113,57 +1201,50 @@ export class PaymentService {
       `[verifyByReference] outcome=${raw?.success ? 'VERIFIED' : 'FAILED'} matched=${matchedAccount?.provider ?? 'none'}`,
     );
 
-    if (existingPayment) {
-      if (!raw?.success) {
-        await this._writeVerificationAudit({
+    // Reconcile the provider-confirmed transaction reference with the
+    // submitted reference: the same provider transaction verified under a
+    // different submitted format is a duplicate of the already-verified
+    // payment (stored under the provider-confirmed reference), not a new
+    // transaction. An identical reference string from a different provider
+    // is not treated as the same transaction. Skipped when the provider
+    // reference equals the submitted one, since the pre-check already covers
+    // that case.
+    if (
+      providerConfirmedTransactionId &&
+      !existingPayment &&
+      normalizeTransactionId(providerConfirmedTransactionId) !==
+        normalizedReference
+    ) {
+      const providerNormalized = normalizeTransactionId(
+        providerConfirmedTransactionId,
+      );
+      if (providerNormalized) {
+        const providerExisting = await this._findExistingVerifiedPayment(
           organizationId,
-          paymentId: existingPayment.id,
-          userId,
-          action: RECHECK_FAILED_ACTION,
-          reason: 'Fresh provider check did not confirm the previous payment.',
-          riskScore: 80,
-        });
-        return this._recheckFailedResponse(existingPayment, referenceNumber);
+          providerConfirmedTransactionId,
+          providerNormalized,
+        );
+        if (
+          providerExisting &&
+          this._bankProviderMatches(
+            this._storedBankProvider(providerExisting),
+            raw?.provider ?? null,
+          ) !== false
+        ) {
+          existingPayment = providerExisting;
+        }
       }
-      const assessment = this._assessExistingIdentity(existingPayment, {
+    }
+
+    if (existingPayment) {
+      return this._concludeExistingRecheck(existingPayment, raw, {
+        organizationId,
+        userId,
+        referenceNumber,
         amount: suppliedAmount,
         provider,
         verification: this._verifyShapeFromRaw(raw),
       });
-      if (assessment.ok) {
-        await this._writeVerificationAudit({
-          organizationId,
-          paymentId: existingPayment.id,
-          userId,
-          action: RECHECK_ACTION,
-          reason: 'Provider-confirmed recheck of a previously verified payment.',
-        });
-        return this._recheckResponse(existingPayment);
-      }
-      if (assessment.mismatch) {
-        await this._writeVerificationAudit({
-          organizationId,
-          paymentId: existingPayment.id,
-          userId,
-          action: RECHECK_MISMATCH_ACTION,
-          reason: assessment.reason,
-          riskScore: 80,
-        });
-        return this._identityMismatchResponse(
-          assessment.reason,
-          referenceNumber,
-          existingPayment.paymentDate?.toISOString() ?? null,
-        );
-      }
-      await this._writeVerificationAudit({
-        organizationId,
-        paymentId: existingPayment.id,
-        userId,
-        action: RECHECK_FAILED_ACTION,
-        reason: assessment.reason,
-        riskScore: 80,
-      });
-      return this._recheckFailedResponse(existingPayment, referenceNumber);
     }
 
     if (!raw) {
@@ -1180,7 +1261,7 @@ export class PaymentService {
       userId,
       {
         method: 'REFERENCE',
-        transactionId: referenceNumber,
+        transactionId: providerConfirmedTransactionId ?? referenceNumber,
         amount: suppliedAmount,
         provider,
       },
@@ -1199,8 +1280,9 @@ export class PaymentService {
    */
   private _resolveReceiptVerificationParams(
     paymentAccounts: PaymentAccount[],
+    userBranchId?: string | null,
   ): { bankHint?: 'cbe' | 'boa'; accountNumber?: string } {
-    const requiring = paymentAccounts
+    let requiring = paymentAccounts
       .map((account) => {
         const bankHint = SNAP_TO_CHECK_ET_BANK[account.provider];
         if (bankHint !== 'cbe' && bankHint !== 'boa') return null;
@@ -1226,6 +1308,28 @@ export class PaymentService {
 
     if (requiring.length === 0) {
       return {};
+    }
+
+    // Selection preference: when the caller belongs to a branch, a
+    // branch-scoped account is the more specific registered destination.
+    // Organization-wide accounts are ignored for a bank only when a
+    // branch-scoped account for the SAME bank exists, so the destination
+    // stays unambiguous. Verification still runs against Check.et, which
+    // must confirm the receipt really was paid to the selected account —
+    // this never approves an unconfirmed payment.
+    if (userBranchId) {
+      const branchBanks = new Set(
+        requiring
+          .filter((r) => r.account.branchId === userBranchId)
+          .map((r) => r.bankHint),
+      );
+      if (branchBanks.size > 0) {
+        requiring = requiring.filter(
+          (r) =>
+            r.account.branchId === userBranchId ||
+            !branchBanks.has(r.bankHint),
+        );
+      }
     }
 
     const missing = requiring.find((r) => !r.accountNumber);
@@ -1400,7 +1504,7 @@ export class PaymentService {
     }
 
     const { bankHint, accountNumber } =
-      this._resolveReceiptVerificationParams(paymentAccounts);
+      this._resolveReceiptVerificationParams(paymentAccounts, userBranchId);
 
     let verification: NormalizedVerification | null = null;
     try {
@@ -1432,13 +1536,19 @@ export class PaymentService {
       throw e;
     }
 
-    const verificationReference =
-      verification.transactionNumber ?? `OCR-${Date.now()}`;
-    const verificationNormalized = normalizeTransactionId(verificationReference);
+    // A provider-reported transaction reference is the ONLY stable identity
+    // for an OCR/PDF verification. The former timestamp fallback
+    // (`OCR-${Date.now()}`) produced a different reference on every attempt,
+    // so the same receipt could be approved repeatedly without ever tripping
+    // duplicate detection. Synthetic labels are now display-only and are
+    // never used as a stored duplicate key.
+    const providerReference = verification.transactionNumber?.trim() || null;
+    const receiptLabel = providerReference ?? `OCR-${Date.now()}`;
+    const verificationNormalized = normalizeTransactionId(providerReference);
     const existingPayment = verificationNormalized
       ? await this._findExistingVerifiedPayment(
           organizationId,
-          verificationReference,
+          providerReference!,
           verificationNormalized,
         )
       : null;
@@ -1457,7 +1567,7 @@ export class PaymentService {
         return this._resolveExistingRecheck(existingPayment, {
           organizationId,
           userId,
-          referenceNumber: verificationReference,
+          referenceNumber: providerReference!,
           amount: verificationAmount,
           provider: verification.provider,
           verification,
@@ -1470,19 +1580,35 @@ export class PaymentService {
         reason: 'Provider reported a duplicate with no local verified payment.',
         riskScore: 80,
       });
-      return this._providerDuplicateResponse(verificationReference, verification);
+      return this._providerDuplicateResponse(receiptLabel, verification);
     }
 
     let raw: any = this._toRawShape(verification);
     let matchedAccount: PaymentAccount | null = null;
 
-    if (verification.success) {
+    if (verification.success && !providerReference) {
+      // Fail closed: without a provider reference the receipt has no stable
+      // identity, so approving it could record (and re-record) the same
+      // payment indefinitely. The user can still verify by reference number.
+      raw = {
+        ...raw,
+        success: false,
+        reason:
+          'The provider confirmed this receipt but did not return a transaction reference, so it cannot be recorded safely. Please verify using the transaction reference number instead.',
+      };
+      this.logger.warn(
+        '[verifyByImage] provider-confirmed receipt without a transaction reference — refusing to record',
+      );
+    } else if (verification.success) {
       // Provider-confirmed transaction. Approval additionally requires the
-      // receiver evidence to agree with a REGISTERED account.
+      // receiver evidence to agree with a REGISTERED account (branch-scoped
+      // accounts preferred when the caller belongs to a branch).
       const detectedProvider = verification.provider;
-      const accountsToTry = detectedProvider
-        ? paymentAccounts.filter((a) => a.provider === detectedProvider)
-        : paymentAccounts;
+      const accountsToTry = this._orderAccountsBySpecificity(
+        detectedProvider
+          ? paymentAccounts.filter((a) => a.provider === detectedProvider)
+          : paymentAccounts,
+      );
 
       for (const account of accountsToTry) {
         if (this._isPaymentToVerification(verification, account)) {
@@ -1502,28 +1628,22 @@ export class PaymentService {
     }
 
     if (existingPayment) {
-      if (!verification.success || !matchedAccount) {
-        await this._writeVerificationAudit({
+      // A confirmation without a matched registered account is not a
+      // confirmation (raw.success was already downgraded above); the shared
+      // helper must then keep the original record instead of re-approving.
+      const confirmed = raw?.success === true && !!matchedAccount;
+      return this._concludeExistingRecheck(
+        existingPayment,
+        confirmed ? raw : { ...raw, success: false },
+        {
           organizationId,
-          paymentId: existingPayment.id,
           userId,
-          action: RECHECK_FAILED_ACTION,
-          reason: 'Fresh provider check did not confirm the previous payment.',
-          riskScore: 80,
-        });
-        return this._recheckFailedResponse(
-          existingPayment,
-          verificationReference,
-        );
-      }
-      return this._resolveExistingRecheck(existingPayment, {
-        organizationId,
-        userId,
-        referenceNumber: verificationReference,
-        amount: verificationAmount,
-        provider: verification.provider,
-        verification,
-      });
+          referenceNumber: providerReference!,
+          amount: verificationAmount,
+          provider: verification.provider,
+          verification,
+        },
+      );
     }
 
     return this._saveAndReturn(
@@ -1532,7 +1652,7 @@ export class PaymentService {
       userId,
       {
         method: 'IMAGE_OCR',
-        transactionId: verification.transactionNumber ?? `OCR-${Date.now()}`,
+        transactionId: providerReference ?? receiptLabel,
       },
       matchedAccount,
     );
@@ -1632,6 +1752,31 @@ export class PaymentService {
       }
     }
 
+    // DUPLICATE INTEGRITY GATE: a VERIFIED row MUST carry a normalized
+    // transaction reference. Without one it would escape the
+    // (organizationId, normalizedTransactionId) unique constraint and could
+    // be recorded repeatedly. Empty references and synthetic fallback
+    // labels fail closed instead of being persisted as approvals.
+    const normalizedTransactionId = verified
+      ? normalizeTransactionId(meta.transactionId)
+      : null;
+    if (
+      verified &&
+      (!normalizedTransactionId ||
+        SYNTHETIC_REFERENCE_PATTERN.test(normalizedTransactionId))
+    ) {
+      verified = false;
+      raw = {
+        ...raw,
+        success: false,
+        reason:
+          'This payment cannot be recorded because no stable transaction reference is available. Please verify using the transaction reference number.',
+      };
+      this.logger.warn(
+        '[_saveAndReturn] Rejected approval — no stable transaction reference',
+      );
+    }
+
     const status: PaymentStatus = verified
       ? PaymentStatus.VERIFIED
       : PaymentStatus.FAILED;
@@ -1655,9 +1800,7 @@ export class PaymentService {
       currency: 'ETB',
       paymentMethod: meta.method,
       transactionId: meta.transactionId,
-      normalizedTransactionId: verified
-        ? normalizeTransactionId(meta.transactionId)
-        : null,
+      normalizedTransactionId: verified ? normalizedTransactionId : null,
       paymentDate: this._parsePaymentDate(
         raw?.transactionDate ?? raw?.transaction_date,
       ),

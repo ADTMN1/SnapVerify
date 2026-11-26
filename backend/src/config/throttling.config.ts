@@ -30,8 +30,14 @@ export interface ThrottlingConfig {
   qrResolveLimit: number;
 }
 
+/**
+ * Window used by the per-route @Throttle() decorators on public auth routes.
+ * Kept here so auth limits share the single documented millisecond unit.
+ */
+export const AUTH_THROTTLE_TTL_MS = 60_000;
+
 const DEFAULTS: ThrottlingConfig = {
-  ttlMs: 60_000,
+  ttlMs: AUTH_THROTTLE_TTL_MS,
   defaultLimit: 100,
   paymentVerifyLimit: 60,
   paymentVerifyImageLimit: 30,

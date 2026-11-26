@@ -23,19 +23,21 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
   void initState() {
     super.initState();
     _showPlans = widget.startOnPlanList;
-    ref.read(subscriptionCheckoutProvider.notifier).reset();
-    final subscription = ref.read(authNotifierProvider).subscription;
-    if (!widget.startOnPlanList &&
-        subscription != null &&
-        subscription.isActive &&
-        !subscription.isQuotaExceeded) {
-      return;
-    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ref.read(subscriptionCheckoutProvider.notifier).loadPlans();
+      if (!mounted) return;
+      final notifier = ref.read(subscriptionCheckoutProvider.notifier);
+      notifier.reset();
+
+      final subscription = ref.read(authNotifierProvider).subscription;
+      if (!widget.startOnPlanList &&
+          subscription != null &&
+          subscription.isActive &&
+          !subscription.isQuotaExceeded) {
+        return;
       }
+
+      notifier.loadPlans();
     });
   }
 

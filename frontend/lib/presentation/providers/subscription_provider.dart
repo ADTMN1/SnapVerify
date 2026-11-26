@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import '../../data/datasources/subscription_remote_datasource.dart';
 import '../../domain/entities/subscription_checkout.dart';
 import '../../domain/entities/subscription_plan.dart';
@@ -9,7 +8,7 @@ import 'auth_provider.dart';
 
 final subscriptionRemoteDatasourceProvider =
     Provider<SubscriptionRemoteDatasource>(
-      (ref) => SubscriptionRemoteDatasource(client: http.Client()),
+      (ref) => SubscriptionRemoteDatasource(client: ref.watch(httpClientProvider)),
     );
 
 class SubscriptionCheckoutState {
@@ -74,7 +73,7 @@ class SubscriptionCheckoutNotifier
       debugPrint('[Subscription] loadPlans failed: $e');
       state = state.copyWith(
         isLoading: false,
-        error: 'Could not load plans. Check your connection.',
+        error: e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), ''),
       );
     }
   }

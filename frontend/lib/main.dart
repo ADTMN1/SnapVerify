@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/constants/app_constants.dart';
 import 'core/language_provider.dart';
 import 'core/tailwind.dart';
 import 'core/utils/toast_service.dart';
@@ -11,6 +13,7 @@ import 'l10n/fallback_localizations.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/notifications_provider.dart';
 import 'presentation/providers/reports_provider.dart';
+import 'presentation/providers/subscription_provider.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/business_switcher_screen.dart';
@@ -27,6 +30,9 @@ Future<void> main() async {
   ]);
   // Warm the prefs cache so the stored language is applied before first paint.
   await SharedPreferences.getInstance();
+  if (kDebugMode) {
+    debugPrint('[SnapVerify] ${AppConstants.environmentSummary}');
+  }
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -66,6 +72,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
       ref.invalidate(reportSummaryProvider);
       ref.invalidate(notificationsProvider);
+      ref.read(subscriptionCheckoutProvider.notifier).loadPlans();
     }
   }
 

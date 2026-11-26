@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class AdminLoginDto {
   @IsEmail()
@@ -17,6 +17,16 @@ export class AdminChangePasswordDto {
   @IsString()
   @MinLength(6)
   newPassword: string;
+}
+
+export class AdminUpdateProfileDto {
+  @IsString()
+  @MinLength(6)
+  currentPassword: string;
+
+  @IsOptional()
+  @IsEmail()
+  newEmail?: string;
 }
 
 export class AdminRefreshTokenDto {

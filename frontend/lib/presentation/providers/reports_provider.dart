@@ -1,12 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 import '../../data/datasources/reports_remote_datasource.dart';
 import '../../domain/entities/report_summary.dart';
 import 'auth_provider.dart';
 
 final reportsDatasourceProvider = Provider<ReportsRemoteDatasource>((ref) {
-  return ReportsRemoteDatasource(client: http.Client());
+  return ReportsRemoteDatasource(client: ref.watch(httpClientProvider));
 });
 
 /// Real report summary for a date range, authenticated with a fresh token.

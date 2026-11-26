@@ -44,4 +44,9 @@ class JwtUtils {
   static String? extractOrganizationId(String token) {
     return decode(token)?['organizationId'] as String?;
   }
+
+  /// Extracts the branchId claim from the payload, or returns null.
+  static String? extractBranchId(String token) {
+    return decode(token)?['branchId'] as String?;
+  }
 }

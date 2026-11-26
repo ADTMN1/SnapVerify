@@ -1,6 +1,39 @@
 import type { PaymentProvider, PaymentStatus, Role, SubscriptionStatus } from '../types';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+function resolveApiBaseUrl(): string {
+  const raw = import.meta.env.VITE_API_URL;
+  if (!raw || raw.trim().length === 0) {
+    throw new Error(
+      'VITE_API_URL is not set. Define it in .env (local dev) or your hosting platform (staging/production). ' +
+        'Example: VITE_API_URL=https://snapverify-backend-staging.onrender.com',
+    );
+  }
+  const url = raw.trim();
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error('VITE_API_URL must use http:// or https://');
+    }
+    if (!parsed.hostname) {
+      throw new Error('VITE_API_URL must include a host.');
+    }
+    // Production/staging builds must use HTTPS. Local dev may use http://localhost.
+    const isProdOrStaging = parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1';
+    if (isProdOrStaging && parsed.protocol !== 'https:') {
+      throw new Error('VITE_API_URL must use https:// for non-localhost deployments.');
+    }
+    return url;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('VITE_API_URL')) {
+      throw err;
+    }
+    throw new Error(
+      `Invalid VITE_API_URL: "${url}". Must be a valid http(s) URL (e.g. https://api.example.com).`,
+    );
+  }
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 

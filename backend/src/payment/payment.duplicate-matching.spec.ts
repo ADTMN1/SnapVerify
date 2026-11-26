@@ -472,6 +472,69 @@ describe('Stage 1 — receiving-account matching', () => {
     ).toBe(false);
   });
 
+  it('rejects approval when only two masked tail digits match an unrelated account', () => {
+    // Registered suffix '3381'; provider returns masked tail '81' (two ending
+    // digits). Two digits are partial evidence an unrelated account could
+    // share, so it must not approve.
+    const acct = account({ suffix: '3381', accountNumber: null });
+    expect(
+      matched(
+        service,
+        validUpstreamRaw({
+          suffix: null,
+          accountNumber: '****81',
+          receiver: 'Someone Else',
+        }),
+        acct,
+      ),
+    ).toBe(false);
+  });
+
+  it('still approves when the masked tail equals the full registered suffix', () => {
+    const acct = account({ accountNumber: '1000516323381' });
+    expect(
+      matched(
+        service,
+        validUpstreamRaw({
+          suffix: null,
+          accountNumber: '****3381',
+          receiver: 'Someone Else',
+        }),
+        acct,
+      ),
+    ).toBe(true);
+  });
+
+  it('approves a wallet via a four-digit non-exact partial masked tail', () => {
+    const acct = account({ suffix: null, accountNumber: '0986006897' });
+    expect(
+      matched(
+        service,
+        validUpstreamRaw({
+          suffix: null,
+          accountNumber: '25****6897',
+          receiver: 'Someone Else',
+        }),
+        acct,
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects a wallet when only two masked tail digits match', () => {
+    const acct = account({ suffix: null, accountNumber: '0986006897' });
+    expect(
+      matched(
+        service,
+        validUpstreamRaw({
+          suffix: null,
+          accountNumber: '25****97',
+          receiver: 'Someone Else',
+        }),
+        acct,
+      ),
+    ).toBe(false);
+  });
+
   it('accepts EXACT receiver-name equality when no number evidence exists', () => {
     const acct = account({ suffix: null, accountNumber: null });
     expect(
@@ -654,5 +717,151 @@ describe('Stage 1 — provider failures never persist as rejected payments', () 
     expect(result.verified).toBe(false);
     expect(result.status).toBe(PaymentStatus.FAILED);
     expect(mockPrisma.payment.create).toHaveBeenCalled();
+  });
+});
+
+describe('Stage 1 — duplicate transaction identity reconciliation', () => {
+  let service: PaymentService;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    service = await build();
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+    mockPrisma.payment.create.mockImplementation(async (args: any) => ({
+      id: 'p1',
+      amount: args.data.amount,
+      transactionId: args.data.transactionId,
+      senderName: null,
+      receiverName: null,
+      riskScore: args.data.riskScore,
+    }));
+  });
+
+  it('treats the same provider transaction verified under a different submitted reference format as a duplicate', async () => {
+    const existing = verifiedWinner({ transactionId: 'FT123' });
+    mockPrisma.payment.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existing);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({ transactionNumber: 'FT123' }),
+    );
+
+    const result = await service.verifyByReference(
+      'ft-123',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(result).toHaveProperty('paymentId', existing.id);
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('stores the provider-confirmed transaction reference as the identity', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({ transactionNumber: 'CANONICAL-123' }),
+    );
+
+    const result = await service.verifyByReference(
+      'SUBMITTED-456',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    const stored = mockPrisma.payment.create.mock.calls[0][0];
+    expect(stored.data.transactionId).toBe('CANONICAL-123');
+    expect(stored.data.normalizedTransactionId).toBe('CANONICAL-123');
+  });
+
+  it('still recognizes a previously verified payment for the same provider when the provider is supplied', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(
+      verifiedWinner({ transactionId: 'FT123' }),
+    );
+
+    const result = await service.verifyByReference(
+      'FT123',
+      'org-1',
+      'user-1',
+      100,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.status).toBe('PREVIOUSLY_VERIFIED');
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('does not recognize a reference as previously verified when the provider is omitted and the stored payment is from another provider', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(
+      verifiedWinner({ transactionId: 'FT123' }),
+    );
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.verifyByReference('FT123', 'org-1', 'user-1', 100, undefined),
+    ).rejects.toMatchObject({
+      response: { status: 'PAYMENT_PROVIDER_UNDETECTED' },
+    });
+    expect(mockPrisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('stores the submitted reference when the provider confirms success but returns no transaction reference', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({ transactionNumber: null, verificationId: null }),
+    );
+
+    const result = await service.verifyByReference(
+      'SUBMITTED-1',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(true);
+    const stored = mockPrisma.payment.create.mock.calls[0][0];
+    expect(stored.data.transactionId).toBe('SUBMITTED-1');
+    expect(stored.data.normalizedTransactionId).toBe('SUBMITTED-1');
+  });
+
+  it('rejects a payment when the provider returns an empty transaction reference', async () => {
+    mockPrisma.payment.findFirst.mockResolvedValue(null);
+    mockPrisma.paymentAccount.findMany.mockResolvedValue([account()]);
+    mockPrisma.payment.create.mockImplementation(async (args: any) => ({
+      id: 'p1',
+      transactionId: args.data.transactionId,
+      senderName: null,
+      receiverName: null,
+      riskScore: args.data.riskScore,
+    }));
+    mockPrisma.verificationLog.create.mockResolvedValue({});
+    mockCheckEt.verifyReference.mockResolvedValue(
+      validNormalized({ transactionNumber: '', verificationId: null }),
+    );
+
+    const result = await service.verifyByReference(
+      'SUBMITTED-2',
+      'org-1',
+      'user-1',
+      undefined,
+      'CBE',
+    );
+
+    expect(result.verified).toBe(false);
+    expect(result.status).toBe(PaymentStatus.FAILED);
+    const stored = mockPrisma.payment.create.mock.calls[0][0];
+    expect(stored.data.normalizedTransactionId).toBeNull();
   });
 });

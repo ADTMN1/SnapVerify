@@ -13,6 +13,22 @@ interface AdminJwtPayload {
 
 const MAX_REFRESH_TOKENS_PER_ADMIN = 10;
 
+/** Initial refresh lifetime; preserved across rotations gives an absolute session lifetime. */
+export const ADMIN_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function resolveAdminRole(user: {
+  isPlatformAdmin?: boolean | null;
+  userAssignments: Array<{ role: string; status?: string }>;
+}): string {
+  if (user.isPlatformAdmin === true) return 'SUPER_ADMIN';
+  const isOwner = user.userAssignments.some(
+    (assignment) =>
+      assignment.role === 'OWNER' && assignment.status !== 'inactive',
+  );
+  if (isOwner) return 'BUSINESS_OWNER';
+  throw new UnauthorizedException('You no longer have admin access');
+}
+
 function hashAdminRefreshToken(token: string, refreshSecret: string): string {
   return crypto.createHmac('sha256', refreshSecret).update(token).digest('hex');
 }
@@ -38,6 +54,7 @@ export class AdminJwtService {
     role: string,
     ipAddress?: string,
     userAgent?: string,
+    refreshTtlMs: number = ADMIN_REFRESH_TTL_MS,
   ) {
     const payload: AdminJwtPayload = { sub: userId, email, role };
 
@@ -48,7 +65,9 @@ export class AdminJwtService {
 
     const refreshToken = crypto.randomBytes(64).toString('hex');
     const tokenHash = hashAdminRefreshToken(refreshToken, this.refreshSecret);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() + Math.min(refreshTtlMs, ADMIN_REFRESH_TTL_MS),
+    );
 
     // Enforce per-admin token cap
     const existingTokens = await this.prisma.refreshToken.findMany({
@@ -91,7 +110,9 @@ export class AdminJwtService {
     const token = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
       include: {
-        user: true,
+        user: {
+          include: { userAssignments: true },
+        },
       },
     });
 
@@ -105,18 +126,32 @@ export class AdminJwtService {
 
     const user = token.user;
     if (user.status !== 'active') {
+      await this.prisma.refreshToken.delete({ where: { id: token.id } });
       throw new UnauthorizedException('Admin account is inactive');
     }
 
-    // Delete old token and create new pair
+    // Re-authorise on every refresh: a demoted admin must not be able to
+    // rotate a previously issued token into a still-valid session.
+    let role: string;
+    try {
+      role = resolveAdminRole(user);
+    } catch (error) {
+      await this.prisma.refreshToken.delete({ where: { id: token.id } });
+      throw error;
+    }
+
+    // Rotate: delete the old token and preserve the *remaining* lifetime.
+    // The session therefore cannot outlive the original absolute expiry.
+    const remainingMs = token.expiresAt.getTime() - Date.now();
     await this.prisma.refreshToken.delete({ where: { id: token.id } });
 
     return this.generateTokens(
       user.id,
       user.email || '',
-      token.role,
+      role,
       ipAddress,
       userAgent,
+      Math.max(remainingMs, 60_000),
     );
   }
 

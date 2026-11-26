@@ -155,10 +155,19 @@ curl -sS https://<service>.onrender.com/health
 `503 {"status":"error","database":"down"}` means the service is up but cannot
 reach the database — re-check §1 and the Render logs.
 
-After `/health` returns 200, build the release APK with that origin:
+After `/health` returns 200, build the production release APK:
 
 ```bash
-flutter build apk --release \
-  --dart-define=APP_ENV=prod \
-  --dart-define=API_BASE_URL=https://<service>.onrender.com
+flutter build apk --release --dart-define=APP_ENV=prod
 ```
+
+`APP_ENV=prod` resolves to `https://snapverify.onrender.com`. Plain debug
+builds with no `APP_ENV` keep the LAN backend (`http://192.168.1.5:3000`)
+unless an explicit `API_BASE_URL` is supplied. Staging builds use a separate
+preset:
+
+```bash
+flutter run --dart-define=APP_ENV=staging
+```
+
+In debug, startup logs print the selected environment and resolved API URL.

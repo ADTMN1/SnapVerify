@@ -146,7 +146,7 @@ class SubscriptionRemoteDatasource {
 
     late final http.Response response;
     try {
-      final streamed = await request.send().timeout(_timeout);
+      final streamed = await client.send(request).timeout(_timeout);
       response = await http.Response.fromStream(streamed);
     } catch (e) {
       throw ApiException('Could not reach the server. Check your connection.');

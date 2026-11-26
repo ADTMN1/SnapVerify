@@ -134,6 +134,23 @@ export interface Subscription {
   updatedAt: string;
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  durationDays?: number | null;
+  durationMonths?: number | null;
+  isLifetime?: boolean;
+  verificationLimit?: number | null;
+  maxUsers?: number | null;
+  maxDevices?: number | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PlatformPaymentAccount {
   id: string;
   provider: string;

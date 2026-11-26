@@ -114,8 +114,13 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout(String refreshToken) async {
-    await remoteDatasource.logout(refreshToken);
-    await clearTokens();
+    try {
+      await remoteDatasource.logout(refreshToken);
+    } finally {
+      // Best-effort revocation: an unreachable server must never leave a
+      // locally valid session that would be restored on the next cold start.
+      await clearTokens();
+    }
   }
 
   // ── Reset Password ────────────────────────────────────────────────────────
@@ -341,13 +346,20 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── Select Business ──────────────────────────────────────────────────────
 
   @override
+  Future<Map<String, dynamic>> getBusinessSelectionChallenge(
+    String accessToken,
+  ) {
+    return remoteDatasource.getBusinessSelectionChallenge(accessToken);
+  }
+
+  @override
   Future<Map<String, dynamic>> selectBusiness({
-    required String userId,
+    required String selectionToken,
     required String organizationId,
     required bool rememberMe,
   }) async {
     final data = await remoteDatasource.selectBusiness(
-      userId: userId,
+      selectionToken: selectionToken,
       organizationId: organizationId,
       rememberMe: rememberMe,
     );

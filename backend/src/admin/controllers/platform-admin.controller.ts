@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Param,
   Body,
   Query,
@@ -18,6 +19,10 @@ import {
   UpdatePlatformOrganizationDto,
   UpdatePlatformUserDto,
 } from '../dto/platform-admin.dto';
+import {
+  CreateSubscriptionPlanDto,
+  UpdateSubscriptionPlanDto,
+} from '../dto/subscription-plan.dto';
 
 /**
  * Platform super-admin endpoints. Every route here is restricted to users whose
@@ -114,5 +119,27 @@ export class PlatformAdminController {
   @Get('activity')
   listActivity(@Query('limit') limit?: string) {
     return this.platformService.listActivity(limit ? parseInt(limit, 10) : 50);
+  }
+
+  @Get('plans')
+  listPlans() {
+    return this.platformService.listPlans();
+  }
+
+  @Post('plans')
+  @HttpCode(HttpStatus.OK)
+  createPlan(@Body() dto: CreateSubscriptionPlanDto) {
+    this.logger.log('Platform admin creating subscription plan');
+    return this.platformService.createPlan(dto);
+  }
+
+  @Patch('plans/:id')
+  @HttpCode(HttpStatus.OK)
+  updatePlan(
+    @Param('id') id: string,
+    @Body() dto: UpdateSubscriptionPlanDto,
+  ) {
+    this.logger.log(`Platform admin updating subscription plan ${id}`);
+    return this.platformService.updatePlan(id, dto);
   }
 }
