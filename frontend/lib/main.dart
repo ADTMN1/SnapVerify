@@ -1,12 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_constants.dart';
 import 'core/language_provider.dart';
-import 'core/tailwind.dart';
 import 'core/utils/toast_service.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/fallback_localizations.dart';
@@ -18,6 +16,7 @@ import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/business_switcher_screen.dart';
 import 'presentation/widgets/sv_loader.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,7 +45,6 @@ class MyApp extends ConsumerStatefulWidget {
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
   bool _isNavigating = false;
-  bool _hasNavigatedOnce = false;
 
   @override
   void initState() {
@@ -85,13 +83,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       );
       final previousStatus = previous?.status;
       if (previousStatus == next.status) return;
-      _handleAuthChange(
-        next,
-        showWelcome:
-            _hasNavigatedOnce &&
-            previousStatus != AuthStatus.authenticated &&
-            next.status == AuthStatus.authenticated,
-      );
+      if (previousStatus != AuthStatus.authenticated &&
+          next.status == AuthStatus.authenticated) {
+        ref.invalidate(reportSummaryProvider);
+      }
+      _handleAuthChange(next);
     });
 
     return MaterialApp(
@@ -115,23 +111,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       ],
       navigatorKey: _navigatorKey,
       scaffoldMessengerKey: ToastService.scaffoldMessengerKey,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: TwColors.primaryBg,
-        cardColor: TwColors.cardBg,
-        dividerColor: TwColors.slate700,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: TwColors.sky500,
-          brightness: Brightness.dark,
-          surface: TwColors.cardBg,
-        ),
-        // Poppins stays the primary typeface; Noto Sans Ethiopic is only a
-        // fallback so Amharic glyphs render on devices without a system
-        // Ethiopic font.
-        textTheme: GoogleFonts.poppinsTextTheme(
-          ThemeData(brightness: Brightness.dark).textTheme,
-        ).apply(fontFamilyFallback: const ['NotoSansEthiopic', 'sans-serif']),
-      ),
+      theme: AppTheme.dark,
       // Shown while the stored session is being restored. A bare `Scaffold()`
       // here looked like a black screen and made a slow/timed-out restore
       // indistinguishable from a frozen app.
@@ -139,7 +119,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     );
   }
 
-  void _handleAuthChange(AuthState authState, {bool showWelcome = false}) {
+  void _handleAuthChange(AuthState authState) {
     if (authState.status == AuthStatus.initial) return; // Splash handles it
     if (_isNavigating) return; // Prevent navigation loops
 
@@ -157,7 +137,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       try {
         if (authState.status == AuthStatus.authenticated) {
           debugPrint('[Main] Navigating to HomeScreen');
-          if (showWelcome) ToastService.showSuccess('Welcome back!');
           _navigatorKey.currentState!.pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
@@ -188,9 +167,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         }
         // Error is displayed by individual screens via _buildErrorState widgets
         // No duplicate toast needed here
-        if (authState.status != AuthStatus.initial) {
-          _hasNavigatedOnce = true;
-        }
       } finally {
         _isNavigating = false;
       }
