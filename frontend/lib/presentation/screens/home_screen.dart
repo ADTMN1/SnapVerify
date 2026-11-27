@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/tailwind.dart';
 import '../../presentation/providers/auth_provider.dart';
+import '../../theme/app_text.dart';
+import '../../theme/app_tokens.dart';
 import 'home_tab.dart';
 import 'history_tab.dart';
 import 'camera_tab.dart';
@@ -45,7 +46,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     return Scaffold(
-      backgroundColor: TwColors.slate950,
+      backgroundColor: AppTokens.obsidian950,
       body: SafeArea(
         child: IndexedStack(index: _activeTabIndex, children: children),
       ),
@@ -68,10 +69,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final int accountsIdx = isWaiter ? 2 : 3;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.space2xl,
+        vertical: AppTokens.spaceLg,
+      ),
       decoration: BoxDecoration(
-        color: TwColors.slate900,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        color: AppTokens.obsidian900,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppTokens.navBarRadius),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -79,7 +85,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (!isWaiter) _buildNavItem(0, Icons.home_rounded, 'Home'),
           _buildNavItem(historyIdx, Icons.history_rounded, 'History'),
           _activeTabIndex == cameraIdx
-              ? const SizedBox(width: 48)
+              ? const SizedBox(width: AppTokens.navCameraSize)
               : _buildCameraButton(cameraIdx),
           _buildNavItem(
             accountsIdx,
@@ -107,28 +113,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isActive = _activeTabIndex == index;
+    final navColor = isActive
+        ? AppTokens.accent
+        : AppTokens.white.withValues(alpha: AppTokens.alphaSecondary);
     return GestureDetector(
       onTap: () => _switchTab(index),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: isActive
-                ? TwColors.brightGreen
-                : TwColors.white.withOpacity(0.5),
-            size: 28,
-          ),
-          const SizedBox(height: 4),
+          Icon(icon, color: navColor, size: AppTokens.navIconSize),
+          const SizedBox(height: AppTokens.spaceXs),
           Text(
             label,
-            style: TextStyle(
-              color: isActive
-                  ? TwColors.brightGreen
-                  : TwColors.white.withOpacity(0.5),
-              fontSize: 12,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-            ),
+            style:
+                (isActive
+                        ? AppText.navLabelActive
+                        : AppText.navLabelInactive)
+                    .copyWith(color: navColor),
           ),
         ],
       ),
@@ -154,7 +155,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final canOpenCamera = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       useRootNavigator: true,
       isDismissible: true,
       enableDrag: true,
@@ -176,23 +177,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return GestureDetector(
       onTap: () => _handleCameraTap(cameraIdx),
       child: Container(
-        width: 48,
-        height: 48,
+        width: AppTokens.navCameraSize,
+        height: AppTokens.navCameraSize,
         decoration: BoxDecoration(
-          color: TwColors.brightGreen,
+          color: AppTokens.accent,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: TwColors.brightGreen.withOpacity(0.2),
-              blurRadius: 12,
-              spreadRadius: 2,
+              color: AppTokens.accent.withValues(alpha: AppTokens.navGlowAlpha),
+              blurRadius: AppTokens.shadowBlurMedium,
+              spreadRadius: AppTokens.shadowSpreadMedium,
             ),
           ],
         ),
         child: Icon(
           Icons.camera_alt_rounded,
-          color: TwColors.slate900,
-          size: 28,
+          color: AppTokens.obsidian900,
+          size: AppTokens.navIconSize,
         ),
       ),
     );

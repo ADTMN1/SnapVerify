@@ -84,6 +84,18 @@ class AppText {
         height: AppTokens.lineHeightNormal,
       );
 
+  static TextStyle get navLabelActive => AppTokens.manrope(
+        size: AppTokens.textCaption,
+        weight: FontWeight.w600,
+        height: AppTokens.lineHeightNormal,
+      );
+
+  static TextStyle get navLabelInactive => AppTokens.manrope(
+        size: AppTokens.textCaption,
+        weight: FontWeight.w500,
+        height: AppTokens.lineHeightNormal,
+      );
+
   static TextStyle get caption => AppTokens.dmSans(
         size: AppTokens.textCaption,
         weight: FontWeight.w400,

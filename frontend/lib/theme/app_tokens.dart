@@ -190,6 +190,11 @@ class AppTokens {
   static const double footerTextSize = 14;
   static const double tapTarget = 44;
 
+  static const double navBarRadius = 32;
+  static const double navIconSize = 28;
+  static const double navCameraSize = tapTarget + spaceXs;
+  static const double navGlowAlpha = 0.2;
+
   static const double errorRadius = radiusMd;
   static const double errorPadding = 12;
   static const double errorIconSize = 18;
