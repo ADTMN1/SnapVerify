@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/tailwind.dart';
 import '../../core/utils/toast_service.dart';
+import '../../theme/app_tokens.dart';
 import '../../domain/entities/notification_item.dart';
 import '../providers/auth_provider.dart';
 import '../providers/notifications_provider.dart';
@@ -19,7 +19,7 @@ class NotificationsScreen extends ConsumerWidget {
     final asyncData = ref.watch(notificationsProvider);
 
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
+      backgroundColor: AppTokens.headerBase,
       body: SafeArea(
         child: Column(
           children: [
@@ -46,9 +46,17 @@ class NotificationsScreen extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceLg,
+      ),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
+        border: Border(
+          bottom: BorderSide(
+            color: AppTokens.obsidian900,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -56,23 +64,27 @@ class NotificationsScreen extends ConsumerWidget {
             icon: Icons.arrow_back_ios_new_rounded,
             onTap: () => Navigator.of(context).pop(),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
+          const SizedBox(width: AppTokens.spaceLg),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Notifications',
-                  style: TextStyle(
-                    color: TwColors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                  style: AppTokens.manrope(
+                    size: AppTokens.textSubtitle,
+                    weight: FontWeight.w700,
+                    color: AppTokens.white,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: AppTokens.spaceXs),
                 Text(
                   'Updates from your business',
-                  style: TextStyle(color: TwColors.slate400, fontSize: 12),
+                  style: AppTokens.dmSans(
+                    size: AppTokens.textCaption,
+                    weight: FontWeight.w400,
+                    color: AppTokens.ice400,
+                  ),
                 ),
               ],
             ),
@@ -81,13 +93,16 @@ class NotificationsScreen extends ConsumerWidget {
             TextButton(
               onPressed: () => _markAllRead(context, ref),
               style: TextButton.styleFrom(
-                foregroundColor: TwColors.brightGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                foregroundColor: AppTokens.accent,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTokens.spaceSm,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                textStyle: AppTokens.manrope(
+                  size: AppTokens.textLabel,
+                  weight: FontWeight.w700,
+                  color: AppTokens.accent,
                 ),
               ),
               child: const Text('Mark all read'),
@@ -105,12 +120,12 @@ class NotificationsScreen extends ConsumerWidget {
     if (data.notifications.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppTokens.space2xl),
         children: [
-          const SizedBox(height: 60),
+          const SizedBox(height: AppTokens.loaderLargeSize),
           _EmptyState(
             icon: Icons.notifications_none_rounded,
-            color: TwColors.brightGreen,
+            color: AppTokens.accent,
             title: "You're all caught up",
             subtitle:
                 'New payment and staff updates will appear here as they happen.',
@@ -128,11 +143,16 @@ class NotificationsScreen extends ConsumerWidget {
           // Surfaced by the error state below.
         }
       },
-      color: TwColors.brightGreen,
-      backgroundColor: TwColors.slate800,
+      color: AppTokens.accent,
+      backgroundColor: AppTokens.obsidian900,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.spaceLg,
+          AppTokens.spaceLg,
+          AppTokens.spaceLg,
+          AppTokens.space2xl,
+        ),
         itemCount: data.notifications.length,
         itemBuilder: (context, index) {
           final item = data.notifications[index];
@@ -148,12 +168,12 @@ class NotificationsScreen extends ConsumerWidget {
   Widget _buildError(BuildContext context, WidgetRef ref, Object error) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTokens.space2xl),
       children: [
-        const SizedBox(height: 60),
+        const SizedBox(height: AppTokens.loaderLargeSize),
         _EmptyState(
           icon: Icons.error_outline_rounded,
-          color: TwColors.red500,
+          color: AppTokens.error,
           title: 'Could not load notifications',
           subtitle: error.toString().replaceFirst('Exception: ', ''),
           actionLabel: 'Try again',
@@ -206,31 +226,35 @@ class _NotificationTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: AppTokens.badgeSmallPaddingH),
+        padding: const EdgeInsets.all(AppTokens.badgePaddingH),
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
+          color: AppTokens.obsidian950,
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
           border: Border.all(
             color: item.isUnread
-                ? TwColors.brightGreen.withValues(alpha: 0.35)
-                : TwColors.slate700,
-            width: 1,
+                ? AppTokens.accent.withValues(alpha: AppTokens.alphaStrong)
+                : AppTokens.obsidian700,
+            width: AppTokens.componentBorderWidth,
           ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: AppTokens.backButtonSize,
+              height: AppTokens.backButtonSize,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                color: color.withValues(alpha: AppTokens.alphaLow),
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
               ),
-              child: Icon(_iconFor(item.type), color: color, size: 22),
+              child: Icon(
+                _iconFor(item.type),
+                color: color,
+                size: AppTokens.formPrefixIconSize,
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppTokens.spaceMd),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,50 +266,54 @@ class _NotificationTile extends StatelessWidget {
                           item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: TwColors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                          style: AppTokens.manrope(
+                            size: AppTokens.textBodySmall,
+                            weight: FontWeight.w600,
+                            color: AppTokens.white,
                           ),
                         ),
                       ),
                       if (item.isUnread) ...[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppTokens.spaceSm),
                         Container(
-                          width: 8,
-                          height: 8,
+                          width: AppTokens.spaceSm,
+                          height: AppTokens.spaceSm,
                           decoration: const BoxDecoration(
-                            color: TwColors.brightGreen,
+                            color: AppTokens.accent,
                             shape: BoxShape.circle,
                           ),
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppTokens.spaceXs),
                   Text(
                     item.body,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: TwColors.white.withValues(alpha: 0.6),
-                      fontSize: 13,
+                    style: AppTokens.dmSans(
+                      size: AppTokens.textLabel,
+                      weight: FontWeight.w400,
+                      color: AppTokens.white.withValues(
+                        alpha: AppTokens.alphaTertiary,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: AppTokens.statTitleGap),
                   Row(
                     children: [
                       const Icon(
                         Icons.schedule_rounded,
-                        size: 12,
-                        color: TwColors.slate500,
+                        size: AppTokens.textCaption,
+                        color: AppTokens.textSecondary,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppTokens.spaceXs),
                       Text(
                         item.timeLabel,
-                        style: const TextStyle(
-                          color: TwColors.slate500,
-                          fontSize: 11,
+                        style: AppTokens.dmSans(
+                          size: AppTokens.textOverline,
+                          weight: FontWeight.w400,
+                          color: AppTokens.textSecondary,
                         ),
                       ),
                     ],
@@ -321,19 +349,19 @@ class _NotificationTile extends StatelessWidget {
   Color _colorFor(String type) {
     switch (type) {
       case 'payment_verified':
-        return TwColors.brightGreen;
+        return AppTokens.accent;
       case 'payment_failed':
-        return TwColors.red500;
+        return AppTokens.error;
       case 'payment_rejected':
-        return TwColors.amber500;
+        return AppTokens.warning;
       case 'payment_pending':
-        return TwColors.slate400;
+        return AppTokens.ice400;
       case 'invitation_created':
-        return TwColors.sky500;
+        return AppTokens.primary;
       case 'invitation_revoked':
-        return TwColors.red500;
+        return AppTokens.error;
       default:
-        return TwColors.sky500;
+        return AppTokens.primary;
     }
   }
 }
@@ -348,14 +376,21 @@ class _HeaderIconButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 36,
-        height: 36,
+        width: AppTokens.backButtonSize,
+        height: AppTokens.backButtonSize,
         decoration: BoxDecoration(
-          color: TwColors.slate800,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: TwColors.slate700, width: 1),
+          color: AppTokens.obsidian900,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(
+            color: AppTokens.obsidian700,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
-        child: Icon(icon, color: TwColors.white, size: 18),
+        child: Icon(
+          icon,
+          color: AppTokens.white,
+          size: AppTokens.checkIconSize,
+        ),
       ),
     );
   }
@@ -382,61 +417,70 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTokens.space2xl),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: TwColors.slate700),
+        color: AppTokens.obsidian950,
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        border: Border.all(color: AppTokens.obsidian700),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
+              color: color.withValues(alpha: AppTokens.alphaLow),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 32),
+            child: Icon(
+              icon,
+              color: color,
+              size: AppTokens.heroIndicatorActiveWidth,
+            ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppTokens.badgePaddingH),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+            style: AppTokens.manrope(
+              size: AppTokens.textBodyLarge,
+              weight: FontWeight.w600,
+              color: AppTokens.white,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppTokens.statTitleGap),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: TwColors.slate400,
-              fontSize: 13,
-              height: 1.4,
+            style: AppTokens.dmSans(
+              size: AppTokens.textLabel,
+              weight: FontWeight.w400,
+              color: AppTokens.ice400,
+              height: AppTokens.lineHeightRelaxed,
             ),
           ),
           if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTokens.spaceLg),
             ElevatedButton(
               onPressed: onAction,
               style: ElevatedButton.styleFrom(
-                backgroundColor: TwColors.brightGreen,
-                foregroundColor: TwColors.slate900,
-                elevation: 0,
+                backgroundColor: AppTokens.accent,
+                foregroundColor: AppTokens.obsidian900,
+                elevation: AppTokens.cardElevation,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+                  horizontal: AppTokens.statCardPadding,
+                  vertical: AppTokens.spaceMd,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 ),
               ),
               child: Text(
                 actionLabel!,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: AppTokens.manrope(
+                  size: AppTokens.textLabel,
+                  weight: FontWeight.w700,
+                  color: AppTokens.obsidian900,
+                ),
               ),
             ),
           ],

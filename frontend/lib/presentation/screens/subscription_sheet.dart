@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/tailwind.dart';
 import '../../domain/entities/subscription.dart';
+import '../../theme/app_tokens.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../widgets/sv_loader.dart';
@@ -92,14 +92,16 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: TwColors.primaryBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        color: AppTokens.headerBase,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.radius2xl),
+        ),
       ),
       padding: EdgeInsets.fromLTRB(
-        24,
-        16,
-        24,
-        24 +
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.spaceLg,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetHorizontalPadding +
             MediaQuery.viewInsetsOf(context).bottom +
             MediaQuery.of(context).padding.bottom,
       ),
@@ -110,63 +112,67 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
           children: [
             Center(
               child: Container(
-                width: 40,
-                height: 4,
+                width: AppTokens.handleWidth,
+                height: AppTokens.handleHeight,
                 decoration: BoxDecoration(
-                  color: TwColors.slate600,
-                  borderRadius: BorderRadius.circular(2),
+                  color: AppTokens.inkMuted,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusXs),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTokens.spaceLg),
             Row(
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: TwColors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
+                  style: AppTokens.manrope(
+                    size: AppTokens.textSubtitle,
+                    weight: FontWeight.w800,
+                    color: AppTokens.white,
                   ),
                 ),
                 const Spacer(),
                 if (canUseCamera)
                   const Padding(
-                    padding: EdgeInsets.only(right: 6),
+                    padding: EdgeInsets.only(right: AppTokens.statTitleGap),
                     child: Icon(
                       Icons.check_circle_rounded,
-                      color: TwColors.brightGreen,
-                      size: 18,
+                      color: AppTokens.accent,
+                      size: AppTokens.backButtonIconSize,
                     ),
                   ),
                 InkWell(
                   onTap: () => Navigator.of(context).pop(false),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
                   child: const Padding(
-                    padding: EdgeInsets.all(4),
+                    padding: EdgeInsets.all(AppTokens.spaceXs),
                     child: Icon(
                       Icons.close_rounded,
-                      size: 18,
-                      color: TwColors.slate400,
+                      size: AppTokens.backButtonIconSize,
+                      color: AppTokens.ice400,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppTokens.spaceXs),
             Text(
               canUseCamera
                   ? subscription!.verificationSummary
                   : subscription?.isQuotaExceeded ?? false
                   ? 'Upgrade to continue verifying.'
                   : 'Simple plans. Pay with Telebirr.',
-              style: TextStyle(color: TwColors.slate400, fontSize: 12.5),
+              style: AppTokens.dmSans(
+                size: AppTokens.textCaption,
+                weight: FontWeight.w400,
+                color: AppTokens.ice400,
+              ),
             ),
             if (subscription != null) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: AppTokens.badgePaddingH),
               _CurrentPlanChip(subscription: subscription),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTokens.spaceLg),
             if (!_showPlans && canUseCamera)
               Column(
                 children: [
@@ -174,25 +180,35 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () => Navigator.of(context).pop(true),
-                      icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                      icon: const Icon(
+                        Icons.camera_alt_rounded,
+                        size: AppTokens.backButtonIconSize,
+                      ),
                       label: const Text('Continue to Camera'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: TwColors.brightGreen,
-                        foregroundColor: TwColors.slate950,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        backgroundColor: AppTokens.accent,
+                        foregroundColor: AppTokens.obsidian950,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppTokens.badgePaddingH,
+                        ),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(
+                            AppTokens.radiusMd,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppTokens.spaceXs),
                   TextButton.icon(
                     onPressed: _openPlanList,
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                    icon: const Icon(
+                      Icons.swap_horiz_rounded,
+                      size: AppTokens.checkIconSize,
+                    ),
                     label: const Text('Change Plan'),
                     style: TextButton.styleFrom(
-                      foregroundColor: TwColors.slate300,
+                      foregroundColor: AppTokens.ice200,
                     ),
                   ),
                 ],
@@ -207,10 +223,14 @@ class _SubscriptionSheetState extends ConsumerState<SubscriptionSheet> {
                 onRecheck: _recheck,
               ),
             if (checkoutState.error != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTokens.spaceMd),
               Text(
                 checkoutState.error!,
-                style: const TextStyle(color: TwColors.red400, fontSize: 13),
+                style: AppTokens.dmSans(
+                  size: AppTokens.textLabel,
+                  weight: FontWeight.w400,
+                  color: AppTokens.error,
+                ),
               ),
             ],
           ],
@@ -244,33 +264,40 @@ class _CurrentPlanChip extends StatelessWidget {
         : '${subscription.verificationRemaining ?? 0}/${subscription.verificationLimit} left';
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceMd,
+        vertical: AppTokens.badgeSmallPaddingH,
+      ),
       decoration: BoxDecoration(
-        color: TwColors.slate800,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: TwColors.slate700),
+        color: AppTokens.obsidian900,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(color: AppTokens.obsidian700),
       ),
       child: Row(
         children: [
           const Icon(
             Icons.workspace_premium_rounded,
-            size: 16,
-            color: TwColors.brightGreen,
+            size: AppTokens.checkIconSize,
+            color: AppTokens.accent,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppTokens.spaceSm),
           Expanded(
             child: Text(
               'Current: ${subscription.planLabel}',
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
+              style: AppTokens.manrope(
+                size: AppTokens.textCaption,
+                weight: FontWeight.w600,
+                color: AppTokens.white,
               ),
             ),
           ),
           Text(
             summary,
-            style: const TextStyle(color: TwColors.slate300, fontSize: 12.5),
+            style: AppTokens.dmSans(
+              size: AppTokens.textCaption,
+              weight: FontWeight.w400,
+              color: AppTokens.ice200,
+            ),
           ),
         ],
       ),
@@ -299,18 +326,22 @@ class _PlanSelection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (state.isLoading && state.plans.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 32),
+        padding: EdgeInsets.symmetric(vertical: AppTokens.space3xl),
         child: Center(child: SvLoader.page()),
       );
     }
 
     if (state.plans.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 28),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppTokens.space3xl),
         child: Center(
           child: Text(
             'No plans available',
-            style: TextStyle(color: TwColors.slate400, fontSize: 13),
+            style: AppTokens.dmSans(
+              size: AppTokens.textLabel,
+              weight: FontWeight.w400,
+              color: AppTokens.ice400,
+            ),
           ),
         ),
       );
@@ -322,18 +353,24 @@ class _PlanSelection extends StatelessWidget {
         if (!canPurchase)
           Container(
             width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+            padding: const EdgeInsets.all(AppTokens.spaceMd),
             decoration: BoxDecoration(
-              color: TwColors.amber400.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: AppTokens.warning.withValues(alpha: AppTokens.alphaSubtle),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
               border: Border.all(
-                color: TwColors.amber400.withValues(alpha: 0.35),
+                color: AppTokens.warning.withValues(
+                  alpha: AppTokens.alphaStrong,
+                ),
               ),
             ),
-            child: const Text(
+            child: Text(
               'Only the owner can change plans.',
-              style: TextStyle(color: TwColors.amber300, fontSize: 12.5),
+              style: AppTokens.dmSans(
+                size: AppTokens.textCaption,
+                weight: FontWeight.w400,
+                color: AppTokens.warning,
+              ),
             ),
           ),
         ...state.plans.map(
@@ -341,15 +378,18 @@ class _PlanSelection extends StatelessWidget {
             onTap: canPurchase && !state.isLoading
                 ? () => onSelect(plan.id)
                 : null,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
             child: Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              margin: const EdgeInsets.only(bottom: AppTokens.spaceSm),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTokens.spaceMd,
+                vertical: AppTokens.spaceMd,
+              ),
               decoration: BoxDecoration(
-                color: TwColors.cardBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: TwColors.slate700),
+                color: AppTokens.obsidian950,
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                border: Border.all(color: AppTokens.obsidian700),
               ),
               child: Row(
                 children: [
@@ -359,37 +399,38 @@ class _PlanSelection extends StatelessWidget {
                       children: [
                         Text(
                           plan.name,
-                          style: const TextStyle(
-                            color: TwColors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                          style: AppTokens.manrope(
+                            size: AppTokens.textBodySmall,
+                            weight: FontWeight.w700,
+                            color: AppTokens.white,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: AppTokens.spaceXs),
                         Text(
                           plan.summary,
-                          style: const TextStyle(
-                            color: TwColors.slate400,
-                            fontSize: 11.5,
+                          style: AppTokens.dmSans(
+                            size: AppTokens.textOverline,
+                            weight: FontWeight.w400,
+                            color: AppTokens.ice400,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: AppTokens.badgeSmallPaddingH),
                   Text(
                     plan.price == 0 ? 'Free' : '${plan.price} ${plan.currency}',
-                    style: const TextStyle(
-                      color: TwColors.brightGreen,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                    style: AppTokens.manrope(
+                      size: AppTokens.textLabel,
+                      weight: FontWeight.w700,
+                      color: AppTokens.accent,
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: AppTokens.statTitleGap),
                   const Icon(
                     Icons.arrow_forward_ios_rounded,
-                    size: 13,
-                    color: TwColors.slate500,
+                    size: AppTokens.textLabel,
+                    color: AppTokens.textSecondary,
                   ),
                 ],
               ),
@@ -397,32 +438,40 @@ class _PlanSelection extends StatelessWidget {
           ),
         ),
         if (hasActivePlan) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: AppTokens.spaceXs),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: onContinue,
-              icon: const Icon(Icons.arrow_back_rounded, size: 16),
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                size: AppTokens.checkIconSize,
+              ),
               label: const Text('Keep current plan'),
               style: FilledButton.styleFrom(
-                backgroundColor: TwColors.slate700,
-                foregroundColor: TwColors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: AppTokens.obsidian700,
+                foregroundColor: AppTokens.white,
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppTokens.spaceMd,
+                ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 ),
               ),
             ),
           ),
         ],
-        const SizedBox(height: 4),
+        const SizedBox(height: AppTokens.spaceXs),
         SizedBox(
           width: double.infinity,
           child: TextButton.icon(
             onPressed: onRecheck,
-            icon: const Icon(Icons.refresh_rounded, size: 16),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              size: AppTokens.checkIconSize,
+            ),
             label: const Text('Already paid? Check again'),
-            style: TextButton.styleFrom(foregroundColor: TwColors.slate300),
+            style: TextButton.styleFrom(foregroundColor: AppTokens.ice200),
           ),
         ),
       ],
