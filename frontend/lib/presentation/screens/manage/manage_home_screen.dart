@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../core/tailwind.dart';
 import '../../../domain/entities/report_summary.dart';
 import '../../../presentation/providers/auth_provider.dart';
+import '../../../theme/app_tokens.dart';
 import '../../providers/reports_provider.dart';
 import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
@@ -23,6 +23,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   List<dynamic> _branches = [];
   List<dynamic> _staff = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -32,6 +33,9 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
 
   Future<void> _loadData() async {
     try {
+      if (mounted) {
+        setState(() => _loadError = null);
+      }
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
         final branches = await ref
@@ -56,7 +60,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         }
       }
     } catch (e) {
-      // Ignore error
+      if (mounted) {
+        setState(() {
+          _loadError = e.toString().replaceFirst(
+            RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'),
+            '',
+          );
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -87,16 +98,63 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _buildHeader(),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.spaceLg,
+              vertical: AppTokens.spaceLg,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_loadError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(AppTokens.errorPadding),
+                    decoration: BoxDecoration(
+                      color: AppTokens.error.withValues(
+                        alpha: AppTokens.alphaSubtle,
+                      ),
+                      borderRadius: BorderRadius.circular(
+                        AppTokens.errorRadius,
+                      ),
+                      border: Border.all(
+                        color: AppTokens.error.withValues(
+                          alpha: AppTokens.alphaStrong,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Could not load branches and staff: $_loadError',
+                            style: AppTokens.dmSans(
+                              size: AppTokens.textLabel,
+                              weight: FontWeight.w500,
+                              color: AppTokens.error,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loadData,
+                          child: Text(
+                            'Retry',
+                            style: AppTokens.manrope(
+                              size: AppTokens.textLabel,
+                              weight: FontWeight.w700,
+                              color: AppTokens.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppTokens.spaceLg),
+                ],
                 _buildStatisticsGrid(todaySummary),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppTokens.spaceXl),
                 _buildQuickActions(role),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppTokens.spaceXl),
                 _buildRecentActivity(todaySummary),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppTokens.spaceXl),
                 _buildLogoutButton(),
               ],
             ),
@@ -112,25 +170,37 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceLg,
+      ),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: AppTokens.obsidian800,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             businessName,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+            style: AppTokens.manrope(
+              size: AppTokens.textSubtitle,
+              weight: FontWeight.w700,
+              color: AppTokens.white,
             ),
           ),
-          const SizedBox(height: 2),
-          const Text(
+          const SizedBox(height: AppTokens.spaceXs),
+          Text(
             'Overview of your business performance',
-            style: TextStyle(color: TwColors.slate400, fontSize: 13),
+            style: AppTokens.dmSans(
+              size: AppTokens.textLabel,
+              weight: FontWeight.w400,
+              color: AppTokens.ice400,
+            ),
           ),
         ],
       ),
@@ -146,28 +216,44 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           final shouldLogout = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              backgroundColor: TwColors.slate900,
-              title: const Text(
+              backgroundColor: AppTokens.obsidian900,
+              title: Text(
                 'Logout',
-                style: TextStyle(color: TwColors.white),
+                style: AppTokens.manrope(
+                  size: AppTokens.textSubtitle,
+                  weight: FontWeight.w700,
+                  color: AppTokens.white,
+                ),
               ),
-              content: const Text(
+              content: Text(
                 'Are you sure you want to logout?',
-                style: TextStyle(color: TwColors.slate400),
+                style: AppTokens.dmSans(
+                  size: AppTokens.textBodySmall,
+                  weight: FontWeight.w400,
+                  color: AppTokens.ice400,
+                ),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text(
+                  child: Text(
                     'Cancel',
-                    style: TextStyle(color: TwColors.slate400),
+                    style: AppTokens.dmSans(
+                      size: AppTokens.textBodySmall,
+                      weight: FontWeight.w400,
+                      color: AppTokens.ice400,
+                    ),
                   ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text(
+                  child: Text(
                     'Logout',
-                    style: TextStyle(color: TwColors.red500),
+                    style: AppTokens.manrope(
+                      size: AppTokens.textBodySmall,
+                      weight: FontWeight.w600,
+                      color: AppTokens.error,
+                    ),
                   ),
                 ),
               ],
@@ -179,19 +265,22 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           }
         },
         style: OutlinedButton.styleFrom(
-          backgroundColor: TwColors.cardBg,
-          foregroundColor: TwColors.slate300,
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          backgroundColor: AppTokens.headerFacetA,
+          foregroundColor: AppTokens.ice200,
+          padding: const EdgeInsets.symmetric(vertical: AppTokens.spaceLg),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
           ),
-          side: const BorderSide(color: TwColors.slate700),
-          elevation: 0,
+          side: const BorderSide(color: AppTokens.obsidian700),
+          elevation: AppTokens.cardElevation,
         ),
-        icon: const Icon(Icons.logout_rounded, size: 18),
-        label: const Text(
+        icon: const Icon(Icons.logout_rounded, size: AppTokens.progressSize),
+        label: Text(
           'Logout',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: AppTokens.manrope(
+            size: AppTokens.textBody,
+            weight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -207,7 +296,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     final currency = summary?.currency ?? 'ETB';
     final verifiedAmount = summary == null
         ? (todaySummary.isLoading ? '...' : '—')
-        : '${currency} ${summary.verifiedAmount.toStringAsFixed(2)}';
+        : '$currency ${summary.verifiedAmount.toStringAsFixed(2)}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,78 +307,83 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Total Branches',
               value: _isLoading ? '...' : _branches.length.toString(),
               icon: Icons.storefront_rounded,
-              color: TwColors.brightGreen,
+              color: AppTokens.accent,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
               title: 'Total Staff',
               value: _isLoading ? '...' : _staff.length.toString(),
               icon: Icons.people_rounded,
-              color: TwColors.lime400,
+              color: AppTokens.success,
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppTokens.statChangePaddingH),
         Row(
           children: [
             _StatItem(
               title: 'Online Staff',
               value: _isLoading ? '...' : onlineStaff.toString(),
               icon: Icons.wifi_rounded,
-              color: TwColors.brightGreen,
+              color: AppTokens.accent,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
               title: 'Offline Staff',
               value: _isLoading ? '...' : offlineStaff.toString(),
               icon: Icons.signal_wifi_off_rounded,
-              color: TwColors.amber500,
+              color: AppTokens.warning,
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTokens.spaceMd),
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTokens.spaceLg),
           decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: TwColors.slate700, width: 1),
+            color: AppTokens.obsidian950,
+            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+            border: Border.all(
+              color: AppTokens.obsidian700,
+              width: AppTokens.componentBorderWidth,
+            ),
           ),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: AppTokens.tapTarget,
+                height: AppTokens.tapTarget,
                 decoration: BoxDecoration(
-                  color: TwColors.brightGreen.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: AppTokens.accent.withValues(alpha: AppTokens.alphaLow),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 ),
                 child: const Icon(
                   Icons.payments_rounded,
-                  color: TwColors.brightGreen,
-                  size: 24,
+                  color: AppTokens.accent,
+                  size: AppTokens.componentIconLg,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: AppTokens.heroStatusPaddingH),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       "Today's Verified Payments",
-                      style: TextStyle(
-                        color: TwColors.white.withValues(alpha: 0.65),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                      style: AppTokens.dmSans(
+                        size: AppTokens.textCaption,
+                        weight: FontWeight.w500,
+                        color: AppTokens.white.withValues(
+                          alpha: AppTokens.alphaTertiary,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppTokens.statTitleGap),
                     Text(
                       '$verifiedCount payments',
-                      style: const TextStyle(
-                        color: TwColors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                      style: AppTokens.manrope(
+                        size: AppTokens.textSubtitle,
+                        weight: FontWeight.w700,
+                        color: AppTokens.white,
                       ),
                     ),
                   ],
@@ -299,20 +393,22 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    "Total Amount",
-                    style: TextStyle(
-                      color: TwColors.white.withValues(alpha: 0.5),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+                    'Total Amount',
+                    style: AppTokens.dmSans(
+                      size: AppTokens.textOverline,
+                      weight: FontWeight.w500,
+                      color: AppTokens.white.withValues(
+                        alpha: AppTokens.alphaSecondary,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppTokens.spaceXs),
                   Text(
                     verifiedAmount,
-                    style: const TextStyle(
-                      color: TwColors.brightGreen,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
+                    style: AppTokens.manrope(
+                      size: AppTokens.textSubtitle,
+                      weight: FontWeight.w700,
+                      color: AppTokens.accent,
                     ),
                   ),
                 ],
@@ -332,7 +428,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.store_mall_directory_rounded,
           label: 'Branches',
-          color: TwColors.brightGreen,
+          color: AppTokens.accent,
           onTap: () => _navigateAndRefresh(const BranchManagementScreen()),
         ),
       );
@@ -343,7 +439,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.person_add_rounded,
           label: 'Staff',
-          color: TwColors.lime400,
+          color: AppTokens.success,
           onTap: () => _navigateAndRefresh(const StaffManagementScreen()),
         ),
       );
@@ -354,7 +450,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.account_balance_rounded,
           label: 'Accounts',
-          color: TwColors.sky500,
+          color: AppTokens.primary,
           onTap: () =>
               _navigateAndRefresh(const PaymentAccountManagementScreen()),
         ),
@@ -366,7 +462,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
       _QuickAction(
         icon: Icons.payments_rounded,
         label: 'Payments',
-        color: TwColors.sky500,
+        color: AppTokens.primary,
         onTap: () => _navigateAndRefresh(const PaymentActivityScreen()),
       ),
     );
@@ -376,7 +472,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.bar_chart_rounded,
           label: 'Reports',
-          color: TwColors.amber500,
+          color: AppTokens.warning,
           onTap: () => _navigateAndRefresh(const ReportsScreen()),
         ),
       );
@@ -389,21 +485,21 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Quick Actions',
-          style: TextStyle(
-            color: TwColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+          style: AppTokens.manrope(
+            size: AppTokens.textBodyLarge,
+            weight: FontWeight.w600,
+            color: AppTokens.white,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTokens.spaceMd),
         GridView.count(
           crossAxisCount: 3,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
+          mainAxisSpacing: AppTokens.statChangePaddingH,
+          crossAxisSpacing: AppTokens.statChangePaddingH,
           children: actions,
         ),
       ],
@@ -414,15 +510,15 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Recent Activity',
-          style: TextStyle(
-            color: TwColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+          style: AppTokens.manrope(
+            size: AppTokens.textBodyLarge,
+            weight: FontWeight.w600,
+            color: AppTokens.white,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTokens.spaceMd),
         todaySummary.when(
           data: (data) {
             if (data.recent.isEmpty) {
@@ -433,27 +529,30 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                 final statusColor = _statusColor(p.status);
                 final time = DateFormat('h:mm a').format(p.createdAt);
                 return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: AppTokens.spaceSm),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                    horizontal: AppTokens.heroStatusPaddingH,
+                    vertical: AppTokens.spaceMd,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: TwColors.slate700, width: 1),
+                    color: AppTokens.obsidian950,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                    border: Border.all(
+                      color: AppTokens.obsidian700,
+                      width: AppTokens.componentBorderWidth,
+                    ),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        width: 8,
-                        height: 8,
+                        width: AppTokens.heroDotSize,
+                        height: AppTokens.heroDotSize,
                         decoration: BoxDecoration(
                           color: statusColor,
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: AppTokens.statChangePaddingH),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -464,18 +563,21 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                                   : p.id,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: TwColors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                              style: AppTokens.manrope(
+                                size: AppTokens.textLabel,
+                                weight: FontWeight.w600,
+                                color: AppTokens.white,
                               ),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: AppTokens.spaceXs),
                             Text(
                               '${p.status} · $time',
-                              style: TextStyle(
-                                color: TwColors.white.withValues(alpha: 0.5),
-                                fontSize: 11,
+                              style: AppTokens.dmSans(
+                                size: AppTokens.textOverline,
+                                weight: FontWeight.w400,
+                                color: AppTokens.white.withValues(
+                                  alpha: AppTokens.alphaSecondary,
+                                ),
                               ),
                             ),
                           ],
@@ -483,10 +585,10 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                       ),
                       Text(
                         '${p.currency} ${p.amount.toStringAsFixed(2)}',
-                        style: TextStyle(
+                        style: AppTokens.manrope(
+                          size: AppTokens.textLabel,
+                          weight: FontWeight.w600,
                           color: statusColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -497,7 +599,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           },
           loading: () => const Center(
             child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
+              padding: EdgeInsets.symmetric(vertical: AppTokens.space2xl),
               child: SvLoader.page(),
             ),
           ),
@@ -517,27 +619,30 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Widget _emptyActivity(String message, {VoidCallback? onRetry}) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
+        padding: const EdgeInsets.symmetric(vertical: AppTokens.space3xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.5),
-                fontSize: 14,
+              style: AppTokens.dmSans(
+                size: AppTokens.textBodySmall,
+                weight: FontWeight.w400,
+                color: AppTokens.white.withValues(
+                  alpha: AppTokens.alphaSecondary,
+                ),
               ),
             ),
             if (onRetry != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTokens.spaceSm),
               TextButton(
                 onPressed: onRetry,
                 style: TextButton.styleFrom(
-                  foregroundColor: TwColors.brightGreen,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                  foregroundColor: AppTokens.accent,
+                  textStyle: AppTokens.manrope(
+                    size: AppTokens.textLabel,
+                    weight: FontWeight.w700,
                   ),
                 ),
                 child: const Text('Retry'),
@@ -552,13 +657,13 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Color _statusColor(String status) {
     switch (status.toUpperCase()) {
       case 'VERIFIED':
-        return TwColors.brightGreen;
+        return AppTokens.success;
       case 'FAILED':
-        return TwColors.red500;
+        return AppTokens.error;
       case 'REJECTED':
-        return TwColors.amber500;
+        return AppTokens.warning;
       default:
-        return TwColors.slate400;
+        return AppTokens.ice400;
     }
   }
 }
@@ -580,11 +685,14 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: TwColors.slate700, width: 1),
+          color: AppTokens.obsidian950,
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          border: Border.all(
+            color: AppTokens.obsidian700,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,32 +700,38 @@ class _StatItem extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: AppTokens.handleWidth,
+                  height: AppTokens.handleWidth,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
+                    color: color.withValues(alpha: AppTokens.alphaLow),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                   ),
-                  child: Icon(icon, color: color, size: 20),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: AppTokens.componentIconMd,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTokens.spaceMd),
             Text(
               title,
-              style: TextStyle(
-                color: TwColors.white.withOpacity(0.65),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+              style: AppTokens.dmSans(
+                size: AppTokens.textCaption,
+                weight: FontWeight.w500,
+                color: AppTokens.white.withValues(
+                  alpha: AppTokens.alphaTertiary,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppTokens.spaceXs),
             Text(
               value,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
+              style: AppTokens.manrope(
+                size: AppTokens.textSubtitle,
+                weight: FontWeight.w700,
+                color: AppTokens.white,
               ),
             ),
           ],
@@ -645,31 +759,38 @@ class _QuickAction extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: TwColors.slate700, width: 1),
+          color: AppTokens.obsidian950,
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          border: Border.all(
+            color: AppTokens.obsidian700,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: AppTokens.tapTarget,
+              height: AppTokens.tapTarget,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
+                color: color.withValues(alpha: AppTokens.alphaLow),
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
               ),
-              child: Icon(icon, color: color, size: 22),
+              child: Icon(
+                icon,
+                color: color,
+                size: AppTokens.formPrefixIconSize,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTokens.spaceMd),
             Text(
               label,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+              style: AppTokens.manrope(
+                size: AppTokens.textLabel,
+                weight: FontWeight.w600,
+                color: AppTokens.white,
               ),
               textAlign: TextAlign.center,
             ),

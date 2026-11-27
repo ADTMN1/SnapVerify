@@ -8,11 +8,11 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/tailwind.dart';
 import '../../core/utils/ocr_parser.dart';
 import '../../core/utils/toast_service.dart';
 import '../../domain/entities/verification_result.dart';
 import '../../domain/entities/payment_account.dart';
+import '../../theme/app_tokens.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/sv_loader.dart';
 
@@ -212,18 +212,20 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     return showModalBottomSheet<PaymentProvider>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       builder: (sheetContext) {
         return Container(
           decoration: const BoxDecoration(
-            color: TwColors.primaryBg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            color: AppTokens.headerBase,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppTokens.radiusField),
+            ),
           ),
           padding: EdgeInsets.fromLTRB(
-            24,
-            16,
-            24,
-            24 + MediaQuery.of(sheetContext).padding.bottom,
+            AppTokens.sheetHorizontalPadding,
+            AppTokens.spaceLg,
+            AppTokens.sheetHorizontalPadding,
+            AppTokens.space2xl + MediaQuery.of(sheetContext).padding.bottom,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -231,77 +233,84 @@ class _CameraTabState extends ConsumerState<CameraTab> {
             children: [
               Center(
                 child: Container(
-                  width: 40,
-                  height: 4,
+                  width: AppTokens.logoIconSize,
+                  height: AppTokens.handleHeight,
                   decoration: BoxDecoration(
-                    color: TwColors.slate600,
-                    borderRadius: BorderRadius.circular(2),
+                    color: AppTokens.inkMuted,
+                    borderRadius: BorderRadius.circular(
+                      AppTokens.progressStroke,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTokens.space2xl),
               Text(
                 'Select Payment Provider',
-                style: TextStyle(
-                  color: TwColors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                style: AppTokens.manrope(
+                  size: AppTokens.textSubtitle,
+                  weight: FontWeight.w800,
+                  color: AppTokens.white,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: AppTokens.titleLanguageGap),
               Text(
                 'We could not confidently detect the provider from this receipt. '
                 'Choose the provider shown on the receipt.',
-                style: TextStyle(
-                  color: TwColors.white.withValues(alpha: 0.55),
-                  fontSize: 13,
-                  height: 1.4,
+                style: AppTokens.dmSans(
+                  size: AppTokens.textLabel,
+                  weight: FontWeight.w400,
+                  color: AppTokens.white.withValues(
+                    alpha: AppTokens.alphaSecondary,
+                  ),
+                  height: AppTokens.lineHeightRelaxed,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTokens.spaceLg),
               ...PaymentProvider.values.map(
                 (provider) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: AppTokens.spaceSm),
                   child: Material(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppTokens.obsidian950,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
                       onTap: () => Navigator.of(sheetContext).pop(provider),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 14,
+                          horizontal: AppTokens.badgePaddingH,
+                          vertical: AppTokens.badgePaddingH,
                         ),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(
+                            AppTokens.radiusMd,
+                          ),
                           border: Border.all(
-                            color: TwColors.slate700,
-                            width: 1,
+                            color: AppTokens.obsidian700,
+                            width: AppTokens.componentBorderWidth,
                           ),
                         ),
                         child: Row(
                           children: [
                             Icon(
                               Icons.account_balance_rounded,
-                              color: TwColors.brightGreen,
-                              size: 22,
+                              color: AppTokens.accent,
+                              size: AppTokens.formPrefixIconSize,
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: AppTokens.spaceMd),
                             Expanded(
                               child: Text(
                                 provider.label,
-                                style: TextStyle(
-                                  color: TwColors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
+                                style: AppTokens.manrope(
+                                  size: AppTokens.textBody,
+                                  weight: FontWeight.w500,
+                                  color: AppTokens.white,
                                 ),
                               ),
                             ),
                             Icon(
                               Icons.chevron_right_rounded,
-                              color: TwColors.slate500,
-                              size: 22,
+                              color: AppTokens.textSecondary,
+                              size: AppTokens.formPrefixIconSize,
                             ),
                           ],
                         ),
@@ -320,69 +329,74 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   void _showInvalidReceiptDialog() {
     showDialog(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.85),
+      barrierColor: AppTokens.obsidian950.withValues(
+        alpha: AppTokens.alphaDisabled,
+      ),
       builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppTokens.transparent,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppTokens.space2xl),
           decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: TwColors.slate700),
+            color: AppTokens.obsidian950,
+            borderRadius: BorderRadius.circular(AppTokens.radius2xl),
+            border: Border.all(color: AppTokens.obsidian700),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(AppTokens.inputPaddingH),
                 decoration: BoxDecoration(
-                  color: TwColors.red500.withValues(alpha: 0.1),
+                  color: AppTokens.error.withValues(
+                    alpha: AppTokens.alphaSubtle,
+                  ),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.receipt_long_rounded,
-                  color: TwColors.red500,
-                  size: 40,
+                  color: AppTokens.error,
+                  size: AppTokens.logoIconSize,
                 ),
               ),
-              const SizedBox(height: 18),
-              const Text(
+              const SizedBox(height: AppTokens.inputPaddingH),
+              Text(
                 'Invalid Receipt',
-                style: TextStyle(
-                  color: TwColors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                style: AppTokens.manrope(
+                  size: AppTokens.textBodyLarge,
+                  weight: FontWeight.w700,
+                  color: AppTokens.white,
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
+              const SizedBox(height: AppTokens.spaceSm),
+              Text(
                 "We couldn't find a valid transaction in the captured image. "
                 'Please make sure the receipt is clear and contains a '
                 'transaction reference number.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: TwColors.slate400,
-                  fontSize: 13,
-                  height: 1.4,
+                style: AppTokens.dmSans(
+                  size: AppTokens.textLabel,
+                  weight: FontWeight.w400,
+                  color: AppTokens.ice400,
+                  height: AppTokens.lineHeightRelaxed,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTokens.spaceXl),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   width: double.infinity,
-                  height: 48,
+                  height: AppTokens.statTileSize,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: TwColors.brightGreen,
-                    borderRadius: BorderRadius.circular(14),
+                    color: AppTokens.accent,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Try Again',
-                    style: TextStyle(
-                      color: TwColors.slate900,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                    style: AppTokens.manrope(
+                      size: AppTokens.textBodySmall,
+                      weight: FontWeight.w700,
+                      color: AppTokens.ink,
                     ),
                   ),
                 ),
@@ -398,7 +412,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       isDismissible: true,
       enableDrag: true,
       builder: (_) => ProviderScope(
@@ -411,7 +425,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppTokens.obsidian950,
       body: _initError != null
           ? _ErrorView(
               message: _initError!,
@@ -447,16 +461,22 @@ class _CameraTabState extends ConsumerState<CameraTab> {
         if (_processing)
           Positioned.fill(
             child: Container(
-              color: Colors.black.withValues(alpha: 0.6),
-              child: const Center(
+              color: AppTokens.obsidian950.withValues(
+                alpha: AppTokens.alphaTertiary,
+              ),
+              child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SvLoader.page(),
-                    SizedBox(height: 16),
+                    const SvLoader.page(),
+                    const SizedBox(height: AppTokens.spaceLg),
                     Text(
                       'Reading receipt…',
-                      style: TextStyle(color: TwColors.white, fontSize: 14),
+                      style: AppTokens.dmSans(
+                        size: AppTokens.textBodySmall,
+                        weight: FontWeight.w400,
+                        color: AppTokens.white,
+                      ),
                     ),
                   ],
                 ),
@@ -469,8 +489,8 @@ class _CameraTabState extends ConsumerState<CameraTab> {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
+                  horizontal: AppTokens.spaceLg,
+                  vertical: AppTokens.spaceLg,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -478,40 +498,48 @@ class _CameraTabState extends ConsumerState<CameraTab> {
                     Row(
                       children: [
                         Container(
-                          width: 34,
-                          height: 34,
+                          width: AppTokens.languageItemHeight,
+                          height: AppTokens.languageItemHeight,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [TwColors.brightGreen, TwColors.lime400],
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTokens.accent,
+                                AppTokens.accent.withValues(
+                                  alpha: AppTokens.alphaDisabled,
+                                ),
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(
+                              AppTokens.radiusSm,
+                            ),
                           ),
                           child: const Icon(
                             Icons.verified_rounded,
-                            color: Colors.black,
-                            size: 18,
+                            color: AppTokens.ink,
+                            size: AppTokens.errorIconSize,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        const Column(
+                        const SizedBox(width: AppTokens.dropdownIconGap),
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'SnapVerify',
-                              style: TextStyle(
-                                color: TwColors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
+                              style: AppTokens.manrope(
+                                size: AppTokens.textSubtitle,
+                                weight: FontWeight.w800,
+                                color: AppTokens.white,
+                                letterSpacing: AppTokens.trackingTight,
                               ),
                             ),
                             Text(
                               'Capture receipt to verify',
-                              style: TextStyle(
-                                color: TwColors.slate400,
-                                fontSize: 13,
+                              style: AppTokens.dmSans(
+                                size: AppTokens.textLabel,
+                                weight: FontWeight.w400,
+                                color: AppTokens.ice400,
                               ),
                             ),
                           ],
@@ -526,27 +554,37 @@ class _CameraTabState extends ConsumerState<CameraTab> {
                         setState(() => _torchOn = !_torchOn);
                       },
                       child: Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(
+                          AppTokens.dropdownIconGap,
+                        ),
                         decoration: BoxDecoration(
                           color: _torchOn
-                              ? TwColors.brightGreen.withOpacity(0.2)
-                              : Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
+                              ? AppTokens.accent.withValues(
+                                  alpha: AppTokens.navGlowAlpha,
+                                )
+                              : AppTokens.white.withValues(
+                                  alpha: AppTokens.alphaSubtle,
+                                ),
+                          borderRadius: BorderRadius.circular(
+                            AppTokens.radiusMd,
+                          ),
                           border: Border.all(
                             color: _torchOn
-                                ? TwColors.brightGreen.withOpacity(0.5)
-                                : Colors.white.withOpacity(0.15),
-                            width: 1,
+                                ? AppTokens.accent.withValues(
+                                    alpha: AppTokens.alphaSecondary,
+                                  )
+                                : AppTokens.white.withValues(
+                                    alpha: AppTokens.alphaMedium,
+                                  ),
+                            width: AppTokens.componentBorderWidth,
                           ),
                         ),
                         child: Icon(
                           _torchOn
                               ? Icons.flashlight_on_rounded
                               : Icons.flashlight_off_rounded,
-                          color: _torchOn
-                              ? TwColors.brightGreen
-                              : TwColors.white,
-                          size: 20,
+                          color: _torchOn ? AppTokens.accent : AppTokens.white,
+                          size: AppTokens.backButtonIconSize,
                         ),
                       ),
                     ),
@@ -558,30 +596,32 @@ class _CameraTabState extends ConsumerState<CameraTab> {
 
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 32,
+                  horizontal: AppTokens.spaceLg,
+                  vertical: AppTokens.space3xl,
                 ),
                 child: GestureDetector(
                   onTap: _processing ? null : _captureAndProcess,
                   child: Container(
-                    width: 70,
-                    height: 70,
+                    width: AppTokens.patternTileHeight,
+                    height: AppTokens.patternTileHeight,
                     decoration: BoxDecoration(
                       color: _processing
-                          ? TwColors.slate700
-                          : TwColors.brightGreen,
+                          ? AppTokens.obsidian700
+                          : AppTokens.accent,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: _processing
-                            ? TwColors.slate600
-                            : TwColors.lime400,
-                        width: 3,
+                            ? AppTokens.inkMuted
+                            : AppTokens.accent.withValues(
+                                alpha: AppTokens.alphaDisabled,
+                              ),
+                        width: AppTokens.focusRingWidth,
                       ),
                     ),
                     child: Icon(
                       Icons.camera_alt,
-                      color: _processing ? TwColors.slate400 : Colors.black,
-                      size: 30,
+                      color: _processing ? AppTokens.ice400 : AppTokens.ink,
+                      size: AppTokens.space3xl,
                     ),
                   ),
                 ),
@@ -609,53 +649,67 @@ class _ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppTokens.space3xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(AppTokens.spaceXl),
               decoration: BoxDecoration(
-                color: TwColors.red500.withOpacity(0.1),
+                color: AppTokens.error.withValues(alpha: AppTokens.alphaSubtle),
                 shape: BoxShape.circle,
-                border: Border.all(color: TwColors.red500.withOpacity(0.3)),
+                border: Border.all(
+                  color: AppTokens.error.withValues(
+                    alpha: AppTokens.alphaStrong,
+                  ),
+                ),
               ),
               child: const Icon(
                 Icons.no_photography_rounded,
-                color: TwColors.red500,
-                size: 40,
+                color: AppTokens.error,
+                size: AppTokens.logoIconSize,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppTokens.spaceXl),
             Text(
               message,
-              style: TextStyle(
-                color: TwColors.white.withOpacity(0.7),
-                fontSize: 14,
+              style: AppTokens.dmSans(
+                size: AppTokens.textBodySmall,
+                weight: FontWeight.w400,
+                color: AppTokens.white.withValues(
+                  alpha: AppTokens.alphaPrimaryMuted,
+                ),
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppTokens.spaceXl),
             ElevatedButton(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(
-                backgroundColor: TwColors.brightGreen,
-                foregroundColor: Colors.black,
+                backgroundColor: AppTokens.accent,
+                foregroundColor: AppTokens.ink,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 ),
               ),
-              child: const Text(
+              child: Text(
                 'Retry',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: AppTokens.manrope(
+                  size: AppTokens.buttonTextSize,
+                  weight: FontWeight.w700,
+                  color: AppTokens.ink,
+                ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: AppTokens.dropdownIconGap),
             TextButton.icon(
               onPressed: onOpenSettings,
-              icon: const Icon(Icons.settings_rounded, size: 16),
+              icon: const Icon(
+                Icons.settings_rounded,
+                size: AppTokens.checkIconSize,
+              ),
               label: const Text('Open Settings'),
-              style: TextButton.styleFrom(foregroundColor: TwColors.slate300),
+              style: TextButton.styleFrom(foregroundColor: AppTokens.ice200),
             ),
           ],
         ),
@@ -687,12 +741,12 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
     if (isLoading) {
       // Keep the loading state on the app's accent color (brightGreen) to
       // match the spinner and the rest of the app's active states.
-      statusColor = TwColors.brightGreen;
+      statusColor = AppTokens.accent;
       statusIcon = Icons.hourglass_top_rounded;
       statusTitle = 'Verifying Transaction...';
       statusSubtitle = 'Checking with payment provider...';
     } else if (state.status == PaymentVerifyStatus.error) {
-      statusColor = TwColors.amber500;
+      statusColor = AppTokens.warning;
       statusIcon = Icons.cloud_off_rounded;
       statusTitle = 'Verification Unavailable';
       statusSubtitle =
@@ -701,7 +755,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
     } else if (state.result != null) {
       switch (state.result!.status) {
         case VerificationStatus.verified:
-          statusColor = TwColors.brightGreen;
+          statusColor = AppTokens.accent;
           statusIcon = Icons.check_circle_rounded;
           statusTitle = 'Verified ✅';
           statusSubtitle = state.result!.message.isNotEmpty
@@ -710,7 +764,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           break;
         case VerificationStatus.alreadyVerified:
         case VerificationStatus.previouslyVerified:
-          statusColor = TwColors.brightGreen;
+          statusColor = AppTokens.accent;
           statusIcon = Icons.verified_rounded;
           statusTitle = 'Previously Verified';
           statusSubtitle = state.result!.message.isNotEmpty
@@ -718,7 +772,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               : 'This receipt was already verified for your business. No new record was created.';
           break;
         case VerificationStatus.providerDuplicate:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.warning_amber_rounded;
           statusTitle = 'Provider Duplicate';
           statusSubtitle = state.result!.message.isNotEmpty
@@ -726,7 +780,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               : 'The provider recognizes this receipt, but no matching payment record exists for your business.';
           break;
         case VerificationStatus.identityMismatch:
-          statusColor = TwColors.red500;
+          statusColor = AppTokens.error;
           statusIcon = Icons.cancel_rounded;
           statusTitle = 'Details Do Not Match';
           statusSubtitle = state.result!.message.isNotEmpty
@@ -734,7 +788,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               : 'The submitted details differ from the original verified payment.';
           break;
         case VerificationStatus.recheckFailed:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.cloud_off_rounded;
           statusTitle = 'Recheck Inconclusive';
           statusSubtitle = state.result!.message.isNotEmpty
@@ -742,7 +796,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               : 'The previous payment could not be re-confirmed. Please try again.';
           break;
         case VerificationStatus.needsReview:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.rate_review_rounded;
           statusTitle = 'Needs Review';
           statusSubtitle = state.result!.message.isNotEmpty
@@ -750,7 +804,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               : 'This receipt needs manual review. Contact support with your receipt.';
           break;
         case VerificationStatus.failed:
-          statusColor = TwColors.red500;
+          statusColor = AppTokens.error;
           statusIcon = Icons.cancel_rounded;
           statusTitle = 'Verification Failed';
           statusSubtitle =
@@ -758,7 +812,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               'Unable to verify payment. Please check the details and try again.';
           break;
         case VerificationStatus.providerUnavailable:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.cloud_off_rounded;
           statusTitle = 'Provider Unavailable';
           statusSubtitle =
@@ -766,7 +820,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               'Verification service is temporarily unavailable. Please try again in a few minutes.';
           break;
         case VerificationStatus.quotaExhausted:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.report_problem_rounded;
           statusTitle = 'Verification Quota Exhausted';
           statusSubtitle =
@@ -774,7 +828,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               'Verification quota exhausted. Please contact your administrator.';
           break;
         case VerificationStatus.providerConfigError:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.settings_suggest_rounded;
           statusTitle = 'Verification Misconfigured';
           statusSubtitle =
@@ -782,7 +836,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               'Payment verification is temporarily misconfigured. Please contact your administrator.';
           break;
         case VerificationStatus.paymentAccountNotConfigured:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.account_balance_wallet_outlined;
           statusTitle = 'Payment Account Not Configured';
           statusSubtitle =
@@ -790,7 +844,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               'No receiving account is configured for this payment provider. Add it in settings, or verify against your registered bank account.';
           break;
         case VerificationStatus.providerUndetected:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.help_outline_rounded;
           statusTitle = 'Provider Not Detected';
           statusSubtitle =
@@ -798,7 +852,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               'Could not determine the payment provider from this receipt. Please select the provider and try again.';
           break;
         case VerificationStatus.unsupportedProvider:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.block_rounded;
           statusTitle = 'Unsupported Provider';
           statusSubtitle =
@@ -808,7 +862,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
         case VerificationStatus.pending:
           // Unknown/unrecognized backend verdicts land here too — they must
           // never be presented as a definitive "Invalid Transaction".
-          statusColor = TwColors.sky500;
+          statusColor = AppTokens.info;
           statusIcon = Icons.hourglass_top_rounded;
           statusTitle = 'Pending Verification';
           statusSubtitle =
@@ -817,7 +871,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           break;
       }
     } else {
-      statusColor = TwColors.slate500;
+      statusColor = AppTokens.textSecondary;
       statusIcon = Icons.info_rounded;
       statusTitle = 'No Result';
       statusSubtitle = '';
@@ -825,62 +879,71 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: TwColors.primaryBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        color: AppTokens.headerBase,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.radiusField),
+        ),
       ),
       padding: EdgeInsets.fromLTRB(
-        24,
-        16,
-        24,
-        24 + MediaQuery.of(context).padding.bottom,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.spaceLg,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.space2xl + MediaQuery.of(context).padding.bottom,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40,
-            height: 4,
+            width: AppTokens.logoIconSize,
+            height: AppTokens.handleHeight,
             decoration: BoxDecoration(
-              color: TwColors.slate600,
-              borderRadius: BorderRadius.circular(2),
+              color: AppTokens.inkMuted,
+              borderRadius: BorderRadius.circular(AppTokens.progressStroke),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: AppTokens.space2xl + AppTokens.spaceXs),
 
           if (isLoading)
             const SvLoader.large()
           else
             Container(
-              width: 74,
-              height: 74,
+              width: AppTokens.patternTileWidth,
+              height: AppTokens.patternTileWidth,
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
+                color: statusColor.withValues(alpha: AppTokens.alphaLow),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: statusColor.withOpacity(0.35),
-                  width: 2,
+                  color: statusColor.withValues(alpha: AppTokens.alphaStrong),
+                  width: AppTokens.progressStroke,
                 ),
               ),
-              child: Icon(statusIcon, color: statusColor, size: 36),
+              child: Icon(
+                statusIcon,
+                color: statusColor,
+                size: AppTokens.handleWidth,
+              ),
             ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceLg),
           Text(
             statusTitle,
-            style: TextStyle(
+            style: AppTokens.manrope(
+              size: AppTokens.textSubtitle,
+              weight: FontWeight.w800,
               color: statusColor,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
             ),
           ),
           if (statusSubtitle.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: AppTokens.titleLanguageGap),
               child: Text(
                 statusSubtitle,
-                style: TextStyle(
-                  color: TwColors.white.withOpacity(0.55),
-                  fontSize: 13,
+                style: AppTokens.dmSans(
+                  size: AppTokens.textLabel,
+                  weight: FontWeight.w400,
+                  color: AppTokens.white.withValues(
+                    alpha: AppTokens.alphaSecondary,
+                  ),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -891,14 +954,17 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                   state.result!.paymentDate != null ||
                   state.result!.verifiedAt != null))
             Padding(
-              padding: const EdgeInsets.only(top: 20),
+              padding: const EdgeInsets.only(top: AppTokens.spaceXl),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppTokens.spaceLg),
                 decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: TwColors.slate700, width: 1),
+                  color: AppTokens.obsidian950,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  border: Border.all(
+                    color: AppTokens.obsidian700,
+                    width: AppTokens.componentBorderWidth,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -911,17 +977,17 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                     ),
                     if (state.result!.amount > 0)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
                         child: _DetailRow(
                           label: 'Verified Amount',
                           value:
                               '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
-                          valueColor: TwColors.brightGreen,
+                          valueColor: AppTokens.accent,
                         ),
                       ),
                     if (state.result!.paymentDate != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
                         child: _DetailRow(
                           label: 'Payment Date',
                           value: DateFormat(
@@ -931,7 +997,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                       ),
                     if (state.result!.verifiedAt != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
                         child: _DetailRow(
                           label: 'Verified On',
                           value: DateFormat(
@@ -944,25 +1010,29 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               ),
             ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: AppTokens.spaceXl),
 
           if (!isLoading)
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: AppTokens.buttonHeight,
               child: ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: TwColors.brightGreen,
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppTokens.accent,
+                  foregroundColor: AppTokens.ink,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                   ),
-                  elevation: 0,
+                  elevation: AppTokens.cardElevation,
                 ),
-                child: const Text(
+                child: Text(
                   'Scan Again',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  style: AppTokens.manrope(
+                    size: AppTokens.buttonTextSize,
+                    weight: FontWeight.w700,
+                    color: AppTokens.ink,
+                  ),
                 ),
               ),
             ),
@@ -986,9 +1056,10 @@ class _DetailRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(
-            color: TwColors.white.withOpacity(0.45),
-            fontSize: 13,
+          style: AppTokens.dmSans(
+            size: AppTokens.textLabel,
+            weight: FontWeight.w400,
+            color: AppTokens.white.withValues(alpha: AppTokens.alphaOverlay),
           ),
         ),
         Flexible(
@@ -996,10 +1067,10 @@ class _DetailRow extends StatelessWidget {
             value,
             textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: valueColor ?? TwColors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+            style: AppTokens.manrope(
+              size: AppTokens.textLabel,
+              weight: FontWeight.w600,
+              color: valueColor ?? AppTokens.white,
             ),
           ),
         ),

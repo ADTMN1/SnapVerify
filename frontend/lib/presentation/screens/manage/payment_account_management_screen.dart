@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-import '../../../core/tailwind.dart';
 import '../../../core/utils/toast_service.dart';
-import '../../../data/datasources/payment_remote_datasource.dart';
+import '../../../theme/app_tokens.dart';
 import '../../../domain/entities/payment_account.dart';
 import '../../../presentation/providers/auth_provider.dart';
+import '../../../presentation/providers/payment_provider.dart';
 import '../../widgets/sv_loader.dart';
 
 class PaymentAccountManagementScreen extends ConsumerStatefulWidget {
@@ -31,31 +30,43 @@ class _PaymentAccountManagementScreenState
   }
 
   Future<void> _loadAccounts() async {
-    final authState = ref.read(authNotifierProvider);
-    if (!authState.isAuthenticated) return;
+    if (!ref.read(authNotifierProvider).isAuthenticated) return;
 
     try {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = true;
+          _error = null;
+        });
+      }
 
-      final datasource = PaymentRemoteDatasource(client: http.Client());
-      final accounts = await datasource.getPaymentAccounts(
-        accessToken: authState.tokens!.accessToken,
-      );
+      final token = await ref
+          .read(authNotifierProvider.notifier)
+          .ensureFreshAccessToken();
+      if (token == null) {
+        throw Exception('Session expired. Please log in again.');
+      }
+      final accounts = await ref
+          .read(paymentDatasourceProvider)
+          .getPaymentAccounts(accessToken: token);
 
-      setState(() {
-        _accounts = accounts;
-      });
+      if (mounted) {
+        setState(() {
+          _accounts = accounts;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -63,7 +74,7 @@ class _PaymentAccountManagementScreenState
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       builder: (context) =>
           _PaymentAccountDialog(account: account, onSave: _saveAccount),
     );
@@ -74,20 +85,25 @@ class _PaymentAccountManagementScreenState
     String? accountNumber,
     PaymentAccount? existingAccount,
   }) async {
-    final authState = ref.read(authNotifierProvider);
-    if (!authState.isAuthenticated) return;
+    if (!ref.read(authNotifierProvider).isAuthenticated) return;
 
     try {
-      final datasource = PaymentRemoteDatasource(client: http.Client());
+      final token = await ref
+          .read(authNotifierProvider.notifier)
+          .ensureFreshAccessToken();
+      if (token == null) {
+        throw Exception('Session expired. Please log in again.');
+      }
+      final datasource = ref.read(paymentDatasourceProvider);
       if (existingAccount == null) {
         await datasource.createPaymentAccount(
-          accessToken: authState.tokens!.accessToken,
+          accessToken: token,
           provider: provider,
           accountNumber: accountNumber,
         );
       } else {
         await datasource.updatePaymentAccount(
-          accessToken: authState.tokens!.accessToken,
+          accessToken: token,
           provider: provider,
           accountNumber: accountNumber,
         );
@@ -108,28 +124,44 @@ class _PaymentAccountManagementScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: TwColors.slate900,
-        title: const Text(
+        backgroundColor: AppTokens.obsidian900,
+        title: Text(
           'Delete Account',
-          style: TextStyle(color: TwColors.white),
+          style: AppTokens.manrope(
+            size: AppTokens.textBodyLarge,
+            weight: FontWeight.w700,
+            color: AppTokens.white,
+          ),
         ),
-        content: const Text(
+        content: Text(
           'Are you sure you want to delete this payment account?',
-          style: TextStyle(color: TwColors.slate400),
+          style: AppTokens.dmSans(
+            size: AppTokens.textBodySmall,
+            weight: FontWeight.w400,
+            color: AppTokens.ice400,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: TwColors.slate400),
+              style: AppTokens.manrope(
+                size: AppTokens.textBodySmall,
+                weight: FontWeight.w600,
+                color: AppTokens.ice400,
+              ),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: TwColors.red500),
+              style: AppTokens.manrope(
+                size: AppTokens.textBodySmall,
+                weight: FontWeight.w600,
+                color: AppTokens.error,
+              ),
             ),
           ),
         ],
@@ -137,14 +169,20 @@ class _PaymentAccountManagementScreenState
     );
 
     if (confirmed == true) {
-      final authState = ref.read(authNotifierProvider);
-      if (!authState.isAuthenticated) return;
+      if (!ref.read(authNotifierProvider).isAuthenticated) return;
       try {
-        final datasource = PaymentRemoteDatasource(client: http.Client());
-        await datasource.deletePaymentAccount(
-          accessToken: authState.tokens!.accessToken,
-          provider: account.provider.name,
-        );
+        final token = await ref
+            .read(authNotifierProvider.notifier)
+            .ensureFreshAccessToken();
+        if (token == null) {
+          throw Exception('Session expired. Please log in again.');
+        }
+        await ref
+            .read(paymentDatasourceProvider)
+            .deletePaymentAccount(
+              accessToken: token,
+              provider: account.provider.name,
+            );
         if (mounted) {
           ToastService.showSuccess('Account deleted successfully');
         }
@@ -163,7 +201,7 @@ class _PaymentAccountManagementScreenState
     final canAdd = authState.role.canAddPaymentAccount;
 
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
+      backgroundColor: AppTokens.headerBase,
       body: SafeArea(
         top: !widget.isTab,
         bottom: !widget.isTab,
@@ -175,13 +213,13 @@ class _PaymentAccountManagementScreenState
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _loadAccounts,
-                color: TwColors.brightGreen,
-                backgroundColor: TwColors.slate800,
+                color: AppTokens.accent,
+                backgroundColor: AppTokens.obsidian900,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
+                    horizontal: AppTokens.spaceLg,
+                    vertical: AppTokens.spaceLg,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,27 +229,29 @@ class _PaymentAccountManagementScreenState
                           onTap: () => _showAddEditDialog(),
                           child: Container(
                             width: double.infinity,
-                            height: 50,
+                            height: AppTokens.buttonHeight,
                             decoration: BoxDecoration(
-                              color: TwColors.brightGreen,
-                              borderRadius: BorderRadius.circular(14),
+                              color: AppTokens.accent,
+                              borderRadius: BorderRadius.circular(
+                                AppTokens.radiusLg,
+                              ),
                             ),
-                            child: const Center(
+                            child: Center(
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.add_rounded,
-                                    color: TwColors.slate900,
-                                    size: 22,
+                                    color: AppTokens.obsidian900,
+                                    size: AppTokens.formPrefixIconSize,
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: AppTokens.spaceSm),
                                   Text(
                                     'Add Payment Account',
-                                    style: TextStyle(
-                                      color: TwColors.slate900,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
+                                    style: AppTokens.manrope(
+                                      size: AppTokens.textBody,
+                                      weight: FontWeight.w700,
+                                      color: AppTokens.obsidian900,
                                     ),
                                   ),
                                 ],
@@ -219,73 +259,80 @@ class _PaymentAccountManagementScreenState
                             ),
                           ),
                         ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppTokens.spaceLg),
                       if (_loading)
                         const Center(child: SvLoader.page())
                       else if (_error != null)
                         Center(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 60),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppTokens.logoTopGap,
+                            ),
                             child: Column(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.error_outline_rounded,
-                                  size: 48,
-                                  color: TwColors.red500,
+                                  size: AppTokens.statTileSize,
+                                  color: AppTokens.error,
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: AppTokens.spaceXl),
                                 Text(
                                   'Failed to load accounts',
-                                  style: TextStyle(
-                                    color: TwColors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
+                                  style: AppTokens.manrope(
+                                    size: AppTokens.textBodyLarge,
+                                    weight: FontWeight.w500,
+                                    color: AppTokens.white,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: AppTokens.spaceSm),
                                 Text(
                                   _error!,
-                                  style: TextStyle(
-                                    color: TwColors.slate400,
-                                    fontSize: 14,
+                                  style: AppTokens.dmSans(
+                                    size: AppTokens.textBodySmall,
+                                    weight: FontWeight.w400,
+                                    color: AppTokens.ice400,
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: AppTokens.spaceXl),
                                 GestureDetector(
                                   onTap: _loadAccounts,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 12,
+                                      horizontal: AppTokens.statCardPadding,
+                                      vertical: AppTokens.spaceMd,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: TwColors.brightGreen.withValues(
-                                        alpha: 0.12,
+                                      color: AppTokens.accent.withValues(
+                                        alpha: AppTokens.alphaLow,
                                       ),
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(
+                                        AppTokens.radiusMd,
+                                      ),
                                       border: Border.all(
-                                        color: TwColors.brightGreen.withValues(
-                                          alpha: 0.3,
+                                        color: AppTokens.accent.withValues(
+                                          alpha: AppTokens.alphaStrong,
                                         ),
-                                        width: 1,
+                                        width: AppTokens.componentBorderWidth,
                                       ),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(
+                                        const Icon(
                                           Icons.refresh_rounded,
-                                          color: TwColors.brightGreen,
-                                          size: 18,
+                                          color: AppTokens.accent,
+                                          size: AppTokens.backButtonIconSize,
                                         ),
-                                        const SizedBox(width: 8),
+                                        const SizedBox(
+                                          width: AppTokens.spaceSm,
+                                        ),
                                         Text(
                                           'Retry',
-                                          style: TextStyle(
-                                            color: TwColors.brightGreen,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
+                                          style: AppTokens.manrope(
+                                            size: AppTokens.textBodySmall,
+                                            weight: FontWeight.w600,
+                                            color: AppTokens.accent,
                                           ),
                                         ),
                                       ],
@@ -299,39 +346,44 @@ class _PaymentAccountManagementScreenState
                       else if (_accounts == null || _accounts!.isEmpty)
                         Center(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 60),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppTokens.logoTopGap,
+                            ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(20),
+                                  padding: const EdgeInsets.all(
+                                    AppTokens.statCardPadding,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: TwColors.brightGreen.withValues(
-                                      alpha: 0.1,
+                                    color: AppTokens.accent.withValues(
+                                      alpha: AppTokens.alphaSubtle,
                                     ),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: Icon(
+                                  child: const Icon(
                                     Icons.account_balance_wallet_outlined,
-                                    size: 48,
-                                    color: TwColors.brightGreen,
+                                    size: AppTokens.statTileSize,
+                                    color: AppTokens.accent,
                                   ),
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: AppTokens.spaceXl),
                                 Text(
                                   'No payment accounts added yet',
-                                  style: TextStyle(
-                                    color: TwColors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
+                                  style: AppTokens.manrope(
+                                    size: AppTokens.textBodyLarge,
+                                    weight: FontWeight.w500,
+                                    color: AppTokens.white,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: AppTokens.spaceSm),
                                 Text(
                                   'Add your first payment account to get started',
-                                  style: TextStyle(
-                                    color: TwColors.slate400,
-                                    fontSize: 14,
+                                  style: AppTokens.dmSans(
+                                    size: AppTokens.textBodySmall,
+                                    weight: FontWeight.w400,
+                                    color: AppTokens.ice400,
                                   ),
                                 ),
                               ],
@@ -360,9 +412,17 @@ class _PaymentAccountManagementScreenState
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceLg,
+      ),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: AppTokens.obsidian900,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -370,28 +430,31 @@ class _PaymentAccountManagementScreenState
             GestureDetector(
               onTap: () => Navigator.of(context).pop(),
               child: Container(
-                width: 36,
-                height: 36,
+                width: AppTokens.backButtonSize,
+                height: AppTokens.backButtonSize,
                 decoration: BoxDecoration(
-                  color: TwColors.slate800,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: TwColors.slate700, width: 1),
+                  color: AppTokens.obsidian900,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  border: Border.all(
+                    color: AppTokens.obsidian700,
+                    width: AppTokens.componentBorderWidth,
+                  ),
                 ),
                 child: const Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: TwColors.white,
-                  size: 18,
+                  color: AppTokens.white,
+                  size: AppTokens.backButtonIconSize,
                 ),
               ),
             ),
-          if (!widget.isTab) const SizedBox(width: 16),
-          const Expanded(
+          if (!widget.isTab) const SizedBox(width: AppTokens.spaceLg),
+          Expanded(
             child: Text(
               'Payment Accounts',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+              style: AppTokens.manrope(
+                size: AppTokens.textSubtitle,
+                weight: FontWeight.w700,
+                color: AppTokens.white,
               ),
             ),
           ),
@@ -436,12 +499,15 @@ class _AccountCard extends ConsumerWidget {
     final canRemove = authState.role.canRemovePaymentAccount;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: TwColors.slate700, width: 1),
+        color: AppTokens.obsidian950,
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        border: Border.all(
+          color: AppTokens.obsidian700,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,20 +518,20 @@ class _AccountCard extends ConsumerWidget {
               Expanded(
                 child: Text(
                   _providerDisplayName,
-                  style: const TextStyle(
-                    color: TwColors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                  style: AppTokens.manrope(
+                    size: AppTokens.textBodyLarge,
+                    weight: FontWeight.w600,
+                    color: AppTokens.white,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTokens.spaceSm),
           if (account.accountNumber != null)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.only(top: AppTokens.spaceSm),
               child: _InfoRow(
                 icon: Icons.account_balance_outlined,
                 value: 'Account: ${account.accountNumber}',
@@ -473,7 +539,7 @@ class _AccountCard extends ConsumerWidget {
             ),
           if (account.suffix != null)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.only(top: AppTokens.spaceSm),
               child: _InfoRow(
                 icon: Icons.numbers_outlined,
                 value: 'Suffix: ${account.suffix}',
@@ -481,7 +547,7 @@ class _AccountCard extends ConsumerWidget {
             ),
           if (canEdit || canRemove)
             Padding(
-              padding: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.only(top: AppTokens.spaceMd),
               child: Row(
                 children: [
                   if (canEdit)
@@ -493,7 +559,8 @@ class _AccountCard extends ConsumerWidget {
                         isRemove: false,
                       ),
                     ),
-                  if (canEdit && canRemove) const SizedBox(width: 8),
+                  if (canEdit && canRemove)
+                    const SizedBox(width: AppTokens.spaceSm),
                   if (canRemove)
                     Expanded(
                       child: _ActionBtn(
@@ -522,14 +589,15 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: TwColors.slate400),
-        const SizedBox(width: 6),
+        Icon(icon, size: AppTokens.checkIconSize, color: AppTokens.ice400),
+        const SizedBox(width: AppTokens.statTitleGap),
         Expanded(
           child: Text(
             value,
-            style: TextStyle(
-              color: TwColors.white.withValues(alpha: 0.8),
-              fontSize: 12,
+            style: AppTokens.dmSans(
+              size: AppTokens.textCaption,
+              weight: FontWeight.w400,
+              color: AppTokens.white.withValues(alpha: AppTokens.alphaDisabled),
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -554,33 +622,39 @@ class _ActionBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isRemove ? TwColors.red500 : TwColors.brightGreen;
+    final color = isRemove ? AppTokens.error : AppTokens.accent;
 
     return Opacity(
-      opacity: onTap == null ? 0.5 : 1,
+      opacity: onTap == null ? AppTokens.alphaSecondary : 1,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.spaceMd,
+            vertical: AppTokens.badgeSmallPaddingH,
+          ),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+            color: color.withValues(alpha: AppTokens.alphaLow),
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            border: Border.all(
+              color: color.withValues(alpha: AppTokens.alphaStrong),
+              width: AppTokens.componentBorderWidth,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 6),
+              Icon(icon, size: AppTokens.checkIconSize, color: color),
+              const SizedBox(width: AppTokens.statTitleGap),
               Flexible(
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
-                  style: TextStyle(
+                  style: AppTokens.manrope(
+                    size: AppTokens.textLabel,
+                    weight: FontWeight.w600,
                     color: color,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -612,61 +686,82 @@ class _PaymentFormField extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(
-            color: TwColors.white.withValues(alpha: 0.65),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+          style: AppTokens.manrope(
+            size: AppTokens.textLabel,
+            weight: FontWeight.w600,
+            color: AppTokens.white.withValues(
+              alpha: AppTokens.alphaPrimaryMuted,
+            ),
           ),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: AppTokens.statTitleGap),
         TextFormField(
           controller: controller,
-          style: const TextStyle(
-            color: TwColors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+          style: AppTokens.manrope(
+            size: AppTokens.textBodySmall,
+            weight: FontWeight.w500,
+            color: AppTokens.white,
           ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(
-              color: TwColors.white.withValues(alpha: 0.3),
-              fontSize: 14,
+            hintStyle: AppTokens.dmSans(
+              size: AppTokens.textBodySmall,
+              weight: FontWeight.w400,
+              color: AppTokens.white.withValues(alpha: AppTokens.alphaStrong),
             ),
             prefixIcon: Icon(
               icon,
-              color: TwColors.white.withValues(alpha: 0.5),
-              size: 18,
+              color: AppTokens.white.withValues(
+                alpha: AppTokens.alphaSecondary,
+              ),
+              size: AppTokens.backButtonIconSize,
             ),
             filled: true,
-            fillColor: Colors.black,
+            fillColor: AppTokens.obsidian950,
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
+              horizontal: AppTokens.spaceLg,
+              vertical: AppTokens.badgePaddingH,
             ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: TwColors.slate700, width: 1),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              borderSide: BorderSide(
+                color: AppTokens.obsidian700,
+                width: AppTokens.componentBorderWidth,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: TwColors.slate700, width: 1),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              borderSide: BorderSide(
+                color: AppTokens.obsidian700,
+                width: AppTokens.componentBorderWidth,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
               borderSide: const BorderSide(
-                color: TwColors.brightGreen,
-                width: 1.5,
+                color: AppTokens.accent,
+                width: AppTokens.componentBorderWidthStrong,
               ),
             ),
             errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.red500, width: 1),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              borderSide: const BorderSide(
+                color: AppTokens.error,
+                width: AppTokens.componentBorderWidth,
+              ),
             ),
             focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.red500, width: 1.5),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              borderSide: const BorderSide(
+                color: AppTokens.error,
+                width: AppTokens.componentBorderWidthStrong,
+              ),
             ),
-            errorStyle: const TextStyle(color: TwColors.red500, fontSize: 11),
+            errorStyle: AppTokens.dmSans(
+              size: AppTokens.textOverline,
+              weight: FontWeight.w400,
+              color: AppTokens.error,
+            ),
           ),
         ),
       ],
@@ -740,10 +835,17 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: TwColors.primaryBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        color: AppTokens.headerBase,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.radius2xl),
+        ),
       ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomInset),
+      padding: EdgeInsets.fromLTRB(
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.spaceLg,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetHorizontalPadding + bottomInset,
+      ),
       child: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -753,15 +855,15 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
             children: [
               Center(
                 child: Container(
-                  width: 40,
-                  height: 4,
+                  width: AppTokens.handleWidth,
+                  height: AppTokens.handleHeight,
                   decoration: BoxDecoration(
-                    color: TwColors.slate700,
-                    borderRadius: BorderRadius.circular(2),
+                    color: AppTokens.obsidian700,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusXs),
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTokens.spaceXl),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -769,58 +871,69 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
                     widget.account == null
                         ? 'Add Payment Account'
                         : 'Edit Payment Account',
-                    style: const TextStyle(
-                      color: TwColors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
+                    style: AppTokens.manrope(
+                      size: AppTokens.textSubtitle,
+                      weight: FontWeight.w700,
+                      color: AppTokens.white,
                     ),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
-                      width: 34,
-                      height: 34,
+                      width: AppTokens.backButtonSize,
+                      height: AppTokens.backButtonSize,
                       decoration: BoxDecoration(
-                        color: TwColors.white.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: TwColors.slate700, width: 1),
+                        color: AppTokens.white.withValues(
+                          alpha: AppTokens.alphaSubtle,
+                        ),
+                        borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                        border: Border.all(
+                          color: AppTokens.obsidian700,
+                          width: AppTokens.componentBorderWidth,
+                        ),
                       ),
                       child: const Icon(
                         Icons.close_rounded,
-                        color: TwColors.white,
-                        size: 18,
+                        color: AppTokens.white,
+                        size: AppTokens.backButtonIconSize,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTokens.space2xl),
               DropdownButtonFormField<String>(
                 value: _selectedProvider,
                 decoration: InputDecoration(
                   labelText: 'Provider',
                   filled: true,
-                  fillColor: Colors.black,
+                  fillColor: AppTokens.obsidian950,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: TwColors.slate700, width: 1),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                    borderSide: BorderSide(
+                      color: AppTokens.obsidian700,
+                      width: AppTokens.componentBorderWidth,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: TwColors.slate700, width: 1),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                    borderSide: BorderSide(
+                      color: AppTokens.obsidian700,
+                      width: AppTokens.componentBorderWidth,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                     borderSide: const BorderSide(
-                      color: TwColors.brightGreen,
-                      width: 1.5,
+                      color: AppTokens.accent,
+                      width: AppTokens.componentBorderWidthStrong,
                     ),
                   ),
                 ),
-                style: const TextStyle(
-                  color: TwColors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                style: AppTokens.manrope(
+                  size: AppTokens.textBodySmall,
+                  weight: FontWeight.w500,
+                  color: AppTokens.white,
                 ),
                 items: PaymentProvider.values.map((provider) {
                   String displayName;
@@ -859,28 +972,33 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
                 validator: (value) =>
                     value == null ? 'Please select a provider' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTokens.spaceLg),
               _PaymentFormField(
                 controller: _accountNumberController,
                 label: 'Account Number',
                 hint: 'Enter account number (optional)',
                 icon: Icons.account_balance_outlined,
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: AppTokens.space3xl),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isSubmitting ? null : _submit,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: TwColors.brightGreen,
-                    foregroundColor: TwColors.primaryBg,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    backgroundColor: AppTokens.accent,
+                    foregroundColor: AppTokens.headerBase,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTokens.space2xl,
                     ),
-                    elevation: 0,
-                    shadowColor: Colors.transparent,
-                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+                    ),
+                    elevation: AppTokens.cardElevation,
+                    shadowColor: AppTokens.transparent,
+                    minimumSize: const Size(
+                      double.infinity,
+                      AppTokens.buttonHeight,
+                    ),
                   ),
                   child: _isSubmitting
                       ? const SvLoader.button()
@@ -891,16 +1009,17 @@ class _PaymentAccountDialogState extends ConsumerState<_PaymentAccountDialog> {
                               widget.account == null
                                   ? Icons.add_rounded
                                   : Icons.check_rounded,
-                              size: 20,
+                              size: AppTokens.backButtonIconSize,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: AppTokens.spaceSm),
                             Text(
                               widget.account == null
                                   ? 'Add Account'
                                   : 'Update Account',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                              style: AppTokens.manrope(
+                                size: AppTokens.textBody,
+                                weight: FontWeight.w700,
+                                color: AppTokens.headerBase,
                               ),
                             ),
                           ],
