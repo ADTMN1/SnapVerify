@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/language_provider.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
 
 /// Lets the user pick the UI language.
 ///
@@ -16,20 +16,28 @@ class LanguageSettingsScreen extends ConsumerWidget {
     final selected = ref.watch(languageProvider);
 
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
+      backgroundColor: AppTokens.headerBase,
       body: SafeArea(
         child: Column(
           children: [
             _buildHeader(context),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                padding: const EdgeInsets.fromLTRB(
+                  AppTokens.spaceLg,
+                  AppTokens.spaceXl,
+                  AppTokens.spaceLg,
+                  AppTokens.space3xl,
+                ),
                 children: [
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: TwColors.slate700, width: 1),
+                      color: AppTokens.obsidian950,
+                      borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+                      border: Border.all(
+                        color: AppTokens.obsidian700,
+                        width: AppTokens.componentBorderWidth,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -56,37 +64,48 @@ class LanguageSettingsScreen extends ConsumerWidget {
   Widget _buildHeader(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceLg,
+      ),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: AppTokens.obsidian800,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
       ),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
-              width: 36,
-              height: 36,
+              width: AppTokens.handleWidth,
+              height: AppTokens.handleWidth,
               decoration: BoxDecoration(
-                color: TwColors.slate800,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: TwColors.slate700, width: 1),
+                color: AppTokens.obsidian800,
+                borderRadius: BorderRadius.circular(AppTokens.backButtonRadius),
+                border: Border.all(
+                  color: AppTokens.obsidian700,
+                  width: AppTokens.componentBorderWidth,
+                ),
               ),
               child: const Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: TwColors.white,
-                size: 18,
+                color: AppTokens.white,
+                size: AppTokens.progressSize,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
+          const SizedBox(width: AppTokens.spaceLg),
+          Expanded(
             child: Text(
               'Language',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+              style: AppTokens.manrope(
+                size: AppTokens.textSubtitle,
+                weight: FontWeight.w700,
+                color: AppTokens.white,
               ),
             ),
           ),
@@ -109,51 +128,59 @@ class _LanguageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = selected ? TwColors.brightGreen : TwColors.slate400;
+    final accent = selected ? AppTokens.accent : AppTokens.ice400;
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceLg,
+          vertical: AppTokens.spaceLg,
+        ),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: AppTokens.obsidian800,
+              width: AppTokens.componentBorderWidth,
+            ),
+          ),
         ),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: AppTokens.handleWidth,
+              height: AppTokens.handleWidth,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+                color: accent.withValues(alpha: AppTokens.alphaLow),
+                borderRadius: BorderRadius.circular(AppTokens.radiusSm),
               ),
               child: Text(
                 language.shortName,
-                style: TextStyle(
+                style: AppTokens.manrope(
+                  size: AppTokens.textCaption,
+                  weight: FontWeight.w700,
                   color: accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: AppTokens.heroStatusPaddingH),
             Expanded(
               child: Text(
                 language.displayName,
-                style: const TextStyle(
-                  color: TwColors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                style: AppTokens.manrope(
+                  size: AppTokens.textBody,
+                  weight: FontWeight.w600,
+                  color: AppTokens.white,
                 ),
               ),
             ),
             if (selected)
               const Icon(
                 Icons.check_circle_rounded,
-                color: TwColors.brightGreen,
-                size: 20,
+                color: AppTokens.accent,
+                size: AppTokens.componentIconMd,
               ),
           ],
         ),

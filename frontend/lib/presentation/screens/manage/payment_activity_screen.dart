@@ -3,7 +3,8 @@ import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../core/tailwind.dart';
+import '../../../theme/app_text.dart';
+import '../../../theme/app_tokens.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/payment_provider.dart';
 import '../../widgets/sv_loader.dart';
@@ -83,7 +84,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         : 'ETB';
 
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
+      backgroundColor: AppTokens.headerBase,
       body: SafeArea(
         child: Column(
           children: [
@@ -91,8 +92,8 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _load,
-                color: TwColors.brightGreen,
-                backgroundColor: TwColors.slate800,
+                color: AppTokens.accent,
+                backgroundColor: AppTokens.obsidian900,
                 child: _buildBody(verifiedCount, totalAmount, currency),
               ),
             ),
@@ -105,46 +106,57 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceLg,
+      ),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
+        border: Border(
+          bottom: BorderSide(
+            color: AppTokens.obsidian800,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
       ),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
-              width: 36,
-              height: 36,
+              width: AppTokens.backButtonSize,
+              height: AppTokens.backButtonSize,
               decoration: BoxDecoration(
-                color: TwColors.slate800,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: TwColors.slate700, width: 1),
+                color: AppTokens.obsidian900,
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                border: Border.all(
+                  color: AppTokens.obsidian700,
+                  width: AppTokens.componentBorderWidth,
+                ),
               ),
               child: const Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: TwColors.white,
-                size: 18,
+                color: AppTokens.white,
+                size: AppTokens.backButtonIconSize,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
+          const SizedBox(width: AppTokens.spaceLg),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Payment Activity',
-                  style: TextStyle(
-                    color: TwColors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                  style: AppTokens.manrope(
+                    size: AppTokens.textSubtitle,
+                    weight: FontWeight.w600,
+                    color: AppTokens.white,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: AppTokens.spaceXs),
                 Text(
                   'Verification results and totals',
-                  style: TextStyle(color: TwColors.slate400, fontSize: 12),
+                  style: AppText.caption.copyWith(color: AppTokens.ice400),
                 ),
               ],
             ),
@@ -153,7 +165,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
             onPressed: _loading ? null : _load,
             icon: Icon(
               Icons.refresh_rounded,
-              color: _loading ? TwColors.slate600 : TwColors.brightGreen,
+              color: _loading ? AppTokens.inkMuted : AppTokens.accent,
             ),
           ),
         ],
@@ -166,7 +178,7 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
-          SizedBox(height: 140),
+          SizedBox(height: AppTokens.authTopBarHeight),
           Center(child: SvLoader.page()),
         ],
       );
@@ -174,12 +186,12 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     if (_error != null && _items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppTokens.space2xl),
         children: [
-          const SizedBox(height: 80),
+          const SizedBox(height: AppTokens.loaderLargeSize),
           _emptyState(
             icon: Icons.error_outline_rounded,
-            color: TwColors.red500,
+            color: AppTokens.error,
             title: 'Failed to load activity',
             subtitle: _error!,
           ),
@@ -189,23 +201,22 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceLg,
+      ),
       children: [
         _buildStatistics(verifiedCount, totalAmount, currency),
-        const SizedBox(height: 20),
-        const Text(
+        const SizedBox(height: AppTokens.spaceXl),
+        Text(
           'Recent Payments',
-          style: TextStyle(
-            color: TwColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: AppText.titleSmall.copyWith(color: AppTokens.white),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTokens.spaceMd),
         if (_items.isEmpty)
           _emptyState(
             icon: Icons.receipt_long_rounded,
-            color: TwColors.brightGreen,
+            color: AppTokens.accent,
             title: 'No payment activity yet',
             subtitle:
                 'Completed verification attempts for this business will appear here.',
@@ -227,20 +238,20 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         Expanded(
           child: _statCard(
             icon: Icons.check_circle_outline_rounded,
-            iconColor: TwColors.brightGreen,
+            iconColor: AppTokens.accent,
             label: 'Verified',
             value: '$verifiedCount',
-            valueColor: TwColors.white,
+            valueColor: AppTokens.white,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: AppTokens.badgeSmallPaddingH),
         Expanded(
           child: _statCard(
             icon: Icons.attach_money_rounded,
-            iconColor: TwColors.sky500,
+            iconColor: AppTokens.primary,
             label: 'Confirmed Amount',
             value: '$currency $amountText',
-            valueColor: TwColors.brightGreen,
+            valueColor: AppTokens.accent,
             compact: true,
           ),
         ),
@@ -257,11 +268,17 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     bool compact = false,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.heroStatusPaddingH,
+        vertical: AppTokens.spaceMd,
+      ),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700, width: 1),
+        color: AppTokens.obsidian950,
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        border: Border.all(
+          color: AppTokens.obsidian700,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,37 +286,41 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
           Row(
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: AppTokens.loaderPageSize,
+                height: AppTokens.loaderPageSize,
                 decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  color: iconColor.withValues(alpha: AppTokens.alphaMedium),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 ),
-                child: Icon(icon, color: iconColor, size: 16),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: AppTokens.checkIconSize,
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppTokens.spaceSm),
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(
-                    color: TwColors.white.withValues(alpha: 0.7),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                  style: AppText.labelSmall.copyWith(
+                    color: AppTokens.white.withValues(
+                      alpha: AppTokens.alphaPrimaryMuted,
+                    ),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTokens.spaceSm),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
+            style: AppTokens.manrope(
+              size: compact ? AppTokens.textBodyLarge : AppTokens.textSubtitle,
+              weight: FontWeight.w700,
               color: valueColor,
-              fontSize: compact ? 16 : 22,
-              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -345,31 +366,34 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         : 'Payment verification';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+      padding: const EdgeInsets.all(AppTokens.heroStatusPaddingH),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700, width: 1),
+        color: AppTokens.obsidian950,
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        border: Border.all(
+          color: AppTokens.obsidian700,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: AppTokens.backButtonSize,
+            height: AppTokens.backButtonSize,
             decoration: BoxDecoration(
-              color: (isVerified ? TwColors.brightGreen : TwColors.red500)
-                  .withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+              color: (isVerified ? AppTokens.accent : AppTokens.error)
+                  .withValues(alpha: AppTokens.alphaLow),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
             ),
             child: Icon(
               isVerified ? Icons.verified_rounded : Icons.error_outline_rounded,
-              color: isVerified ? TwColors.brightGreen : TwColors.red500,
-              size: 20,
+              color: isVerified ? AppTokens.accent : AppTokens.error,
+              size: AppTokens.componentIconMd,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppTokens.spaceMd),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,14 +405,14 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: TwColors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                        style: AppTokens.manrope(
+                          size: AppTokens.textBody,
+                          weight: FontWeight.w600,
+                          color: AppTokens.white,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppTokens.spaceSm),
                     SVStatusBadge(
                       text: isVerified
                           ? 'Verified'
@@ -398,33 +422,25 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppTokens.spaceXs),
                 Text(
                   '$currency $amountText  ·  $methodLabel',
-                  style: const TextStyle(
-                    color: TwColors.brightGreen,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppText.labelMedium.copyWith(color: AppTokens.accent),
                 ),
                 if (tx.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppTokens.spaceXs),
                   Text(
                     tx,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: TwColors.slate400,
-                      fontSize: 12,
-                    ),
+                    style: AppText.caption.copyWith(color: AppTokens.ice400),
                   ),
                 ],
-                const SizedBox(height: 4),
+                const SizedBox(height: AppTokens.spaceXs),
                 Text(
                   byName != null ? '$timeLabel  ·  by $byName' : timeLabel,
-                  style: const TextStyle(
-                    color: TwColors.slate500,
-                    fontSize: 12,
+                  style: AppText.caption.copyWith(
+                    color: AppTokens.textSecondary,
                   ),
                 ),
               ],
@@ -442,31 +458,36 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     required String subtitle,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40),
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.space3xl),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
+              color: color.withValues(alpha: AppTokens.alphaLow),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 32),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            title,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+            child: Icon(
+              icon,
+              color: color,
+              size: AppTokens.heroIndicatorActiveWidth,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppTokens.badgePaddingH),
+          Text(
+            title,
+            style: AppText.titleSmall.copyWith(color: AppTokens.white),
+          ),
+          const SizedBox(height: AppTokens.statTitleGap),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: TwColors.slate400, fontSize: 13),
+            style: AppTokens.dmSans(
+              size: AppTokens.textLabel,
+              weight: FontWeight.w400,
+              color: AppTokens.ice400,
+              height: AppTokens.lineHeightRelaxed,
+            ),
           ),
         ],
       ),
