@@ -1,8 +1,7 @@
-import 'package:flutter/foundation.dart';
-
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:intl/intl.dart';
@@ -12,9 +11,10 @@ import '../../core/utils/ocr_parser.dart';
 import '../../core/utils/toast_service.dart';
 import '../../domain/entities/verification_result.dart';
 import '../../domain/entities/payment_account.dart';
+import '../../theme/app_text.dart';
 import '../../theme/app_tokens.dart';
+import '../../ui/ui.dart';
 import '../providers/payment_provider.dart';
-import '../widgets/sv_loader.dart';
 
 class CameraTab extends ConsumerStatefulWidget {
   const CameraTab({super.key, this.isActive = true});
@@ -216,9 +216,9 @@ class _CameraTabState extends ConsumerState<CameraTab> {
       builder: (sheetContext) {
         return Container(
           decoration: const BoxDecoration(
-            color: AppTokens.headerBase,
+            color: AppTokens.ice50,
             borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppTokens.radiusField),
+              top: Radius.circular(AppTokens.sheetTopRadius),
             ),
           ),
           padding: EdgeInsets.fromLTRB(
@@ -236,7 +236,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
                   width: AppTokens.logoIconSize,
                   height: AppTokens.handleHeight,
                   decoration: BoxDecoration(
-                    color: AppTokens.inkMuted,
+                    color: AppTokens.border,
                     borderRadius: BorderRadius.circular(
                       AppTokens.progressStroke,
                     ),
@@ -244,76 +244,55 @@ class _CameraTabState extends ConsumerState<CameraTab> {
                 ),
               ),
               const SizedBox(height: AppTokens.space2xl),
-              Text(
-                'Select Payment Provider',
-                style: AppTokens.manrope(
-                  size: AppTokens.textSubtitle,
-                  weight: FontWeight.w800,
-                  color: AppTokens.white,
-                ),
-              ),
+              Text('Select Payment Provider', style: AppText.authTitle),
               const SizedBox(height: AppTokens.titleLanguageGap),
               Text(
                 'We could not confidently detect the provider from this receipt. '
                 'Choose the provider shown on the receipt.',
-                style: AppTokens.dmSans(
-                  size: AppTokens.textLabel,
-                  weight: FontWeight.w400,
-                  color: AppTokens.white.withValues(
-                    alpha: AppTokens.alphaSecondary,
-                  ),
-                  height: AppTokens.lineHeightRelaxed,
-                ),
+                style: AppText.authSubtitle,
               ),
               const SizedBox(height: AppTokens.spaceLg),
               ...PaymentProvider.values.map(
                 (provider) => Padding(
                   padding: const EdgeInsets.only(bottom: AppTokens.spaceSm),
-                  child: Material(
-                    color: AppTokens.obsidian950,
-                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+                      border: Border.all(
+                        color: AppTokens.border,
+                        width: AppTokens.componentBorderWidth,
+                      ),
+                    ),
+                    child: SVCard(
+                      backgroundColor: AppTokens.white,
+                      borderRadius: AppTokens.radiusCard,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTokens.badgePaddingH,
+                        vertical: AppTokens.badgePaddingH,
+                      ),
                       onTap: () => Navigator.of(sheetContext).pop(provider),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTokens.badgePaddingH,
-                          vertical: AppTokens.badgePaddingH,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(
-                            AppTokens.radiusMd,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.account_balance_rounded,
+                            color: AppTokens.primary,
+                            size: AppTokens.formPrefixIconSize,
                           ),
-                          border: Border.all(
-                            color: AppTokens.obsidian700,
-                            width: AppTokens.componentBorderWidth,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.account_balance_rounded,
-                              color: AppTokens.accent,
-                              size: AppTokens.formPrefixIconSize,
-                            ),
-                            const SizedBox(width: AppTokens.spaceMd),
-                            Expanded(
-                              child: Text(
-                                provider.label,
-                                style: AppTokens.manrope(
-                                  size: AppTokens.textBody,
-                                  weight: FontWeight.w500,
-                                  color: AppTokens.white,
-                                ),
+                          const SizedBox(width: AppTokens.spaceMd),
+                          Expanded(
+                            child: Text(
+                              provider.label,
+                              style: AppText.labelLarge.copyWith(
+                                color: AppTokens.ink,
                               ),
                             ),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: AppTokens.textSecondary,
-                              size: AppTokens.formPrefixIconSize,
-                            ),
-                          ],
-                        ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppTokens.inkMuted,
+                            size: AppTokens.formPrefixIconSize,
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -329,75 +308,55 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   void _showInvalidReceiptDialog() {
     showDialog(
       context: context,
-      barrierColor: AppTokens.obsidian950.withValues(
-        alpha: AppTokens.alphaDisabled,
-      ),
+      barrierColor: AppTokens.inkOverlay14,
       builder: (context) => Dialog(
         backgroundColor: AppTokens.transparent,
-        child: Container(
+        child: SVCard(
+          backgroundColor: AppTokens.white,
+          borderRadius: AppTokens.radiusCard,
           padding: const EdgeInsets.all(AppTokens.space2xl),
-          decoration: BoxDecoration(
-            color: AppTokens.obsidian950,
-            borderRadius: BorderRadius.circular(AppTokens.radius2xl),
-            border: Border.all(color: AppTokens.obsidian700),
-          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding: const EdgeInsets.all(AppTokens.inputPaddingH),
-                decoration: BoxDecoration(
-                  color: AppTokens.error.withValues(
-                    alpha: AppTokens.alphaSubtle,
-                  ),
+                decoration: const BoxDecoration(
+                  color: AppTokens.dangerBg,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.receipt_long_rounded,
-                  color: AppTokens.error,
+                  color: AppTokens.danger,
                   size: AppTokens.logoIconSize,
                 ),
               ),
               const SizedBox(height: AppTokens.inputPaddingH),
-              Text(
-                'Invalid Receipt',
-                style: AppTokens.manrope(
-                  size: AppTokens.textBodyLarge,
-                  weight: FontWeight.w700,
-                  color: AppTokens.white,
-                ),
-              ),
+              Text('Invalid Receipt', style: AppText.authTitle),
               const SizedBox(height: AppTokens.spaceSm),
               Text(
                 "We couldn't find a valid transaction in the captured image. "
                 'Please make sure the receipt is clear and contains a '
                 'transaction reference number.',
                 textAlign: TextAlign.center,
-                style: AppTokens.dmSans(
-                  size: AppTokens.textLabel,
-                  weight: FontWeight.w400,
-                  color: AppTokens.ice400,
-                  height: AppTokens.lineHeightRelaxed,
-                ),
+                style: AppText.authSubtitle,
               ),
               const SizedBox(height: AppTokens.spaceXl),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  width: double.infinity,
-                  height: AppTokens.statTileSize,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppTokens.accent,
-                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              SizedBox(
+                width: double.infinity,
+                height: AppTokens.statTileSize,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTokens.accent,
+                    foregroundColor: AppTokens.ink,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+                    ),
+                    elevation: AppTokens.cardElevation,
                   ),
                   child: Text(
                     'Try Again',
-                    style: AppTokens.manrope(
-                      size: AppTokens.textBodySmall,
-                      weight: FontWeight.w700,
-                      color: AppTokens.ink,
-                    ),
+                    style: AppText.labelLarge.copyWith(color: AppTokens.ink),
                   ),
                 ),
               ),
@@ -425,7 +384,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTokens.obsidian950,
+      backgroundColor: AppTokens.ice50,
       body: _initError != null
           ? _ErrorView(
               message: _initError!,
@@ -440,196 +399,276 @@ class _CameraTabState extends ConsumerState<CameraTab> {
 
   Widget _buildScanner() {
     final ctrl = _controller!;
-    final size = MediaQuery.of(context).size;
 
-    return Stack(
-      children: [
-        SizedBox.expand(
-          child: GestureDetector(
-            onTap: _processing ? null : _captureAndProcess,
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: ctrl.value.previewSize!.height,
-                height: ctrl.value.previewSize!.width,
-                child: CameraPreview(ctrl),
-              ),
-            ),
-          ),
-        ),
-
-        if (_processing)
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: AppTokens.obsidian950,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppTokens.ice50,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
           Positioned.fill(
-            child: Container(
-              color: AppTokens.obsidian950.withValues(
-                alpha: AppTokens.alphaTertiary,
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SvLoader.page(),
-                    const SizedBox(height: AppTokens.spaceLg),
-                    Text(
-                      'Reading receipt…',
-                      style: AppTokens.dmSans(
-                        size: AppTokens.textBodySmall,
-                        weight: FontWeight.w400,
-                        color: AppTokens.white,
-                      ),
-                    ),
-                  ],
+            child: GestureDetector(
+              onTap: _processing ? null : _captureAndProcess,
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: ctrl.value.previewSize!.height,
+                  height: ctrl.value.previewSize!.width,
+                  child: CameraPreview(ctrl),
                 ),
               ),
             ),
           ),
-
-        SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTokens.spaceLg,
-                  vertical: AppTokens.spaceLg,
+          if (_processing)
+            Positioned.fill(
+              child: Container(
+                color: AppTokens.obsidian950.withValues(
+                  alpha: AppTokens.alphaTertiary,
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+                child: Center(
+                  child: SVCard(
+                    backgroundColor: AppTokens.ice50,
+                    borderRadius: AppTokens.radiusCard,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTokens.space2xl,
+                      vertical: AppTokens.spaceLg,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: AppTokens.languageItemHeight,
-                          height: AppTokens.languageItemHeight,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppTokens.accent,
-                                AppTokens.accent.withValues(
-                                  alpha: AppTokens.alphaDisabled,
-                                ),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(
-                              AppTokens.radiusSm,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.verified_rounded,
-                            color: AppTokens.ink,
-                            size: AppTokens.errorIconSize,
-                          ),
-                        ),
-                        const SizedBox(width: AppTokens.dropdownIconGap),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'SnapVerify',
-                              style: AppTokens.manrope(
-                                size: AppTokens.textSubtitle,
-                                weight: FontWeight.w800,
-                                color: AppTokens.white,
-                                letterSpacing: AppTokens.trackingTight,
-                              ),
-                            ),
-                            Text(
-                              'Capture receipt to verify',
-                              style: AppTokens.dmSans(
-                                size: AppTokens.textLabel,
-                                weight: FontWeight.w400,
-                                color: AppTokens.ice400,
-                              ),
-                            ),
-                          ],
-                        ),
+                        const SvLoader.page(color: AppTokens.primary),
+                        const SizedBox(height: AppTokens.spaceLg),
+                        Text('Reading receipt…', style: AppText.authSubtitle),
                       ],
-                    ),
-                    GestureDetector(
-                      onTap: () async {
-                        await ctrl.setFlashMode(
-                          _torchOn ? FlashMode.off : FlashMode.torch,
-                        );
-                        setState(() => _torchOn = !_torchOn);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(
-                          AppTokens.dropdownIconGap,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _torchOn
-                              ? AppTokens.accent.withValues(
-                                  alpha: AppTokens.navGlowAlpha,
-                                )
-                              : AppTokens.white.withValues(
-                                  alpha: AppTokens.alphaSubtle,
-                                ),
-                          borderRadius: BorderRadius.circular(
-                            AppTokens.radiusMd,
-                          ),
-                          border: Border.all(
-                            color: _torchOn
-                                ? AppTokens.accent.withValues(
-                                    alpha: AppTokens.alphaSecondary,
-                                  )
-                                : AppTokens.white.withValues(
-                                    alpha: AppTokens.alphaMedium,
-                                  ),
-                            width: AppTokens.componentBorderWidth,
-                          ),
-                        ),
-                        child: Icon(
-                          _torchOn
-                              ? Icons.flashlight_on_rounded
-                              : Icons.flashlight_off_rounded,
-                          color: _torchOn ? AppTokens.accent : AppTokens.white,
-                          size: AppTokens.backButtonIconSize,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Spacer(),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTokens.spaceLg,
-                  vertical: AppTokens.space3xl,
-                ),
-                child: GestureDetector(
-                  onTap: _processing ? null : _captureAndProcess,
-                  child: Container(
-                    width: AppTokens.patternTileHeight,
-                    height: AppTokens.patternTileHeight,
-                    decoration: BoxDecoration(
-                      color: _processing
-                          ? AppTokens.obsidian700
-                          : AppTokens.accent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _processing
-                            ? AppTokens.inkMuted
-                            : AppTokens.accent.withValues(
-                                alpha: AppTokens.alphaDisabled,
-                              ),
-                        width: AppTokens.focusRingWidth,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.camera_alt,
-                      color: _processing ? AppTokens.ice400 : AppTokens.ink,
-                      size: AppTokens.space3xl,
                     ),
                   ),
                 ),
               ),
-            ],
+            ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _CameraHeader(
+              torchOn: _torchOn,
+              onTorchTap: () async {
+                await ctrl.setFlashMode(
+                  _torchOn ? FlashMode.off : FlashMode.torch,
+                );
+                setState(() => _torchOn = !_torchOn);
+              },
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _CapturePanel(
+              processing: _processing,
+              onCapture: _captureAndProcess,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+double _cameraHeaderHeight(BuildContext context) =>
+    AppTokens.headerVisibleHeight +
+    MediaQuery.of(context).padding.top +
+    AppTokens.sheetTopRadius;
+
+class _CameraHeader extends StatelessWidget {
+  final bool torchOn;
+  final VoidCallback? onTorchTap;
+
+  const _CameraHeader({this.torchOn = false, this.onTorchTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).padding.top;
+    return SizedBox(
+      width: double.infinity,
+      height: _cameraHeaderHeight(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(AppTokens.sheetTopRadius),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: ExcludeSemantics(
+                  child: CustomPaint(
+                    painter: const AppHeaderPatternPainter(),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: topInset + AppTokens.logoTopGap,
+              left: 0,
+              right: 0,
+              child: const Center(child: _CameraLogo()),
+            ),
+            if (onTorchTap != null)
+              Positioned(
+                top: topInset + AppTokens.spaceLg,
+                right: AppTokens.sheetHorizontalPadding,
+                child: _TorchButton(torchOn: torchOn, onTap: onTorchTap!),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraLogo extends StatelessWidget {
+  const _CameraLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: AppTokens.logoTileSize,
+      height: AppTokens.logoTileSize,
+      decoration: BoxDecoration(
+        color: AppTokens.white,
+        borderRadius: BorderRadius.circular(AppTokens.logoTileRadius),
+        boxShadow: const [AppTokens.cardShadow],
+      ),
+      child: Center(
+        child: SizedBox(
+          width: AppTokens.logoIconSize,
+          height: AppTokens.logoIconSize,
+          child: const CustomPaint(painter: AppLogoPainter()),
+        ),
+      ),
+    );
+  }
+}
+
+class _TorchButton extends StatelessWidget {
+  final bool torchOn;
+  final VoidCallback onTap;
+
+  const _TorchButton({required this.torchOn, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(AppTokens.dropdownIconGap),
+        decoration: BoxDecoration(
+          color: torchOn
+              ? AppTokens.accent.withValues(alpha: AppTokens.navGlowAlpha)
+              : AppTokens.white.withValues(alpha: AppTokens.alphaSubtle),
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          border: Border.all(
+            color: torchOn
+                ? AppTokens.accent.withValues(alpha: AppTokens.alphaSecondary)
+                : AppTokens.white.withValues(alpha: AppTokens.alphaMedium),
+            width: AppTokens.componentBorderWidth,
           ),
         ),
-      ],
+        child: Icon(
+          torchOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
+          color: torchOn ? AppTokens.accent : AppTokens.white,
+          size: AppTokens.backButtonIconSize,
+        ),
+      ),
+    );
+  }
+}
+
+class _CapturePanel extends StatelessWidget {
+  final bool processing;
+  final VoidCallback onCapture;
+
+  const _CapturePanel({required this.processing, required this.onCapture});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppTokens.spaceLg,
+        AppTokens.spaceLg,
+        AppTokens.spaceLg,
+        AppTokens.spaceLg + MediaQuery.of(context).padding.bottom,
+      ),
+      child: SVCard(
+        backgroundColor: AppTokens.ice50,
+        borderRadius: AppTokens.radiusCard,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceLg,
+          vertical: AppTokens.spaceMd,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('SnapVerify', style: AppText.authTitle),
+                  const SizedBox(height: AppTokens.titleLanguageGap),
+                  Text(
+                    'Capture receipt to verify',
+                    style: AppText.authSubtitle,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppTokens.spaceMd),
+            _CameraCaptureButton(
+              processing: processing,
+              onTap: processing ? null : onCapture,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraCaptureButton extends StatelessWidget {
+  final bool processing;
+  final VoidCallback? onTap;
+
+  const _CameraCaptureButton({required this.processing, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: AppTokens.patternTileHeight,
+        height: AppTokens.patternTileHeight,
+        decoration: BoxDecoration(
+          color: processing ? AppTokens.surfaceLight : AppTokens.accent,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: processing
+                ? AppTokens.border
+                : AppTokens.primary.withValues(alpha: AppTokens.alphaLow),
+            width: AppTokens.focusRingWidth,
+          ),
+          boxShadow: const [AppTokens.cardShadow],
+        ),
+        child: Icon(
+          Icons.camera_alt,
+          color: processing ? AppTokens.inkMuted : AppTokens.ink,
+          size: AppTokens.space3xl,
+        ),
+      ),
     );
   }
 }
@@ -647,73 +686,97 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppTokens.space3xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppTokens.spaceXl),
-              decoration: BoxDecoration(
-                color: AppTokens.error.withValues(alpha: AppTokens.alphaSubtle),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppTokens.error.withValues(
-                    alpha: AppTokens.alphaStrong,
-                  ),
-                ),
-              ),
-              child: const Icon(
-                Icons.no_photography_rounded,
-                color: AppTokens.error,
-                size: AppTokens.logoIconSize,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned(top: 0, left: 0, right: 0, child: const _CameraHeader()),
+        Positioned(
+          top: _cameraHeaderHeight(context) - AppTokens.sheetOverlap,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: AppTokens.ice50,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(AppTokens.sheetTopRadius),
               ),
             ),
-            const SizedBox(height: AppTokens.spaceXl),
-            Text(
-              message,
-              style: AppTokens.dmSans(
-                size: AppTokens.textBodySmall,
-                weight: FontWeight.w400,
-                color: AppTokens.white.withValues(
-                  alpha: AppTokens.alphaPrimaryMuted,
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.space2xl,
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.space2xl + MediaQuery.of(context).padding.bottom,
+            ),
+            child: Center(
+              child: SVCard(
+                backgroundColor: AppTokens.white,
+                borderRadius: AppTokens.radiusCard,
+                padding: const EdgeInsets.all(AppTokens.space2xl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppTokens.spaceLg),
+                      decoration: const BoxDecoration(
+                        color: AppTokens.dangerBg,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.no_photography_rounded,
+                        color: AppTokens.danger,
+                        size: AppTokens.logoIconSize,
+                      ),
+                    ),
+                    const SizedBox(height: AppTokens.spaceXl),
+                    Text(
+                      message,
+                      style: AppText.authSubtitle,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: AppTokens.spaceXl),
+                    SizedBox(
+                      width: double.infinity,
+                      height: AppTokens.buttonHeight,
+                      child: ElevatedButton(
+                        onPressed: onRetry,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTokens.accent,
+                          foregroundColor: AppTokens.ink,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTokens.radiusCard,
+                            ),
+                          ),
+                          elevation: AppTokens.cardElevation,
+                        ),
+                        child: Text(
+                          'Retry',
+                          style: AppText.labelLarge.copyWith(
+                            color: AppTokens.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppTokens.dropdownIconGap),
+                    TextButton.icon(
+                      onPressed: onOpenSettings,
+                      icon: const Icon(
+                        Icons.settings_rounded,
+                        size: AppTokens.checkIconSize,
+                      ),
+                      label: const Text('Open Settings'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTokens.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppTokens.spaceXl),
-            ElevatedButton(
-              onPressed: onRetry,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTokens.accent,
-                foregroundColor: AppTokens.ink,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                ),
-              ),
-              child: Text(
-                'Retry',
-                style: AppTokens.manrope(
-                  size: AppTokens.buttonTextSize,
-                  weight: FontWeight.w700,
-                  color: AppTokens.ink,
-                ),
-              ),
-            ),
-            const SizedBox(height: AppTokens.dropdownIconGap),
-            TextButton.icon(
-              onPressed: onOpenSettings,
-              icon: const Icon(
-                Icons.settings_rounded,
-                size: AppTokens.checkIconSize,
-              ),
-              label: const Text('Open Settings'),
-              style: TextButton.styleFrom(foregroundColor: AppTokens.ice200),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -879,9 +942,9 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: AppTokens.headerBase,
+        color: AppTokens.ice50,
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppTokens.radiusField),
+          top: Radius.circular(AppTokens.sheetTopRadius),
         ),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -897,14 +960,14 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
             width: AppTokens.logoIconSize,
             height: AppTokens.handleHeight,
             decoration: BoxDecoration(
-              color: AppTokens.inkMuted,
+              color: AppTokens.border,
               borderRadius: BorderRadius.circular(AppTokens.progressStroke),
             ),
           ),
           const SizedBox(height: AppTokens.space2xl + AppTokens.spaceXs),
 
           if (isLoading)
-            const SvLoader.large()
+            const SvLoader.large(color: AppTokens.primary)
           else
             Container(
               width: AppTokens.patternTileWidth,
@@ -927,24 +990,15 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
           const SizedBox(height: AppTokens.spaceLg),
           Text(
             statusTitle,
-            style: AppTokens.manrope(
-              size: AppTokens.textSubtitle,
-              weight: FontWeight.w800,
-              color: statusColor,
-            ),
+            style: AppText.authTitle,
+            textAlign: TextAlign.center,
           ),
           if (statusSubtitle.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: AppTokens.titleLanguageGap),
               child: Text(
                 statusSubtitle,
-                style: AppTokens.dmSans(
-                  size: AppTokens.textLabel,
-                  weight: FontWeight.w400,
-                  color: AppTokens.white.withValues(
-                    alpha: AppTokens.alphaSecondary,
-                  ),
-                ),
+                style: AppText.authSubtitle,
                 textAlign: TextAlign.center,
               ),
             ),
@@ -956,56 +1010,64 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
             Padding(
               padding: const EdgeInsets.only(top: AppTokens.spaceXl),
               child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppTokens.spaceLg),
                 decoration: BoxDecoration(
-                  color: AppTokens.obsidian950,
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusCard),
                   border: Border.all(
-                    color: AppTokens.obsidian700,
+                    color: AppTokens.border,
                     width: AppTokens.componentBorderWidth,
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _DetailRow(
-                      label: 'Reference',
-                      value:
-                          state.result!.reference ??
-                          state.result!.transactionId,
-                    ),
-                    if (state.result!.amount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
-                        child: _DetailRow(
-                          label: 'Verified Amount',
-                          value:
-                              '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
-                          valueColor: AppTokens.accent,
-                        ),
+                child: SVCard(
+                  backgroundColor: AppTokens.white,
+                  borderRadius: AppTokens.radiusCard,
+                  padding: const EdgeInsets.all(AppTokens.spaceLg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DetailRow(
+                        label: 'Reference',
+                        value:
+                            state.result!.reference ??
+                            state.result!.transactionId,
                       ),
-                    if (state.result!.paymentDate != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
-                        child: _DetailRow(
-                          label: 'Payment Date',
-                          value: DateFormat(
-                            'MMM d, yyyy · HH:mm',
-                          ).format(state.result!.paymentDate!.toLocal()),
+                      if (state.result!.amount > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: AppTokens.spaceSm,
+                          ),
+                          child: _DetailRow(
+                            label: 'Verified Amount',
+                            value:
+                                '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
+                            valueColor: AppTokens.primary,
+                          ),
                         ),
-                      ),
-                    if (state.result!.verifiedAt != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
-                        child: _DetailRow(
-                          label: 'Verified On',
-                          value: DateFormat(
-                            'MMM d, yyyy · HH:mm',
-                          ).format(state.result!.verifiedAt!.toLocal()),
+                      if (state.result!.paymentDate != null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: AppTokens.spaceSm,
+                          ),
+                          child: _DetailRow(
+                            label: 'Payment Date',
+                            value: DateFormat(
+                              'MMM d, yyyy · HH:mm',
+                            ).format(state.result!.paymentDate!.toLocal()),
+                          ),
                         ),
-                      ),
-                  ],
+                      if (state.result!.verifiedAt != null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: AppTokens.spaceSm,
+                          ),
+                          child: _DetailRow(
+                            label: 'Verified On',
+                            value: DateFormat(
+                              'MMM d, yyyy · HH:mm',
+                            ).format(state.result!.verifiedAt!.toLocal()),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1022,17 +1084,13 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
                   backgroundColor: AppTokens.accent,
                   foregroundColor: AppTokens.ink,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusCard),
                   ),
                   elevation: AppTokens.cardElevation,
                 ),
                 child: Text(
                   'Scan Again',
-                  style: AppTokens.manrope(
-                    size: AppTokens.buttonTextSize,
-                    weight: FontWeight.w700,
-                    color: AppTokens.ink,
-                  ),
+                  style: AppText.labelLarge.copyWith(color: AppTokens.ink),
                 ),
               ),
             ),
@@ -1054,23 +1112,14 @@ class _DetailRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: AppTokens.dmSans(
-            size: AppTokens.textLabel,
-            weight: FontWeight.w400,
-            color: AppTokens.white.withValues(alpha: AppTokens.alphaOverlay),
-          ),
-        ),
+        Text(label, style: AppText.authFieldLabel),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
-            style: AppTokens.manrope(
-              size: AppTokens.textLabel,
-              weight: FontWeight.w600,
-              color: valueColor ?? AppTokens.white,
+            style: AppText.labelLarge.copyWith(
+              color: valueColor ?? AppTokens.ink,
             ),
           ),
         ),

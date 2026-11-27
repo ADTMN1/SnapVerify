@@ -3,13 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../domain/entities/report_summary.dart';
 import '../../../presentation/providers/auth_provider.dart';
+import '../../../theme/app_text.dart';
 import '../../../theme/app_tokens.dart';
+import '../../../ui/ui.dart';
 import '../../providers/reports_provider.dart';
 import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
 import 'payment_activity_screen.dart';
 import 'reports_screen.dart';
-import '../../widgets/sv_loader.dart';
 import 'payment_account_management_screen.dart';
 
 class ManageHomeScreen extends ConsumerStatefulWidget {
@@ -92,114 +93,160 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     final todaySummary = ref.watch(
       reportSummaryProvider((from: today, to: today)),
     );
+    final headerHeight = AppTokens.headerVisibleHeight;
 
-    return Column(
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        _buildHeader(),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppTokens.spaceLg,
-              vertical: AppTokens.spaceLg,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_loadError != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppTokens.errorPadding),
-                    decoration: BoxDecoration(
-                      color: AppTokens.error.withValues(
-                        alpha: AppTokens.alphaSubtle,
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        AppTokens.errorRadius,
-                      ),
-                      border: Border.all(
-                        color: AppTokens.error.withValues(
-                          alpha: AppTokens.alphaStrong,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Could not load branches and staff: $_loadError',
-                            style: AppTokens.dmSans(
-                              size: AppTokens.textLabel,
-                              weight: FontWeight.w500,
-                              color: AppTokens.error,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _loadData,
-                          child: Text(
-                            'Retry',
-                            style: AppTokens.manrope(
-                              size: AppTokens.textLabel,
-                              weight: FontWeight.w700,
-                              color: AppTokens.error,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppTokens.spaceLg),
-                ],
-                _buildStatisticsGrid(todaySummary),
-                const SizedBox(height: AppTokens.spaceXl),
-                _buildQuickActions(role),
-                const SizedBox(height: AppTokens.spaceXl),
-                _buildRecentActivity(todaySummary),
-                const SizedBox(height: AppTokens.spaceXl),
-                _buildLogoutButton(),
-              ],
-            ),
-          ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: headerHeight + AppTokens.sheetTopRadius,
+          child: _buildHeader(),
+        ),
+        Positioned(
+          top: headerHeight - AppTokens.sheetOverlap,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _buildSheet(role, todaySummary),
         ),
       ],
     );
   }
 
   Widget _buildHeader() {
-    final authState = ref.watch(authNotifierProvider);
-    final businessName = authState.organization?.name ?? 'Your Business';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceLg,
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(
+        bottom: Radius.circular(AppTokens.radius2xl),
       ),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: AppTokens.obsidian800,
-            width: AppTokens.componentBorderWidth,
+      child: SizedBox(
+        width: double.infinity,
+        height: AppTokens.headerVisibleHeight + AppTokens.sheetTopRadius,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: ExcludeSemantics(
+                  child: CustomPaint(
+                    painter: const AppHeaderPatternPainter(),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: AppTokens.logoTopGap,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildLogo()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return Semantics(
+      label: 'App logo',
+      child: Container(
+        width: AppTokens.logoTileSize,
+        height: AppTokens.logoTileSize,
+        decoration: BoxDecoration(
+          color: AppTokens.white,
+          borderRadius: BorderRadius.circular(AppTokens.logoTileRadius),
+        ),
+        child: Center(
+          child: SizedBox(
+            width: AppTokens.logoIconSize,
+            height: AppTokens.logoIconSize,
+            child: const CustomPaint(painter: AppLogoPainter()),
           ),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+
+  Widget _buildSheet(UserRole role, AsyncValue<ReportSummary> todaySummary) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppTokens.ice50,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(AppTokens.sheetTopRadius),
+        ),
+      ),
+      child: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.sheetHorizontalPadding,
+          AppTokens.sheetTopPadding + AppTokens.space3xl,
+          AppTokens.sheetHorizontalPadding,
+          AppTokens.sheetBottomPadding,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeading(),
+            const SizedBox(height: AppTokens.space2xl),
+            if (_loadError != null) ...[
+              _buildLoadError(),
+              const SizedBox(height: AppTokens.spaceXl),
+            ],
+            _buildStatisticsGrid(todaySummary),
+            const SizedBox(height: AppTokens.spaceXl),
+            _buildQuickActions(role),
+            const SizedBox(height: AppTokens.spaceXl),
+            _buildRecentActivity(todaySummary),
+            const SizedBox(height: AppTokens.spaceXl),
+            _buildLogoutButton(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeading() {
+    final authState = ref.watch(authNotifierProvider);
+    final businessName = authState.organization?.name ?? 'Your Business';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(businessName, style: AppText.authTitle),
+        const SizedBox(height: AppTokens.spaceXs),
+        Text(
+          'Overview of your business performance',
+          style: AppText.authSubtitle,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadError() {
+    return _ManageCard(
+      backgroundColor: AppTokens.dangerBg,
+      borderColor: AppTokens.danger,
+      padding: const EdgeInsets.all(AppTokens.errorPadding),
+      child: Row(
         children: [
-          Text(
-            businessName,
-            style: AppTokens.manrope(
-              size: AppTokens.textSubtitle,
-              weight: FontWeight.w700,
-              color: AppTokens.white,
+          Expanded(
+            child: Text(
+              'Could not load branches and staff: $_loadError',
+              style: AppText.bodySmall.copyWith(color: AppTokens.danger),
             ),
           ),
-          const SizedBox(height: AppTokens.spaceXs),
-          Text(
-            'Overview of your business performance',
-            style: AppTokens.dmSans(
-              size: AppTokens.textLabel,
-              weight: FontWeight.w400,
-              color: AppTokens.ice400,
+          TextButton(
+            onPressed: _loadData,
+            style: TextButton.styleFrom(
+              foregroundColor: AppTokens.danger,
+              textStyle: AppText.labelLarge,
+            ),
+            child: Text(
+              'Retry',
+              style: AppText.labelLarge.copyWith(color: AppTokens.danger),
             ),
           ),
         ],
@@ -216,21 +263,16 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           final shouldLogout = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              backgroundColor: AppTokens.obsidian900,
+              backgroundColor: AppTokens.ice50,
+              elevation: AppTokens.dialogElevation,
               title: Text(
                 'Logout',
-                style: AppTokens.manrope(
-                  size: AppTokens.textSubtitle,
-                  weight: FontWeight.w700,
-                  color: AppTokens.white,
-                ),
+                style: AppText.titleMedium.copyWith(color: AppTokens.text),
               ),
               content: Text(
                 'Are you sure you want to logout?',
-                style: AppTokens.dmSans(
-                  size: AppTokens.textBodySmall,
-                  weight: FontWeight.w400,
-                  color: AppTokens.ice400,
+                style: AppText.bodySmall.copyWith(
+                  color: AppTokens.textSecondary,
                 ),
               ),
               actions: [
@@ -238,10 +280,8 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                   onPressed: () => Navigator.of(context).pop(false),
                   child: Text(
                     'Cancel',
-                    style: AppTokens.dmSans(
-                      size: AppTokens.textBodySmall,
-                      weight: FontWeight.w400,
-                      color: AppTokens.ice400,
+                    style: AppText.bodySmall.copyWith(
+                      color: AppTokens.textSecondary,
                     ),
                   ),
                 ),
@@ -249,11 +289,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                   onPressed: () => Navigator.of(context).pop(true),
                   child: Text(
                     'Logout',
-                    style: AppTokens.manrope(
-                      size: AppTokens.textBodySmall,
-                      weight: FontWeight.w600,
-                      color: AppTokens.error,
-                    ),
+                    style: AppText.labelLarge.copyWith(color: AppTokens.danger),
                   ),
                 ),
               ],
@@ -265,23 +301,22 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           }
         },
         style: OutlinedButton.styleFrom(
-          backgroundColor: AppTokens.headerFacetA,
-          foregroundColor: AppTokens.ice200,
+          backgroundColor: AppTokens.white,
+          foregroundColor: AppTokens.danger,
           padding: const EdgeInsets.symmetric(vertical: AppTokens.spaceLg),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
           ),
-          side: const BorderSide(color: AppTokens.obsidian700),
+          side: BorderSide(
+            color: AppTokens.border,
+            width: AppTokens.componentBorderWidth,
+          ),
           elevation: AppTokens.cardElevation,
+          shadowColor: AppTokens.shadow,
+          textStyle: AppText.labelLarge,
         ),
         icon: const Icon(Icons.logout_rounded, size: AppTokens.progressSize),
-        label: Text(
-          'Logout',
-          style: AppTokens.manrope(
-            size: AppTokens.textBody,
-            weight: FontWeight.w600,
-          ),
-        ),
+        label: const Text('Logout'),
       ),
     );
   }
@@ -314,7 +349,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Total Staff',
               value: _isLoading ? '...' : _staff.length.toString(),
               icon: Icons.people_rounded,
-              color: AppTokens.success,
+              color: AppTokens.primary,
             ),
           ],
         ),
@@ -325,7 +360,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Online Staff',
               value: _isLoading ? '...' : onlineStaff.toString(),
               icon: Icons.wifi_rounded,
-              color: AppTokens.accent,
+              color: AppTokens.teal,
             ),
             const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
@@ -337,16 +372,8 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           ],
         ),
         const SizedBox(height: AppTokens.spaceMd),
-        Container(
-          padding: const EdgeInsets.all(AppTokens.spaceLg),
-          decoration: BoxDecoration(
-            color: AppTokens.obsidian950,
-            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-            border: Border.all(
-              color: AppTokens.obsidian700,
-              width: AppTokens.componentBorderWidth,
-            ),
-          ),
+        _ManageCard(
+          backgroundColor: AppTokens.white,
           child: Row(
             children: [
               Container(
@@ -369,21 +396,15 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                   children: [
                     Text(
                       "Today's Verified Payments",
-                      style: AppTokens.dmSans(
-                        size: AppTokens.textCaption,
-                        weight: FontWeight.w500,
-                        color: AppTokens.white.withValues(
-                          alpha: AppTokens.alphaTertiary,
-                        ),
+                      style: AppText.labelSmall.copyWith(
+                        color: AppTokens.textSecondary,
                       ),
                     ),
                     const SizedBox(height: AppTokens.statTitleGap),
                     Text(
                       '$verifiedCount payments',
-                      style: AppTokens.manrope(
-                        size: AppTokens.textSubtitle,
-                        weight: FontWeight.w700,
-                        color: AppTokens.white,
+                      style: AppText.titleMedium.copyWith(
+                        color: AppTokens.text,
                       ),
                     ),
                   ],
@@ -394,21 +415,15 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                 children: [
                   Text(
                     'Total Amount',
-                    style: AppTokens.dmSans(
-                      size: AppTokens.textOverline,
-                      weight: FontWeight.w500,
-                      color: AppTokens.white.withValues(
-                        alpha: AppTokens.alphaSecondary,
-                      ),
+                    style: AppText.overline.copyWith(
+                      color: AppTokens.textSecondary,
                     ),
                   ),
                   const SizedBox(height: AppTokens.spaceXs),
                   Text(
                     verifiedAmount,
-                    style: AppTokens.manrope(
-                      size: AppTokens.textSubtitle,
-                      weight: FontWeight.w700,
-                      color: AppTokens.accent,
+                    style: AppText.titleMedium.copyWith(
+                      color: AppTokens.primary,
                     ),
                   ),
                 ],
@@ -439,7 +454,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.person_add_rounded,
           label: 'Staff',
-          color: AppTokens.success,
+          color: AppTokens.primary,
           onTap: () => _navigateAndRefresh(const StaffManagementScreen()),
         ),
       );
@@ -487,11 +502,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
       children: [
         Text(
           'Quick Actions',
-          style: AppTokens.manrope(
-            size: AppTokens.textBodyLarge,
-            weight: FontWeight.w600,
-            color: AppTokens.white,
-          ),
+          style: AppText.titleSmall.copyWith(color: AppTokens.text),
         ),
         const SizedBox(height: AppTokens.spaceMd),
         GridView.count(
@@ -512,11 +523,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
       children: [
         Text(
           'Recent Activity',
-          style: AppTokens.manrope(
-            size: AppTokens.textBodyLarge,
-            weight: FontWeight.w600,
-            color: AppTokens.white,
-          ),
+          style: AppText.titleSmall.copyWith(color: AppTokens.text),
         ),
         const SizedBox(height: AppTokens.spaceMd),
         todaySummary.when(
@@ -528,19 +535,12 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               children: data.recent.take(3).map((p) {
                 final statusColor = _statusColor(p.status);
                 final time = DateFormat('h:mm a').format(p.createdAt);
-                return Container(
+                return _ManageCard(
                   margin: const EdgeInsets.only(bottom: AppTokens.spaceSm),
+                  backgroundColor: AppTokens.surfaceLight,
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppTokens.heroStatusPaddingH,
                     vertical: AppTokens.spaceMd,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTokens.obsidian950,
-                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                    border: Border.all(
-                      color: AppTokens.obsidian700,
-                      width: AppTokens.componentBorderWidth,
-                    ),
                   ),
                   child: Row(
                     children: [
@@ -563,21 +563,15 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                                   : p.id,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: AppTokens.manrope(
-                                size: AppTokens.textLabel,
-                                weight: FontWeight.w600,
-                                color: AppTokens.white,
+                              style: AppText.labelMedium.copyWith(
+                                color: AppTokens.text,
                               ),
                             ),
                             const SizedBox(height: AppTokens.spaceXs),
                             Text(
                               '${p.status} · $time',
-                              style: AppTokens.dmSans(
-                                size: AppTokens.textOverline,
-                                weight: FontWeight.w400,
-                                color: AppTokens.white.withValues(
-                                  alpha: AppTokens.alphaSecondary,
-                                ),
+                              style: AppText.overline.copyWith(
+                                color: AppTokens.textSecondary,
                               ),
                             ),
                           ],
@@ -585,11 +579,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                       ),
                       Text(
                         '${p.currency} ${p.amount.toStringAsFixed(2)}',
-                        style: AppTokens.manrope(
-                          size: AppTokens.textLabel,
-                          weight: FontWeight.w600,
-                          color: statusColor,
-                        ),
+                        style: AppText.labelMedium.copyWith(color: statusColor),
                       ),
                     ],
                   ),
@@ -600,7 +590,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           loading: () => const Center(
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: AppTokens.space2xl),
-              child: SvLoader.page(),
+              child: SvLoader.page(color: AppTokens.primary),
             ),
           ),
           error: (e, _) => _emptyActivity(
@@ -626,26 +616,20 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: AppTokens.dmSans(
-                size: AppTokens.textBodySmall,
-                weight: FontWeight.w400,
-                color: AppTokens.white.withValues(
-                  alpha: AppTokens.alphaSecondary,
-                ),
-              ),
+              style: AppText.bodySmall.copyWith(color: AppTokens.textSecondary),
             ),
             if (onRetry != null) ...[
               const SizedBox(height: AppTokens.spaceSm),
               TextButton(
                 onPressed: onRetry,
                 style: TextButton.styleFrom(
-                  foregroundColor: AppTokens.accent,
-                  textStyle: AppTokens.manrope(
-                    size: AppTokens.textLabel,
-                    weight: FontWeight.w700,
-                  ),
+                  foregroundColor: AppTokens.primary,
+                  textStyle: AppText.labelLarge,
                 ),
-                child: const Text('Retry'),
+                child: Text(
+                  'Retry',
+                  style: AppText.labelLarge.copyWith(color: AppTokens.primary),
+                ),
               ),
             ],
           ],
@@ -657,14 +641,59 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Color _statusColor(String status) {
     switch (status.toUpperCase()) {
       case 'VERIFIED':
-        return AppTokens.success;
+        return AppTokens.teal;
       case 'FAILED':
-        return AppTokens.error;
+        return AppTokens.danger;
       case 'REJECTED':
         return AppTokens.warning;
       default:
-        return AppTokens.ice400;
+        return AppTokens.textSecondary;
     }
+  }
+}
+
+class _ManageCard extends StatelessWidget {
+  const _ManageCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(AppTokens.spaceLg),
+    this.margin,
+    this.onTap,
+    this.backgroundColor = AppTokens.white,
+    this.borderColor = AppTokens.border,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
+  final VoidCallback? onTap;
+  final Color backgroundColor;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget card = DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: borderColor,
+          width: AppTokens.componentBorderWidth,
+        ),
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+      ),
+      child: SVCard(
+        backgroundColor: backgroundColor,
+        borderRadius: AppTokens.radiusCard,
+        hasShadow: true,
+        onTap: onTap,
+        padding: padding,
+        child: child,
+      ),
+    );
+
+    final cardMargin = margin;
+    if (cardMargin != null) {
+      card = Padding(padding: cardMargin, child: card);
+    }
+    return card;
   }
 }
 
@@ -684,55 +713,32 @@ class _StatItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
+      child: _ManageCard(
+        backgroundColor: AppTokens.surfaceLight,
         padding: const EdgeInsets.all(AppTokens.spaceLg),
-        decoration: BoxDecoration(
-          color: AppTokens.obsidian950,
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-          border: Border.all(
-            color: AppTokens.obsidian700,
-            width: AppTokens.componentBorderWidth,
-          ),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: AppTokens.handleWidth,
-                  height: AppTokens.handleWidth,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: AppTokens.alphaLow),
-                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: AppTokens.componentIconMd,
-                  ),
-                ),
-              ],
+            Container(
+              width: AppTokens.statTileSize,
+              height: AppTokens.statTileSize,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: AppTokens.alphaLow),
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              ),
+              child: Icon(icon, color: color, size: AppTokens.componentIconLg),
             ),
             const SizedBox(height: AppTokens.spaceMd),
             Text(
               title,
-              style: AppTokens.dmSans(
-                size: AppTokens.textCaption,
-                weight: FontWeight.w500,
-                color: AppTokens.white.withValues(
-                  alpha: AppTokens.alphaTertiary,
-                ),
+              style: AppText.labelSmall.copyWith(
+                color: AppTokens.textSecondary,
               ),
             ),
             const SizedBox(height: AppTokens.spaceXs),
             Text(
               value,
-              style: AppTokens.manrope(
-                size: AppTokens.textSubtitle,
-                weight: FontWeight.w700,
-                color: AppTokens.white,
-              ),
+              style: AppText.titleMedium.copyWith(color: AppTokens.text),
             ),
           ],
         ),
@@ -756,46 +762,28 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return _ManageCard(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(AppTokens.spaceLg),
-        decoration: BoxDecoration(
-          color: AppTokens.obsidian950,
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-          border: Border.all(
-            color: AppTokens.obsidian700,
-            width: AppTokens.componentBorderWidth,
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: AppTokens.tapTarget,
+            height: AppTokens.tapTarget,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: AppTokens.alphaLow),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            ),
+            child: Icon(icon, color: color, size: AppTokens.formPrefixIconSize),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: AppTokens.tapTarget,
-              height: AppTokens.tapTarget,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: AppTokens.alphaLow),
-                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: AppTokens.formPrefixIconSize,
-              ),
-            ),
-            const SizedBox(height: AppTokens.spaceMd),
-            Text(
-              label,
-              style: AppTokens.manrope(
-                size: AppTokens.textLabel,
-                weight: FontWeight.w600,
-                color: AppTokens.white,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+          const SizedBox(height: AppTokens.spaceMd),
+          Text(
+            label,
+            style: AppText.labelMedium.copyWith(color: AppTokens.text),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
