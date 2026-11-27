@@ -113,6 +113,14 @@ class AppTokens {
   );
 
   static const double headerVisibleHeight = 180;
+  static const double authTopBarHeight = 150;
+  static const double authTopBarLogoTop = 64;
+  static const double authTopBarLogoSize = 52;
+  static const double authTopBarInset = spaceLg;
+  static const double backButtonSize = tapTarget;
+  static const double backButtonRadius = radiusMd;
+  static const double backButtonIconSize = 20;
+  static const double errorRetryTextSize = 13;
   static const double sheetOverlap = 12;
   static const double sheetTopRadius = radiusSheet;
   static const double sheetTopPadding = 12;

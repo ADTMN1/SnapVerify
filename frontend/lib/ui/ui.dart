@@ -1,3 +1,4 @@
+export 'auth_back_button.dart';
 export 'auth_bottom_line.dart';
 export 'auth_dropdown_field.dart';
 export 'auth_error_banner.dart';
@@ -8,6 +9,7 @@ export 'auth_primary_button.dart';
 export 'auth_text_field.dart';
 export 'auth_text_link.dart';
 export 'auth_toggle.dart';
+export 'auth_top_bar.dart';
 export 'app_header_pattern_painter.dart';
 export 'app_logo_painter.dart';
 export 'password_visibility_button.dart';

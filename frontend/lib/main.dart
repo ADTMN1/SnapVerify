@@ -16,7 +16,9 @@ import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
 import 'presentation/screens/business_switcher_screen.dart';
 import 'presentation/widgets/sv_loader.dart';
+import 'theme/app_text.dart';
 import 'theme/app_theme.dart';
+import 'theme/app_tokens.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -180,21 +182,14 @@ class _StartupSplash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF0B1B2B),
+    return Scaffold(
+      backgroundColor: AppTokens.obsidian950,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'SnapVerify',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 24),
+            Text('SnapVerify', style: AppText.splashTitle),
+            SizedBox(height: AppTokens.spaceXl),
             SvLoader.page(),
           ],
         ),
@@ -212,38 +207,53 @@ class _ReconnectScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B1B2B),
+      backgroundColor: AppTokens.obsidian950,
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.sheetHorizontalPadding,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
                 Icons.cloud_off_rounded,
-                color: Colors.white70,
-                size: 48,
+                color: AppTokens.textOnDark,
+                size: AppTokens.statTileSize,
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'Reconnecting…',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
+              const SizedBox(height: AppTokens.spaceXl),
+              Text('Reconnecting…', style: AppText.reconnectTitle),
+              const SizedBox(height: AppTokens.spaceSm),
+              Text(
                 'Your session is saved. Check your connection and retry.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white60, fontSize: 14),
+                style: AppText.reconnectBody,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTokens.spaceXl),
               FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTokens.accent,
+                  foregroundColor: AppTokens.obsidian950,
+                  minimumSize: const Size(
+                    double.infinity,
+                    AppTokens.buttonHeight,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      AppTokens.buttonRadius,
+                    ),
+                  ),
+                ),
                 onPressed: () =>
                     ref.read(authNotifierProvider.notifier).retryRestore(),
-                child: const Text('Retry'),
+                child: Text(
+                  'Retry',
+                  style: AppTokens.manrope(
+                    size: AppTokens.buttonTextSize,
+                    weight: FontWeight.w700,
+                    color: AppTokens.obsidian950,
+                  ),
+                ),
               ),
             ],
           ),

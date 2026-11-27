@@ -231,6 +231,30 @@ class AppText {
         color: AppTokens.white,
       );
 
+  static TextStyle get authErrorRetry => AppTokens.dmSans(
+        size: AppTokens.errorRetryTextSize,
+        weight: FontWeight.w600,
+        color: AppTokens.danger,
+      ).copyWith(decoration: TextDecoration.underline);
+
+  static TextStyle get splashTitle => AppTokens.manrope(
+        size: AppTokens.titleSize,
+        weight: FontWeight.w600,
+        color: AppTokens.white,
+      );
+
+  static TextStyle get reconnectTitle => AppTokens.manrope(
+        size: AppTokens.textSubtitle,
+        weight: FontWeight.w600,
+        color: AppTokens.white,
+      );
+
+  static TextStyle get reconnectBody => AppTokens.dmSans(
+        size: AppTokens.textBodySmall,
+        weight: FontWeight.w400,
+        color: AppTokens.white.withValues(alpha: AppTokens.alphaSecondary),
+      );
+
   static TextStyle onDark(TextStyle style) => style.apply(
         color: AppTokens.textOnDark,
       );

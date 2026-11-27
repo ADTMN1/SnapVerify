@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
+import '../theme/app_text.dart';
 import '../theme/app_tokens.dart';
 
 class AuthErrorBanner extends StatelessWidget {
-  const AuthErrorBanner({super.key, required this.message});
+  const AuthErrorBanner({
+    super.key,
+    required this.message,
+    this.title,
+    this.retryLabel,
+    this.onRetry,
+  });
 
   final String message;
+  final String? title;
+  final String? retryLabel;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -27,13 +37,40 @@ class AuthErrorBanner extends StatelessWidget {
             ),
             const SizedBox(width: AppTokens.dropdownIconGap),
             Expanded(
-              child: Text(
-                message,
-                style: AppTokens.dmSans(
-                  size: AppTokens.errorTextSize,
-                  weight: FontWeight.w500,
-                  color: AppTokens.alertOnDanger,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (title != null) ...[
+                    Text(
+                      title!,
+                      style: AppTokens.dmSans(
+                        size: AppTokens.errorTextSize,
+                        weight: FontWeight.w600,
+                        color: AppTokens.alertOnDanger,
+                      ),
+                    ),
+                    const SizedBox(height: AppTokens.spaceXs),
+                  ],
+                  Text(
+                    message,
+                    style: AppTokens.dmSans(
+                      size: AppTokens.errorTextSize,
+                      weight: FontWeight.w500,
+                      color: AppTokens.alertOnDanger,
+                    ),
+                  ),
+                  if (onRetry != null && retryLabel != null) ...[
+                    const SizedBox(height: AppTokens.spaceXs),
+                    Semantics(
+                      button: true,
+                      label: retryLabel,
+                      child: GestureDetector(
+                        onTap: onRetry,
+                        child: Text(retryLabel!, style: AppText.authErrorRetry),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
