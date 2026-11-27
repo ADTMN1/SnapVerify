@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
 
 enum BadgeType { success, warning, error, info, neutral }
 
@@ -15,55 +15,46 @@ class SVStatusBadge extends StatelessWidget {
     this.isSmall = false,
   });
 
-  Color get _backgroundColor {
+  Color get _baseColor {
     switch (type) {
       case BadgeType.success:
-        return TwColors.brightGreen.withOpacity(0.15);
+        return AppTokens.success;
       case BadgeType.warning:
-        return Colors.orange.withOpacity(0.15);
+        return AppTokens.warning;
       case BadgeType.error:
-        return TwColors.red500.withOpacity(0.15);
+        return AppTokens.error;
       case BadgeType.info:
-        return TwColors.blue500.withOpacity(0.15);
+        return AppTokens.info;
       case BadgeType.neutral:
-        return TwColors.slate700;
+        return AppTokens.textOnDark;
     }
+  }
+
+  Color get _backgroundColor {
+    if (type == BadgeType.neutral) return AppTokens.surfaceDark;
+    return _baseColor.withValues(alpha: AppTokens.alphaMedium);
   }
 
   Color get _textColor {
-    switch (type) {
-      case BadgeType.success:
-        return TwColors.brightGreen;
-      case BadgeType.warning:
-        return Colors.orange;
-      case BadgeType.error:
-        return TwColors.red500;
-      case BadgeType.info:
-        return TwColors.blue500;
-      case BadgeType.neutral:
-        return TwColors.white.withOpacity(0.8);
+    if (type == BadgeType.neutral) {
+      return AppTokens.textOnDark.withValues(alpha: AppTokens.alphaDisabled);
     }
+    return _baseColor;
   }
 
   Color get _borderColor {
-    switch (type) {
-      case BadgeType.success:
-        return TwColors.brightGreen.withOpacity(0.3);
-      case BadgeType.warning:
-        return Colors.orange.withOpacity(0.3);
-      case BadgeType.error:
-        return TwColors.red500.withOpacity(0.3);
-      case BadgeType.info:
-        return TwColors.blue500.withOpacity(0.3);
-      case BadgeType.neutral:
-        return TwColors.slate600;
-    }
+    if (type == BadgeType.neutral) return AppTokens.obsidian700;
+    return _baseColor.withValues(alpha: AppTokens.alphaStrong);
   }
 
-  double get _verticalPadding => isSmall ? 4 : 6;
-  double get _horizontalPadding => isSmall ? 10 : 14;
-  double get _fontSize => isSmall ? 12 : 14;
-  FontWeight get _fontWeight => isSmall ? FontWeight.w500 : FontWeight.w600;
+  double get _verticalPadding =>
+      isSmall ? AppTokens.badgeSmallPaddingV : AppTokens.badgePaddingV;
+  double get _horizontalPadding =>
+      isSmall ? AppTokens.badgeSmallPaddingH : AppTokens.badgePaddingH;
+  double get _fontSize =>
+      isSmall ? AppTokens.badgeSmallFontSize : AppTokens.badgeFontSize;
+  FontWeight get _fontWeight =>
+      isSmall ? FontWeight.w500 : FontWeight.w600;
 
   @override
   Widget build(BuildContext context) {
@@ -74,18 +65,20 @@ class SVStatusBadge extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: _backgroundColor,
-        borderRadius: BorderRadius.circular(isSmall ? 6 : 8),
+        borderRadius: BorderRadius.circular(
+          isSmall ? AppTokens.badgeSmallRadius : AppTokens.badgeRadius,
+        ),
         border: Border.all(
           color: _borderColor,
-          width: 1,
+          width: AppTokens.componentBorderWidth,
         ),
       ),
       child: Text(
         text,
-        style: TextStyle(
+        style: AppTokens.dmSans(
+          size: _fontSize,
+          weight: _fontWeight,
           color: _textColor,
-          fontSize: _fontSize,
-          fontWeight: _fontWeight,
         ),
       ),
     );

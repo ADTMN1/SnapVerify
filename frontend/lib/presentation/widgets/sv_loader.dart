@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
 
 enum _SvLoaderVariant { page, button, inline, large }
 
@@ -12,43 +12,43 @@ class SvLoader extends StatelessWidget {
 
   const SvLoader({super.key})
     : _variant = _SvLoaderVariant.page,
-      _size = 28,
-      _strokeWidth = 2.6,
-      _color = TwColors.brightGreen,
+      _size = AppTokens.loaderPageSize,
+      _strokeWidth = AppTokens.loaderPageStroke,
+      _color = AppTokens.accent,
       _backgroundColor = null;
 
   const SvLoader.page({super.key, Color? color, Color? backgroundColor})
     : _variant = _SvLoaderVariant.page,
-      _size = 28,
-      _strokeWidth = 2.6,
-      _color = color ?? TwColors.brightGreen,
+      _size = AppTokens.loaderPageSize,
+      _strokeWidth = AppTokens.loaderPageStroke,
+      _color = color ?? AppTokens.accent,
       _backgroundColor = backgroundColor;
 
   const SvLoader.button({super.key, Color? color})
     : _variant = _SvLoaderVariant.button,
-      _size = 18,
-      _strokeWidth = 2.2,
-      _color = color ?? TwColors.primaryBg,
+      _size = AppTokens.loaderButtonSize,
+      _strokeWidth = AppTokens.loaderButtonStroke,
+      _color = color ?? AppTokens.obsidian950,
       _backgroundColor = null;
 
   const SvLoader.inline({super.key, Color? color})
     : _variant = _SvLoaderVariant.inline,
-      _size = 16,
-      _strokeWidth = 2.0,
-      _color = color ?? TwColors.brightGreen,
+      _size = AppTokens.loaderInlineSize,
+      _strokeWidth = AppTokens.loaderInlineStroke,
+      _color = color ?? AppTokens.accent,
       _backgroundColor = null;
 
   const SvLoader.large({super.key, Color? color})
     : _variant = _SvLoaderVariant.large,
-      _size = 56,
-      _strokeWidth = 3.0,
-      _color = color ?? TwColors.brightGreen,
+      _size = AppTokens.loaderLargeSize,
+      _strokeWidth = AppTokens.loaderLargeStroke,
+      _color = color ?? AppTokens.accent,
       _backgroundColor = null;
 
   Color? get _trackColor {
     if (_backgroundColor != null) return _backgroundColor;
     if (_variant == _SvLoaderVariant.page) {
-      return _color.withValues(alpha: 0.12);
+      return _color.withValues(alpha: AppTokens.alphaLow);
     }
     return null;
   }

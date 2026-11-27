@@ -128,34 +128,107 @@ class AppText {
         size: AppTokens.inputTextSize,
         weight: FontWeight.w400,
         color: AppTokens.ink,
-        height: AppTokens.lineHeightRelaxed,
+      );
+
+  static TextStyle get authHint => AppTokens.dmSans(
+        size: AppTokens.inputTextSize,
+        weight: FontWeight.w400,
+        color: AppTokens.hintInkMuted,
       );
 
   static TextStyle get authHelper => AppTokens.dmSans(
         size: AppTokens.helperSize,
         weight: FontWeight.w400,
         color: AppTokens.inkMuted,
-        height: AppTokens.lineHeightRelaxed,
       );
 
   static TextStyle get authError => AppTokens.dmSans(
         size: AppTokens.errorTextSize,
         weight: FontWeight.w500,
         color: AppTokens.danger,
-        height: AppTokens.lineHeightRelaxed,
+      );
+
+  static TextStyle get authFieldLabel => AppTokens.dmSans(
+        size: AppTokens.labelSize,
+        weight: FontWeight.w600,
+        color: AppTokens.inkMuted,
       );
 
   static TextStyle get authToggle => AppTokens.manrope(
         size: AppTokens.toggleTextSize,
         weight: FontWeight.w600,
-        height: AppTokens.lineHeightNormal,
+      );
+
+  static TextStyle get authToggleSelected => AppTokens.manrope(
+        size: AppTokens.toggleTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.white,
+      );
+
+  static TextStyle get authToggleUnselected => AppTokens.manrope(
+        size: AppTokens.toggleTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.inkMuted,
+      );
+
+  static TextStyle get authLanguageSelected => AppTokens.manrope(
+        size: AppTokens.languageTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.white,
+      );
+
+  static TextStyle get authLanguageUnselected => AppTokens.manrope(
+        size: AppTokens.languageTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.inkMuted,
+      );
+
+  static TextStyle get authLink => AppTokens.dmSans(
+        size: AppTokens.footerTextSize,
+        weight: FontWeight.w500,
+        color: AppTokens.ink,
+      );
+
+  static TextStyle get authLinkMuted => AppTokens.dmSans(
+        size: AppTokens.footerTextSize,
+        weight: FontWeight.w500,
+        color: AppTokens.inkMuted,
+      );
+
+  static TextStyle get authBottomPrompt => AppTokens.dmSans(
+        size: AppTokens.footerTextSize,
+        weight: FontWeight.w400,
+        color: AppTokens.inkMuted,
+      );
+
+  static TextStyle get authBottomAction => AppTokens.dmSans(
+        size: AppTokens.footerTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.ink,
+      );
+
+  static TextStyle get authOptionTitle => AppTokens.manrope(
+        size: AppTokens.toggleTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.ink,
+      );
+
+  static TextStyle get authOptionSelected => AppTokens.dmSans(
+        size: AppTokens.footerTextSize,
+        weight: FontWeight.w700,
+        color: AppTokens.ink,
+      );
+
+  static TextStyle get authOptionUnselected => AppTokens.dmSans(
+        size: AppTokens.footerTextSize,
+        weight: FontWeight.w400,
+        color: AppTokens.ink,
       );
 
   static TextStyle get authButton => AppTokens.manrope(
         size: AppTokens.buttonTextSize,
         weight: FontWeight.w700,
         color: AppTokens.white,
-        height: AppTokens.lineHeightNormal,
       );
 
   static TextStyle onDark(TextStyle style) => style.apply(

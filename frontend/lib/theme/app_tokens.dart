@@ -194,6 +194,97 @@ class AppTokens {
   static const double optionIconSize = 24;
   static const double checkIconSize = 16;
 
+  static const double componentBorderWidth = 1;
+  static const double componentBorderWidthStrong = 1.5;
+  static const double componentIconSm = 14;
+  static const double componentIconMd = 20;
+  static const double componentIconLg = 24;
+
+  static const double loaderPageSize = 28;
+  static const double loaderPageStroke = 2.6;
+  static const double loaderButtonSize = 18;
+  static const double loaderButtonStroke = 2.2;
+  static const double loaderInlineSize = 16;
+  static const double loaderInlineStroke = 2;
+  static const double loaderLargeSize = 56;
+  static const double loaderLargeStroke = 3;
+
+  static const double alphaSubtle = 0.08;
+  static const double alphaLow = 0.12;
+  static const double alphaMedium = 0.15;
+  static const double alphaStrong = 0.3;
+  static const double alphaMuted = 0.4;
+  static const double alphaSecondary = 0.5;
+  static const double alphaTertiary = 0.6;
+  static const double alphaPrimaryMuted = 0.7;
+  static const double alphaDisabled = 0.8;
+  static const double alphaOverlay = 0.45;
+
+  static const double badgePaddingV = 6;
+  static const double badgePaddingH = 14;
+  static const double badgeSmallPaddingV = 4;
+  static const double badgeSmallPaddingH = 10;
+  static const double badgeFontSize = 14;
+  static const double badgeSmallFontSize = 12;
+  static const double badgeRadius = radiusSm;
+  static const double badgeSmallRadius = radiusXs;
+
+  static const double formLabelGap = 8;
+  static const double formPaddingH = 20;
+  static const double formPaddingV = 16;
+  static const double formPrefixIconSize = 22;
+  static const double formHintSize = 16;
+
+  static const double statCardPadding = 20;
+  static const double statTileSize = 48;
+  static const double statIconSize = 24;
+  static const double statChangePaddingH = 10;
+  static const double statChangePaddingV = 6;
+  static const double statChangeIconSize = 14;
+  static const double statChangeFontSize = 13;
+  static const double statGap = 16;
+  static const double statTitleGap = 6;
+  static const double statTitleSize = 14;
+  static const double statValueSize = 26;
+
+  static const double heroRadius = radius2xl;
+  static const double heroWideHeight = 400;
+  static const double heroMobileHeight = 280;
+  static const double heroBreakpoint = 768;
+  static const double heroPadding = 32;
+  static const double heroStatusPaddingH = 14;
+  static const double heroStatusPaddingV = 8;
+  static const double heroDotSize = 8;
+  static const double heroTitleSize = 42;
+  static const double heroSubtitleSize = 16;
+  static const double heroStatValueSize = 28;
+  static const double heroStatLabelSize = 12;
+  static const double heroIndicatorActiveWidth = 32;
+  static const double heroIndicatorWidth = 8;
+  static const double heroIndicatorHeight = 8;
+  static const double heroIndicatorRadius = 4;
+  static const double heroIndicatorGap = 4;
+  static const double heroIndicatorOffset = 24;
+  static const double heroParallaxShift = 30;
+  static const double heroScaleEnd = 1.08;
+  static const double heroTrackingTight = -1.5;
+  static const double heroTrackingStatus = 0.5;
+  static const double heroTrackingSubtitle = 0.2;
+  static const double heroTrackingStat = -0.8;
+  static const double heroLineHeightTitle = 1.1;
+  static const double heroLineHeightSubtitle = 1.6;
+  static const int motionHeroTransition = 1500;
+  static const int motionHeroImage = 4000;
+  static const int motionHeroIndicator = 300;
+
+  static const Color heroGradientStart = Color(0xFF0D1F0A);
+  static const Color heroGradientEnd = Color(0xFF050D18);
+  static const Color heroImageOverlayStart = Color(0x73000000);
+  static const Color heroOverlayFadeStart = Color(0x66000000);
+
+  static const double heroRadialRadius = 1.5;
+  static const double heroOverlayStop = 0.5;
+
   static const double shadowBlurSmall = 8;
   static const double shadowBlurMedium = 12;
   static const double shadowSpreadMedium = 2;
@@ -206,6 +297,7 @@ class AppTokens {
   static const int motionSlow = 350;
   static const Curve curveStandard = Curves.easeOut;
   static const Curve curveEmphasized = Curves.easeInOut;
+  static const Curve curveHeroPage = Curves.easeInOutCubic;
 
   static const BoxShadow cardShadow = BoxShadow(
     color: shadow,

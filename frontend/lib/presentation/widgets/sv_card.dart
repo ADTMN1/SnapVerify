@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
 
 class SVCard extends StatelessWidget {
   final Widget child;
@@ -13,11 +13,11 @@ class SVCard extends StatelessWidget {
   const SVCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(24),
+    this.padding = const EdgeInsets.all(AppTokens.space2xl),
     this.margin,
     this.onTap,
     this.hasShadow = true,
-    this.borderRadius = 24,
+    this.borderRadius = AppTokens.radius2xl,
     this.backgroundColor,
   });
 
@@ -26,35 +26,21 @@ class SVCard extends StatelessWidget {
     return Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: backgroundColor ?? TwColors.slate800,
+        color: backgroundColor ?? AppTokens.obsidian800,
         borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: hasShadow
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
+        boxShadow: hasShadow ? const [AppTokens.cardShadow] : null,
       ),
       child: onTap != null
           ? Material(
-              color: Colors.transparent,
+              color: AppTokens.transparent,
               borderRadius: BorderRadius.circular(borderRadius),
               child: InkWell(
                 borderRadius: BorderRadius.circular(borderRadius),
                 onTap: onTap,
-                child: Padding(
-                  padding: padding!,
-                  child: child,
-                ),
+                child: Padding(padding: padding!, child: child),
               ),
             )
-          : Padding(
-              padding: padding!,
-              child: child,
-            ),
+          : Padding(padding: padding!, child: child),
     );
   }
 }
@@ -74,7 +60,7 @@ class SVStatCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
-    this.iconColor = TwColors.brightGreen,
+    this.iconColor = AppTokens.accent,
     this.backgroundColor,
     this.change,
     this.isPositive = true,
@@ -83,36 +69,39 @@ class SVStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final changeColor = isPositive ? AppTokens.success : AppTokens.error;
     return SVCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(20),
+      backgroundColor: backgroundColor,
+      padding: const EdgeInsets.all(AppTokens.statCardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: AppTokens.statTileSize,
+                height: AppTokens.statTileSize,
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(16),
+                  color: iconColor.withValues(alpha: AppTokens.alphaMedium),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusLg),
                 ),
                 child: Icon(
                   icon,
                   color: iconColor,
-                  size: 24,
+                  size: AppTokens.statIconSize,
                 ),
               ),
               if (change != null) ...[
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.statChangePaddingH,
+                    vertical: AppTokens.statChangePaddingV,
+                  ),
                   decoration: BoxDecoration(
-                    color: isPositive
-                        ? TwColors.brightGreen.withOpacity(0.15)
-                        : TwColors.red500.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    color: changeColor.withValues(alpha: AppTokens.alphaMedium),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusSm),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -121,16 +110,16 @@ class SVStatCard extends StatelessWidget {
                         isPositive
                             ? Icons.arrow_upward_rounded
                             : Icons.arrow_downward_rounded,
-                        size: 14,
-                        color: isPositive ? TwColors.brightGreen : TwColors.red500,
+                        size: AppTokens.statChangeIconSize,
+                        color: changeColor,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppTokens.spaceXs),
                       Text(
                         change!,
-                        style: TextStyle(
-                          color: isPositive ? TwColors.brightGreen : TwColors.red500,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                        style: AppTokens.dmSans(
+                          size: AppTokens.statChangeFontSize,
+                          weight: FontWeight.w600,
+                          color: changeColor,
                         ),
                       ),
                     ],
@@ -139,22 +128,24 @@ class SVStatCard extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.statGap),
           Text(
             title,
-            style: TextStyle(
-              color: TwColors.white.withOpacity(0.7),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+            style: AppTokens.dmSans(
+              size: AppTokens.statTitleSize,
+              weight: FontWeight.w500,
+              color: AppTokens.white.withValues(
+                alpha: AppTokens.alphaPrimaryMuted,
+              ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppTokens.statTitleGap),
           Text(
             value,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
+            style: AppTokens.manrope(
+              size: AppTokens.statValueSize,
+              weight: FontWeight.w700,
+              color: AppTokens.white,
             ),
           ),
         ],
