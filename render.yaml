@@ -1,0 +1,95 @@
+# Render Blueprint for the SnapVerify backend.
+#
+# This file lives at the REPOSITORY ROOT on purpose: Render reads `render.yaml`
+# from the repo root by default. `rootDir: backend` points the build at the
+# NestJS application inside the monorepo. A service created manually (without
+# this blueprint) does NOT inherit these build/start commands — deploy via
+# "Blueprint" from the dashboard, or set them by hand on the existing service.
+#
+# Secrets are intentionally NOT stored here: every sensitive variable uses
+# `sync: false`, so Render prompts for its value in the dashboard and keeps it
+# out of the repository.
+#
+# Notes
+# - There is deliberately NO `preDeployCommand`. The database is an existing,
+#   populated Supabase PostgreSQL instance, so migrations are a deliberate,
+#   manually triggered step (see docs/DEPLOY_RENDER_SUPABASE.md).
+#   Adding `preDeployCommand: npx prisma migrate deploy` here would run
+#   migrations on every deploy and requires a paid instance type.
+# - `autoDeploy` is off for the same reason: a code push must not reach
+#   production before the matching schema change has been applied by hand.
+# - Persistent disk: none. Image uploads are handled in memory, so the service
+#   is stateless.
+# - `numInstances` stays at 1: the rate limiter uses an in-memory store, so
+#   limits are per instance.
+services:
+  - type: web
+    name: snapverify-backend
+    runtime: node
+    rootDir: backend
+    region: frankfurt
+    plan: starter
+    numInstances: 1
+    autoDeploy: false
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: node dist/main
+    healthCheckPath: /health
+    envVars:
+      # ── Runtime ──────────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+
+      # ── Database (existing Supabase PostgreSQL — do not provision here) ───
+      # One DATABASE_URL is used by the app and by Prisma CLI/migrations.
+      # Use Supabase's SHARED SESSION POOLER (port 5432,
+      # host aws-<region>.pooler.supabase.com) and the default database "postgres".
+      # Render has no outbound IPv6, so direct IPv6-only hosts fail with
+      # ENOTFOUND. Do NOT use transaction mode (port 6543) — it does not support
+      # the prepared statements Prisma uses.
+      # The app strips sslmode/channel_binding and configures pg TLS directly.
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Auth (>= 32 characters each) ─────────────────────────────────────
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: ACCOUNT_HASH_SECRET
+        sync: false
+
+      # ── CORS: explicit origins only, wildcards are rejected ──────────────
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # ── Email delivery (required; boot fails without it) ─────────────────
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+      # ── Public URLs (must be HTTPS) ──────────────────────────────────────
+      - key: APP_URL
+        sync: false
+      - key: QR_PUBLIC_BASE_URL
+        sync: false
+
+      # ── Payment verification (Check.et) ──────────────────────────────────
+      - key: CHECK_ET_BASE_URL
+        value: https://api.check.et
+      - key: CHECK_ET_API_KEY
+        sync: false
+      - key: CHECK_ET_TIMEOUT_MS
+        value: "45000"
+
+      # ── Required admin-console JWT secrets (distinct, >= 32 chars) ───────
+      - key: JWT_ADMIN_ACCESS_SECRET
+        sync: false
+      - key: JWT_ADMIN_REFRESH_SECRET
+        sync: false
+
+      # ── Optional ─────────────────────────────────────────────────────────
+      - key: BREVO_SMS_SENDER
+        value: SnapVerify

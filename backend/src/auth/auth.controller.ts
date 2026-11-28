@@ -3,29 +3,39 @@ import {
   Post,
   Get,
   Delete,
+  Put,
   UseGuards,
   Request,
   Body,
-  Ip,
   HttpCode,
   HttpStatus,
   Param,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { AUTH_THROTTLE_TTL_MS } from '../config/throttling.config';
 import { AuthService } from './auth.service';
 import { JwtService } from './jwt.service';
 import { JwtAuthGuard, JwtPayload } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
-import { BranchGuard } from './guards/branch.guard';
 import { Roles } from './decorators/roles.decorator';
+import { Public } from './decorators/public.decorator';
 import { Role } from '@prisma/client';
-import { SendOtpDto } from './dto/send-otp.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { CreateBusinessDto } from './dto/create-business.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import {
+  RegisterDto,
+  VerifyEmailDto,
+  ResendVerificationDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  StaffActivationOtpDto,
+  CheckInvitationDto,
+  ActivateInvitationDto,
+} from './dto/email-auth.dto';
 import { LoginDto } from './dto/login.dto';
-import { ChangePasswordDto, ResetPasswordDto } from './dto/change-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { SelectBusinessDto } from './dto/select-business.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AddStaffDto } from './dto/add-staff.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -34,69 +44,129 @@ export class AuthController {
     private jwtService: JwtService,
   ) {}
 
-  @Post('send-otp')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
-  async sendOtp(@Body() dto: SendOtpDto) {
-    return this.authService.sendOtp(dto.phone);
-  }
-
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.loginWithPassword(
-      dto.phone,
+  @Throttle({ default: { limit: 10, ttl: AUTH_THROTTLE_TTL_MS } })
+  async login(@Body() dto: LoginDto, @Request() req: { ip: string }) {
+    return this.authService.login(
+      dto.identifier,
       dto.password,
       dto.organizationId,
+      dto.rememberMe,
     );
   }
 
-  @Post('verify-otp')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
-  async verifyOtp(
-    @Body() dto: VerifyOtpDto,
-    @Ip() ipAddress: string,
-  ) {
-    return this.authService.verifyOtpAndLogin(
-      dto.phone,
-      dto.code,
-      dto.organizationId,
-      ipAddress,
-    );
-  }
+  // ── Owner registration (email verification) ────────────────────────────────
 
-  @Post('create-business')
+  @Public()
+  @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async createBusiness(@Body() dto: CreateBusinessDto) {
-    return this.authService.createBusiness(
-      dto.name,
-      dto.fullName,
-      dto.phone,
-      dto.otpCode,
-      dto.password,
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.email, dto.otpCode);
+  }
+
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerificationOtp(dto.email);
+  }
+
+  // ── Password recovery (email OTP) ───────────────────────────────────────────
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(
       dto.email,
-      dto.address,
-      dto.type,
-      dto.city,
-      dto.country,
+      dto.otpCode,
+      dto.newPassword,
     );
   }
 
+  // ── Staff activation (QR invitation + email OTP) ────────────────────────────
+
+  @Public()
+  @Post('check-invitation')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 6, ttl: AUTH_THROTTLE_TTL_MS } })
+  async checkInvitationPublic(@Body() dto: CheckInvitationDto) {
+    return this.authService.checkInvitation(dto.token);
+  }
+
+  @Public()
+  @Post('staff-activation-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
+  async staffActivationOtp(@Body() dto: StaffActivationOtpDto) {
+    return this.authService.sendStaffActivationOtp(dto.email, dto.token);
+  }
+
+  @Public()
+  @Post('activate-invitation')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async activateInvitation(@Body() dto: ActivateInvitationDto) {
+    return this.authService.activateInvitation(dto);
+  }
+
+  // ── Session management ──────────────────────────────────────────────────────
+
+  @Post('business-selection-challenge')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async issueBusinessSelectionChallenge(@Request() req: { user: JwtPayload }) {
+    return this.authService.issueBusinessSelectionChallenge(req.user.sub);
+  }
+
+  @Public()
+  @Post('select-business')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async selectBusiness(@Body() dto: SelectBusinessDto) {
+    return this.authService.selectBusiness(
+      dto.selectionToken,
+      dto.organizationId,
+      dto.rememberMe,
+    );
+  }
+
+  @Public()
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
-  async refreshToken(@Body() dto: RefreshTokenDto, @Ip() ipAddress: string) {
-    return this.jwtService.refreshTokens(
-      dto.refreshToken,
-      undefined,
-      ipAddress,
-    );
+  async refreshToken(
+    @Body() dto: RefreshTokenDto,
+    @Request() req: { ip: string },
+  ) {
+    return this.jwtService.refreshTokens(dto.refreshToken, undefined, req.ip);
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
   async logout(@Body() dto: RefreshTokenDto) {
     await this.jwtService.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };
@@ -124,23 +194,14 @@ export class AuthController {
     );
   }
 
-  @Post('reset-password')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60 } })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(
-      dto.phone,
-      dto.otpCode,
-      dto.newPassword,
-    );
-  }
-
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async getMe(@Request() req: { user: JwtPayload }) {
     return this.authService.getMe(req.user.sub, req.user.organizationId);
   }
+
+  // ── Staff management ────────────────────────────────────────────────────────
 
   @Post('staff')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -153,15 +214,47 @@ export class AuthController {
     return this.authService.addStaff(
       req.user.organizationId,
       dto.fullName,
-      dto.phone,
+      dto.username,
       dto.role,
       dto.branchId,
-      dto.password,
     );
   }
 
+  // ── QR invitation lifecycle (owner/manager) ────────────────────────────────
+
+  @Get('invitations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async listInvitations(@Request() req: { user: JwtPayload }) {
+    return this.authService.listInvitations(req.user.organizationId);
+  }
+
+  @Post('invitations/:id/revoke')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async revokeInvitation(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+  ) {
+    return this.authService.revokeInvitation(id, req.user.organizationId);
+  }
+
+  @Post('invitations/:id/regenerate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async regenerateInvitation(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+  ) {
+    return this.authService.regenerateInvitation(id, req.user.organizationId);
+  }
+
   @Get('staff')
-  @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
   @HttpCode(HttpStatus.OK)
   async getStaff(@Request() req: { user: JwtPayload; branchFilter?: string }) {
     return this.authService.getStaff(req.user.organizationId, req.branchFilter);
@@ -178,31 +271,35 @@ export class AuthController {
     return this.authService.removeStaff(id, req.user.organizationId);
   }
 
-  @Get('invitations/:phone')
-  @UseGuards(JwtAuthGuard)
+  @Put('staff/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
   @HttpCode(HttpStatus.OK)
-  async getInvitations(@Param('phone') phone: string) {
-    return this.authService.getInvitation(phone);
+  async updateStaff(
+    @Request() req: { user: JwtPayload },
+    @Param('id') id: string,
+    @Body() dto: UpdateStaffDto,
+  ) {
+    return this.authService.updateStaff(
+      id,
+      req.user.organizationId,
+      dto.fullName,
+      dto.role,
+      req.user.role,
+      dto.branchId ?? undefined,
+    );
   }
 
-  @Post('activate-invitation')
+  // JWT-authenticated invitation lookup — for owners/staff to view invitations
+  // for a given phone. Pre-login staff MUST use POST /check-invitation instead.
+  @Get('invitations/:phone')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.OWNER, Role.MANAGER)
   @HttpCode(HttpStatus.OK)
-  async activateInvitation(
-    @Body()
-    body: {
-      phone: string;
-      otpCode: string;
-      fullName: string;
-      password: string;
-      organizationId: string;
-    },
+  async getInvitations(
+    @Param('phone') phone: string,
+    @Request() req: { user: JwtPayload },
   ) {
-    return this.authService.activateInvitation(
-      body.phone,
-      body.otpCode,
-      body.fullName,
-      body.password,
-      body.organizationId,
-    );
+    return this.authService.getInvitation(phone, req.user.organizationId);
   }
 }

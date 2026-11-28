@@ -78,7 +78,8 @@ class Branch {
       updatedAt: updatedAt ?? this.updatedAt,
       activeStaffCount: activeStaffCount ?? this.activeStaffCount,
       onlineStaffCount: onlineStaffCount ?? this.onlineStaffCount,
-      todaysVerifiedPayments: todaysVerifiedPayments ?? this.todaysVerifiedPayments,
+      todaysVerifiedPayments:
+          todaysVerifiedPayments ?? this.todaysVerifiedPayments,
       todaysVerifiedAmount: todaysVerifiedAmount ?? this.todaysVerifiedAmount,
     );
   }

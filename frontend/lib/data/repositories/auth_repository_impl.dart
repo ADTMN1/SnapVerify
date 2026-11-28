@@ -7,96 +7,95 @@ import '../datasources/auth_remote_datasource.dart';
 /// Storage keys — kept private to this file.
 const _kAccessToken = 'sv_access_token';
 const _kRefreshToken = 'sv_refresh_token';
+const _kRememberedLogin = 'sv_remembered_login';
+const _kRememberMe = 'sv_remember_me';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDatasource remoteDatasource;
   final FlutterSecureStorage secureStorage;
 
-  const AuthRepositoryImpl({
+  // When true (user unchecked "Remember me"), tokens live only in the
+  // in-memory auth state and are never written to secure storage — a fresh
+  // app start lands on the login screen.
+  bool _sessionOnly = false;
+
+  AuthRepositoryImpl({
     required this.remoteDatasource,
     required this.secureStorage,
   });
-
-  // ── OTP ───────────────────────────────────────────────────────────────────
-
-  @override
-  Future<void> sendOtp(String phone) => remoteDatasource.sendOtp(phone);
 
   // ── Password Login ─────────────────────────────────────────────────────────
 
   @override
   Future<Map<String, dynamic>> loginWithPassword(
-    String phone,
+    String identifier,
     String password, {
     String? organizationId,
+    required bool rememberMe,
   }) async {
     final data = await remoteDatasource.loginWithPassword(
-      phone,
+      identifier,
       password,
       organizationId: organizationId,
+      rememberMe: rememberMe,
     );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       await saveTokens(tokens);
+      await setRememberMe(rememberMe);
     }
     return data;
   }
 
-  // ── OTP Login ─────────────────────────────────────────────────────────────
+  // ── Owner registration (email verification) ────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> verifyOtp(
-    String phone,
-    String code, {
-    String? organizationId,
-  }) async {
-    final data = await remoteDatasource.verifyOtp(
-      phone,
-      code,
-      organizationId: organizationId,
-    );
-    if (data['tokens'] != null) {
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      await saveTokens(tokens);
-    }
-    return data;
-  }
-
-  // ── Register business ─────────────────────────────────────────────────────
-
-  @override
-  Future<Map<String, dynamic>> createBusiness({
+  Future<Map<String, dynamic>> register({
     required String name,
     required String fullName,
-    required String phone,
-    required String otpCode,
+    required String email,
     required String password,
-    String? email,
-    String? address,
+    required String confirmPassword,
     String? type,
     String? city,
     String? country,
-  }) async {
-    final data = await remoteDatasource.createBusiness(
+  }) {
+    return remoteDatasource.register(
       name: name,
       fullName: fullName,
-      phone: phone,
-      otpCode: otpCode,
-      password: password,
       email: email,
-      address: address,
+      password: password,
+      confirmPassword: confirmPassword,
       type: type,
       city: city,
       country: country,
     );
+  }
 
-    // Auto-login: save the tokens that came back with the new business
+  @override
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String otpCode,
+  }) async {
+    final data = await remoteDatasource.verifyEmail(
+      email: email,
+      otpCode: otpCode,
+    );
     if (data['tokens'] != null) {
       final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
       await saveTokens(tokens);
     }
-
     return data;
+  }
+
+  @override
+  Future<Map<String, dynamic>> resendVerification(String email) {
+    return remoteDatasource.resendVerification(email);
+  }
+
+  @override
+  Future<void> forgotPassword(String email) {
+    return remoteDatasource.forgotPassword(email);
   }
 
   // ── Token refresh ─────────────────────────────────────────────────────────
@@ -115,44 +114,64 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout(String refreshToken) async {
-    await remoteDatasource.logout(refreshToken);
-    await clearTokens();
+    try {
+      await remoteDatasource.logout(refreshToken);
+    } finally {
+      // Best-effort revocation: an unreachable server must never leave a
+      // locally valid session that would be restored on the next cold start.
+      await clearTokens();
+    }
   }
 
   // ── Reset Password ────────────────────────────────────────────────────────
 
   @override
-  Future<void> resetPassword(String phone, String otpCode, String newPassword) {
-    return remoteDatasource.resetPassword(phone, otpCode, newPassword);
+  Future<void> resetPassword(String email, String otpCode, String newPassword) {
+    return remoteDatasource.resetPassword(email, otpCode, newPassword);
+  }
+
+  @override
+  Future<Map<String, dynamic>> changePassword(
+    String accessToken, {
+    required String currentPassword,
+    required String newPassword,
+  }) {
+    return remoteDatasource.changePassword(
+      accessToken,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
   }
 
   // ── Invitation Management ─────────────────────────────────────────────────
 
   @override
-  Future<List<dynamic>> getInvitations(String phone) {
-    return remoteDatasource.getInvitations(phone);
+  Future<List<dynamic>> checkInvitation(String token, {String? phone}) {
+    return remoteDatasource.checkInvitation(token, phone: phone);
+  }
+
+  @override
+  Future<void> staffActivationOtp({required String email, String? token}) {
+    return remoteDatasource.staffActivationOtp(email: email, token: token);
+  }
+
+  @override
+  Future<List<dynamic>> getInvitations(String phone, String accessToken) {
+    return remoteDatasource.getInvitations(phone, accessToken);
   }
 
   @override
   Future<Map<String, dynamic>> activateInvitation({
-    required String phone,
-    required String otpCode,
-    required String fullName,
+    required String token,
     required String password,
-    required String organizationId,
-  }) async {
-    final data = await remoteDatasource.activateInvitation(
-      phone: phone,
-      otpCode: otpCode,
-      fullName: fullName,
+    required String confirmPassword,
+  }) {
+    // QR flow: no tokens are issued — staff logs in with username + password.
+    return remoteDatasource.activateInvitation(
+      token: token,
       password: password,
-      organizationId: organizationId,
+      confirmPassword: confirmPassword,
     );
-    if (data['tokens'] != null) {
-      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
-      await saveTokens(tokens);
-    }
-    return data;
   }
 
   @override
@@ -163,21 +182,41 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── Staff Management ──────────────────────────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> addStaff(String accessToken, {
+  Future<Map<String, dynamic>> addStaff(
+    String accessToken, {
     required String fullName,
-    required String phone,
+    required String username,
     required String role,
-    String? password,
     String? branchId,
   }) {
     return remoteDatasource.addStaff(
       accessToken,
       fullName: fullName,
-      phone: phone,
+      username: username,
       role: role,
-      password: password,
       branchId: branchId,
     );
+  }
+
+  @override
+  Future<List<dynamic>> listInvitations(String accessToken) {
+    return remoteDatasource.listInvitations(accessToken);
+  }
+
+  @override
+  Future<Map<String, dynamic>> revokeInvitation(
+    String accessToken,
+    String invitationId,
+  ) {
+    return remoteDatasource.revokeInvitation(accessToken, invitationId);
+  }
+
+  @override
+  Future<Map<String, dynamic>> regenerateInvitation(
+    String accessToken,
+    String invitationId,
+  ) {
+    return remoteDatasource.regenerateInvitation(accessToken, invitationId);
   }
 
   @override
@@ -190,10 +229,28 @@ class AuthRepositoryImpl implements AuthRepository {
     return remoteDatasource.removeStaff(accessToken, staffId);
   }
 
+  @override
+  Future<Map<String, dynamic>> updateStaff(
+    String accessToken,
+    String staffId, {
+    required String fullName,
+    required String role,
+    String? branchId,
+  }) {
+    return remoteDatasource.updateStaff(
+      accessToken,
+      staffId,
+      fullName: fullName,
+      role: role,
+      branchId: branchId,
+    );
+  }
+
   // ── Branch Management ─────────────────────────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> addBranch(String accessToken, {
+  Future<Map<String, dynamic>> addBranch(
+    String accessToken, {
     required String name,
     String? phone,
     required String address,
@@ -216,14 +273,67 @@ class AuthRepositoryImpl implements AuthRepository {
     return remoteDatasource.removeBranch(accessToken, branchId);
   }
 
+  @override
+  Future<Map<String, dynamic>> updateBranch(
+    String accessToken,
+    String branchId, {
+    required String name,
+    String? phone,
+    required String address,
+  }) {
+    return remoteDatasource.updateBranch(
+      accessToken,
+      branchId,
+      name: name,
+      phone: phone,
+      address: address,
+    );
+  }
+
   // ── Token persistence (secure storage) ───────────────────────────────────
 
   @override
   Future<void> saveTokens(AuthTokens tokens) async {
+    if (_sessionOnly) return; // "Remember me" unchecked — memory only.
     await Future.wait([
       secureStorage.write(key: _kAccessToken, value: tokens.accessToken),
       secureStorage.write(key: _kRefreshToken, value: tokens.refreshToken),
     ]);
+  }
+
+  @override
+  Future<void> setSessionOnly(bool value) async {
+    _sessionOnly = value;
+    // Switching to session-only should not silently keep a stale stored
+    // session: drop it so the next cold start requires login.
+    if (value) {
+      await clearTokens();
+    }
+  }
+
+  @override
+  Future<void> saveRememberedLogin(String identifier) async {
+    await secureStorage.write(key: _kRememberedLogin, value: identifier);
+  }
+
+  @override
+  Future<String?> getRememberedLogin() async {
+    return secureStorage.read(key: _kRememberedLogin);
+  }
+
+  @override
+  Future<void> forgetRememberedLogin() async {
+    await secureStorage.delete(key: _kRememberedLogin);
+  }
+
+  @override
+  Future<void> setRememberMe(bool value) async {
+    await secureStorage.write(key: _kRememberMe, value: value.toString());
+  }
+
+  @override
+  Future<bool> getRememberMe() async {
+    return (await secureStorage.read(key: _kRememberMe)) == 'true';
   }
 
   @override
@@ -258,11 +368,43 @@ class AuthRepositoryImpl implements AuthRepository {
     ]);
   }
 
+  // ── Select Business ──────────────────────────────────────────────────────
+
+  @override
+  Future<Map<String, dynamic>> getBusinessSelectionChallenge(
+    String accessToken,
+  ) {
+    return remoteDatasource.getBusinessSelectionChallenge(accessToken);
+  }
+
+  @override
+  Future<Map<String, dynamic>> selectBusiness({
+    required String selectionToken,
+    required String organizationId,
+    required bool rememberMe,
+  }) async {
+    final data = await remoteDatasource.selectBusiness(
+      selectionToken: selectionToken,
+      organizationId: organizationId,
+      rememberMe: rememberMe,
+    );
+    if (data['tokens'] != null) {
+      final tokens = _tokensFromMap(data['tokens'] as Map<String, dynamic>);
+      await saveTokens(tokens);
+    }
+    return data;
+  }
+
   // ── Helper ────────────────────────────────────────────────────────────────
 
   AuthTokens _tokensFromMap(Map<String, dynamic> data) {
-    final accessToken = data['accessToken'] as String;
-    final refreshToken = data['refreshToken'] as String;
+    final accessToken = data['accessToken']?.toString();
+    final refreshToken = data['refreshToken']?.toString();
+
+    if (accessToken == null || refreshToken == null) {
+      throw Exception('Missing access or refresh token in response');
+    }
+
     final role = JwtUtils.extractRole(accessToken) ?? 'CASHIER';
     final orgId = JwtUtils.extractOrganizationId(accessToken) ?? '';
 

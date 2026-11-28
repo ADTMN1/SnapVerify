@@ -3,8 +3,10 @@ import { PaymentController } from './payment.controller';
 import { PaymentService } from './payment.service';
 import { PaymentAccountController } from './payment-account.controller';
 import { PaymentAccountService } from './payment-account.service';
+import { CheckEtService } from './check-et/check-et.service';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SubscriptionGuard } from '../auth/guards/subscription.guard';
 
 @Module({
   imports: [
@@ -12,6 +14,12 @@ import { PrismaModule } from '../prisma/prisma.module';
     AuthModule, // provides JwtAuthGuard, RolesGuard, JwtModule
   ],
   controllers: [PaymentController, PaymentAccountController],
-  providers: [PaymentService, PaymentAccountService],
+  providers: [
+    PaymentService,
+    PaymentAccountService,
+    CheckEtService,
+    SubscriptionGuard,
+  ],
+  exports: [CheckEtService],
 })
 export class PaymentModule {}

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/tailwind.dart';
-import '../../core/locales.dart';
+import '../../core/language_provider.dart';
 import '../../core/utils/toast_service.dart';
+import '../../l10n/app_localizations.dart';
+import '../../theme/app_text.dart';
+import '../../theme/app_tokens.dart';
+import '../../ui/ui.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
-import 'home_screen.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -17,41 +20,49 @@ class RegisterScreen extends ConsumerStatefulWidget {
 class _RegisterScreenState extends ConsumerState<RegisterScreen>
     with SingleTickerProviderStateMixin {
   // State
-  Language _selectedLanguage = Language.english;
   int _currentStep = 0;
+  String _registeredEmail = '';
+  bool _canResendOtp = false;
+  int _resendTimer = 60;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _otpSent = false;
-  bool _canResendOtp = true;
-  int _resendTimer = 60;
 
   // Controllers
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _otpController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _businessNameController = TextEditingController();
   final _businessTypeController = TextEditingController();
-  final _cityController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   // Focus Nodes
-  final _phoneFocusNode = FocusNode();
+  final _emailFocusNode = FocusNode();
   final _otpFocusNode = FocusNode();
   final _fullNameFocusNode = FocusNode();
   final _businessNameFocusNode = FocusNode();
-  final _cityFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   final _confirmPasswordFocusNode = FocusNode();
 
   // Focus States
-  bool _phoneFocused = false;
+  bool _emailFocused = false;
   bool _otpFocused = false;
   bool _fullNameFocused = false;
   bool _businessNameFocused = false;
-  bool _cityFocused = false;
   bool _passwordFocused = false;
   bool _confirmPasswordFocused = false;
+  bool _businessTypePickerOpen = false;
+  bool _cityPickerOpen = false;
+
+  // Validation Errors
+  String? _emailError;
+  String? _otpError;
+  String? _fullNameError;
+  String? _businessNameError;
+  String? _businessTypeError;
+  String? _cityError;
+  String? _passwordError;
+  String? _confirmPasswordError;
 
   // Business Type
   final List<String> _businessTypes = [
@@ -66,6 +77,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     'Other',
   ];
   String? _selectedBusinessType;
+
+  final List<String> _cities = [
+    'Addis Ababa',
+    'Adama',
+    'Bahir Dar',
+    'Bishoftu',
+    'Debre Markos',
+    'Dessie',
+    'Dire Dawa',
+    'Gambela',
+    'Gondar',
+    'Harar',
+    'Hawassa',
+    'Jimma',
+    'Jijiga',
+    'Mekelle',
+    'Nekemte',
+    'Shashamane',
+    'Wolaita Sodo',
+    'Other',
+  ];
+  String? _selectedCity;
 
   // Animation
   late AnimationController _animationController;
@@ -89,26 +122,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       ),
     );
 
-    _logoSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
+    _logoSlideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // Focus listeners
     _setupFocusListeners();
 
     // Error clearing listeners
-    _phoneController.addListener(_clearError);
+    _emailController.addListener(_clearError);
     _otpController.addListener(_clearError);
     _fullNameController.addListener(_clearError);
     _businessNameController.addListener(_clearError);
     _businessTypeController.addListener(_clearError);
-    _cityController.addListener(_clearError);
     _passwordController.addListener(_clearError);
     _confirmPasswordController.addListener(_clearError);
 
@@ -117,11 +147,48 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
   void _clearError() {
     ref.read(authNotifierProvider.notifier).clearError();
+    _clearValidationErrors();
+  }
+
+  void _clearValidationErrors() {
+    setState(() {
+      _emailError = null;
+      _fullNameError = null;
+      _businessNameError = null;
+      _businessTypeError = null;
+      _cityError = null;
+      _passwordError = null;
+      _confirmPasswordError = null;
+    });
+  }
+
+  void _clearBusinessNameError() {
+    if (_businessNameError != null) {
+      setState(() => _businessNameError = null);
+    }
+  }
+
+  void _clearFullNameError() {
+    if (_fullNameError != null) {
+      setState(() => _fullNameError = null);
+    }
+  }
+
+  void _clearPasswordError() {
+    if (_passwordError != null) {
+      setState(() => _passwordError = null);
+    }
+  }
+
+  void _clearConfirmPasswordError() {
+    if (_confirmPasswordError != null) {
+      setState(() => _confirmPasswordError = null);
+    }
   }
 
   void _setupFocusListeners() {
-    _phoneFocusNode.addListener(() {
-      setState(() => _phoneFocused = _phoneFocusNode.hasFocus);
+    _emailFocusNode.addListener(() {
+      setState(() => _emailFocused = _emailFocusNode.hasFocus);
     });
     _otpFocusNode.addListener(() {
       setState(() => _otpFocused = _otpFocusNode.hasFocus);
@@ -132,273 +199,304 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     _businessNameFocusNode.addListener(() {
       setState(() => _businessNameFocused = _businessNameFocusNode.hasFocus);
     });
-    _cityFocusNode.addListener(() {
-      setState(() => _cityFocused = _cityFocusNode.hasFocus);
-    });
     _passwordFocusNode.addListener(() {
       setState(() => _passwordFocused = _passwordFocusNode.hasFocus);
     });
     _confirmPasswordFocusNode.addListener(() {
-      setState(() => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus);
+      setState(
+        () => _confirmPasswordFocused = _confirmPasswordFocusNode.hasFocus,
+      );
     });
   }
 
   @override
   void dispose() {
-    _phoneController.removeListener(_clearError);
+    ref.read(authNotifierProvider.notifier).clearError();
+    _emailController.removeListener(_clearError);
     _otpController.removeListener(_clearError);
     _fullNameController.removeListener(_clearError);
     _businessNameController.removeListener(_clearError);
     _businessTypeController.removeListener(_clearError);
-    _cityController.removeListener(_clearError);
     _passwordController.removeListener(_clearError);
     _confirmPasswordController.removeListener(_clearError);
-    _phoneController.dispose();
+    _emailController.dispose();
     _otpController.dispose();
     _fullNameController.dispose();
     _businessNameController.dispose();
     _businessTypeController.dispose();
-    _cityController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _phoneFocusNode.dispose();
+    _emailFocusNode.dispose();
     _otpFocusNode.dispose();
     _fullNameFocusNode.dispose();
     _businessNameFocusNode.dispose();
-    _cityFocusNode.dispose();
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
     _animationController.dispose();
     super.dispose();
   }
 
-  String _t(String key) {
-    return LocaleStrings.strings[_selectedLanguage]?[key] ?? key;
-  }
+  Future<void> _submitRegistration() async {
+    final email = _emailController.text.trim().toLowerCase();
+    if (email.isEmpty) {
+      setState(() => _emailError = 'Email is required.');
+      return;
+    }
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _emailError = 'Please enter a valid email address.');
+      return;
+    }
 
-  void _toggleLanguage(Language lang) {
-    setState(() => _selectedLanguage = lang);
-  }
+    final fullName = _fullNameController.text.trim();
+    if (fullName.isEmpty) {
+      setState(() => _fullNameError = 'Full name is required.');
+      return;
+    }
 
-  Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) return;
-    
-    await ref.read(authNotifierProvider.notifier).sendOtp(phone);
-    
-    final authState = ref.read(authNotifierProvider);
-    if (authState.status != AuthStatus.error) {
-      setState(() => _otpSent = true);
+    final businessName = _businessNameController.text.trim();
+    if (businessName.isEmpty) {
+      setState(() => _businessNameError = 'Business name is required.');
+      return;
+    }
+
+    if (_selectedBusinessType == null) {
+      setState(() => _businessTypeError = 'Please select a business type.');
+      return;
+    }
+
+    if (_selectedCity == null) {
+      setState(() => _cityError = 'Please select a city.');
+      return;
+    }
+
+    final password = _passwordController.text.trim();
+    if (password.isEmpty) {
+      setState(() => _passwordError = 'Password is required.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(
+        () => _passwordError = 'Password must be at least 8 characters.',
+      );
+      return;
+    }
+
+    final confirmPassword = _confirmPasswordController.text.trim();
+    if (confirmPassword.isEmpty) {
+      setState(() => _confirmPasswordError = 'Please confirm your password.');
+      return;
+    }
+    if (password != confirmPassword) {
+      setState(() => _confirmPasswordError = 'Passwords do not match.');
+      return;
+    }
+
+    final ok = await ref
+        .read(authNotifierProvider.notifier)
+        .register(
+          name: businessName,
+          fullName: fullName,
+          email: email,
+          password: password,
+          confirmPassword: confirmPassword,
+          type: _selectedBusinessType,
+          city: _selectedCity!,
+        );
+
+    if (ok && mounted) {
+      setState(() {
+        _currentStep = 1;
+        _registeredEmail = email;
+        _canResendOtp = false;
+        _resendTimer = 60;
+      });
       _startResendTimer();
-      ToastService.showSuccess('OTP sent successfully!');
+      ToastService.showSuccess('Verification code sent to your email!');
     }
   }
 
   Future<void> _startResendTimer() async {
-    setState(() {
-      _canResendOtp = false;
-      _resendTimer = 60;
-    });
-    
     for (int i = 59; i >= 0; i--) {
       if (!mounted) return;
       setState(() => _resendTimer = i);
       await Future.delayed(const Duration(seconds: 1));
     }
-    
     if (mounted) {
       setState(() => _canResendOtp = true);
     }
   }
 
-  Future<void> _nextStep() async {
-    if (_currentStep == 0) {
-      if (!_otpSent) {
-        await _sendOtp();
-      } else {
-        // Just collect the OTP and move to step 2 - createBusiness will verify it
-        final otp = _otpController.text.trim();
-        if (otp.isEmpty) return;
-        setState(() => _currentStep = 1);
-      }
-    } else {
-      // Final step - submit registration form
-      if (_passwordController.text != _confirmPasswordController.text) {
-        ToastService.showError('Passwords do not match!');
-        return;
-      }
-      
-      // Call API to create business
-      final fullName = _fullNameController.text.trim();
-      final phone = _phoneController.text.trim();
-      final otp = _otpController.text.trim();
-      final password = _passwordController.text.trim();
-      final businessName = _businessNameController.text.trim();
-      final city = _cityController.text.trim();
-      
-      await ref.read(authNotifierProvider.notifier).createBusiness(
-        name: businessName,
-        fullName: fullName,
-        phone: phone,
-        otpCode: otp,
-        password: password,
-        type: _selectedBusinessType,
-        city: city,
-        // TODO: Add other fields like email, address, country
+  Future<void> _verifyEmailOtp() async {
+    final otp = _otpController.text.trim();
+    if (otp.isEmpty) {
+      setState(() => _otpError = 'Verification code is required.');
+      return;
+    }
+    if (otp.length != 6) {
+      setState(() => _otpError = 'Verification code must be 6 digits.');
+      return;
+    }
+
+    await ref
+        .read(authNotifierProvider.notifier)
+        .verifyEmail(email: _registeredEmail, otpCode: otp);
+  }
+
+  Future<void> _resendOtp() async {
+    final notifier = ref.read(authNotifierProvider.notifier);
+    final result = await notifier.resendVerification(_registeredEmail);
+    if (result['alreadyVerified'] == true && mounted) {
+      ToastService.showInfo(
+        'This email is already verified. Please log in instead.',
       );
+      // Navigate to login: clear the register stack
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).popUntil((route) => route.isFirst);
+      return;
+    }
+    final authState = ref.read(authNotifierProvider);
+    if (authState.status != AuthStatus.error && mounted) {
+      ToastService.showSuccess('New verification code sent!');
+      setState(() => _canResendOtp = false);
+      _startResendTimer();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
-    final size = MediaQuery.of(context).size;
+    final topInset = MediaQuery.of(context).padding.top;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final headerHeight = AppTokens.headerVisibleHeight + topInset;
 
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with Language Switcher
-              _buildHeader(size),
-
-              const SizedBox(height: 24),
-
-              // Animated Logo
-              _buildAnimatedLogo(),
-
-              const SizedBox(height: 28),
-
-              // Stepper/Steps Indicator
-              _buildStepsIndicator(),
-
-              const SizedBox(height: 28),
-
-              // Current Step Content
-              _buildCurrentStep(),
-
-              const SizedBox(height: 32),
-
-              // Navigation
-              _buildNavigationButtons(authState),
-
-              const SizedBox(height: 32),
-
-              // Login Link
-              _buildLoginLink(),
-            ],
-          ),
+      backgroundColor: AppTokens.ice50,
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: headerHeight + AppTokens.sheetTopRadius,
+              child: _buildHeader(topInset),
+            ),
+            Positioned(
+              top: headerHeight - AppTokens.sheetOverlap,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildSheet(authState, bottomInset),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(Size size) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        InkWell(
-          onTap: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: TwColors.cardBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: TwColors.white.withOpacity(0.08)),
+  Widget _buildHeader(double topInset) {
+    final logoTop = topInset + AppTokens.logoTopGap;
+    final headerHeight =
+        AppTokens.headerVisibleHeight + topInset + AppTokens.sheetTopRadius;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: AppTokens.obsidian950,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppTokens.ice50,
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: headerHeight,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: ExcludeSemantics(
+                  child: CustomPaint(
+                    painter: const AppHeaderPatternPainter(),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
             ),
-            child: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: TwColors.white,
-              size: 20,
+            Positioned(
+              top: topInset + AppTokens.authTopBarInset,
+              left: AppTokens.authTopBarInset,
+              right: AppTokens.authTopBarInset,
+              child: Row(
+                children: [
+                  AuthBackButton(
+                    onTap: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LoginScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Spacer(),
+                  _buildLanguageSwitcher(),
+                ],
+              ),
             ),
-          ),
+            Positioned(
+              top: logoTop,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildAnimatedLogo()),
+            ),
+          ],
         ),
-        _buildLanguageSwitcher(),
-      ],
+      ),
     );
   }
 
   Widget _buildLanguageSwitcher() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: TwColors.white.withOpacity(0.08)),
-      ),
-      child: Row(
-        children: Language.values.map((lang) {
-          final isSelected = lang == _selectedLanguage;
-          return GestureDetector(
-            onTap: () => _toggleLanguage(lang),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              margin: EdgeInsets.only(
-                right: lang == Language.values.last ? 0 : 4,
-              ),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? TwColors.brightGreen.withOpacity(0.15)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-                border: isSelected
-                    ? Border.all(
-                        color: TwColors.brightGreen.withOpacity(0.4),
-                        width: 1.5,
-                      )
-                    : null,
-              ),
-              child: Text(
-                LocaleStrings.languageNames[lang]!,
-                style: TextStyle(
-                  color: isSelected ? TwColors.brightGreen : TwColors.slate400,
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+    final selected = ref.watch(languageProvider);
+    return AuthLanguagePill(
+      items: [
+        for (final lang in AppLanguage.values)
+          AuthLanguageItem(
+            shortName: lang.shortName,
+            label: 'Language ${lang.displayName}',
+            selected: lang == selected,
+            onTap: () => ref.read(languageProvider.notifier).select(lang),
+          ),
+      ],
     );
   }
 
   Widget _buildAnimatedLogo() {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _logoScaleAnimation,
-        _logoSlideAnimation,
-      ]),
+      animation: Listenable.merge([_logoScaleAnimation, _logoSlideAnimation]),
       builder: (context, child) {
         return Transform.translate(
           offset: _logoSlideAnimation.value,
           child: Transform.scale(
             scale: _logoScaleAnimation.value,
-            child: Center(
+            child: Semantics(
+              label: 'App logo',
               child: Container(
-                padding: const EdgeInsets.all(24),
+                width: AppTokens.logoTileSize,
+                height: AppTokens.logoTileSize,
                 decoration: BoxDecoration(
-                  color: TwColors.brightGreen.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: TwColors.brightGreen.withOpacity(0.25),
-                    width: 1.5,
-                  ),
+                  color: AppTokens.obsidian950,
+                  borderRadius: BorderRadius.circular(AppTokens.logoTileRadius),
                 ),
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  size: 64,
-                  color: TwColors.brightGreen,
+                child: Center(
+                  child: SizedBox(
+                    width: AppTokens.logoIconSize,
+                    height: AppTokens.logoIconSize,
+                    child: const CustomPaint(painter: AppLogoPainter()),
+                  ),
                 ),
               ),
             ),
@@ -408,458 +506,421 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     );
   }
 
-  Widget _buildStepsIndicator() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStepIndicator(
-            index: 0,
-            title: _t('verify_phone'),
+  Widget _buildSheet(AuthState authState, double bottomInset) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        systemNavigationBarColor: AppTokens.ice50,
+        systemNavigationBarDividerColor: AppTokens.ice50,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppTokens.ice50,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(AppTokens.sheetTopRadius),
           ),
         ),
-        Container(
-          width: 40,
-          height: 2,
-          color: _currentStep > 0
-              ? TwColors.brightGreen
-              : TwColors.white.withOpacity(0.1),
-        ),
-        Expanded(
-          child: _buildStepIndicator(
-            index: 1,
-            title: _t('register'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepIndicator({
-    required int index,
-    required String title,
-  }) {
-    final isActive = _currentStep >= index;
-    final isCompleted = _currentStep > index;
-
-    return Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: isActive
-                ? TwColors.brightGreen.withOpacity(0.15)
-                : TwColors.cardBg,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isActive
-                  ? TwColors.brightGreen.withOpacity(0.5)
-                  : TwColors.white.withOpacity(0.08),
-              width: isActive ? 1.5 : 1,
-            ),
-          ),
-          child: Center(
-            child: isCompleted
-                ? const Icon(
-                    Icons.check_rounded,
-                    color: TwColors.brightGreen,
-                    size: 22,
-                  )
-                : Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: isActive ? TwColors.brightGreen : TwColors.slate400,
-                      fontSize: 18,
-                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+        child: CustomScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          slivers: [
+            SliverFillRemaining(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: AppTokens.formMaxWidth,
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              AppTokens.sheetHorizontalPadding,
+                              AppTokens.sheetTopPadding,
+                              AppTokens.sheetHorizontalPadding,
+                              AppTokens.sheetBottomPadding + bottomInset,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SizedBox(
+                                  height: AppTokens.titleToggleGap,
+                                ),
+                                _buildTitle(),
+                                const SizedBox(
+                                  height: AppTokens.titleToggleGap,
+                                ),
+                                _buildCurrentStep(),
+                                const SizedBox(height: AppTokens.buttonGap),
+                                _buildNavigationButtons(authState),
+                                const SizedBox(height: AppTokens.bottomGap),
+                                _buildLoginLink(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-          ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          style: TextStyle(
-            color: isActive ? TwColors.brightGreen : TwColors.slate400,
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildCurrentStep() {
     if (_currentStep == 0) {
-      return _buildPhoneOtpStep();
-    } else {
       return _buildRegistrationFormStep();
     }
-  }
-
-  Widget _buildPhoneOtpStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle(),
-        const SizedBox(height: 28),
-        _buildPhoneNumberField(),
-        const SizedBox(height: 20),
-        if (_otpSent) ...[
-          _buildOtpField(),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _canResendOtp ? _sendOtp : null,
-              child: Text(
-                _canResendOtp ? _t('resend_otp') : '${_t('resend_otp')} ($_resendTimer)',
-                style: TextStyle(
-                  color: _canResendOtp ? TwColors.brightGreen : TwColors.slate400,
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
+    return _buildVerifyEmailStep();
   }
 
   Widget _buildRegistrationFormStep() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildTitle(),
-        const SizedBox(height: 28),
+        _buildEmailField(),
+        const SizedBox(height: AppTokens.fieldGap),
         _buildFullNameField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.fieldGap),
         _buildBusinessNameField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.fieldGap),
         _buildBusinessTypeDropdown(),
-        const SizedBox(height: 20),
-        _buildCityField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.fieldGap),
+        _buildCityDropdown(),
+        const SizedBox(height: AppTokens.fieldGap),
         _buildPasswordField(),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.fieldGap),
         _buildConfirmPasswordField(),
+      ],
+    );
+  }
+
+  Widget _buildVerifyEmailStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'We sent a 6-digit code to $_registeredEmail. Enter it below to verify your email.',
+          textAlign: TextAlign.center,
+          style: AppText.authSubtitle,
+        ),
+        const SizedBox(height: AppTokens.toggleFieldsGap),
+        _buildOtpField(),
+        const SizedBox(height: AppTokens.fieldGap),
+        Align(
+          alignment: Alignment.centerRight,
+          child: AuthTextLink(
+            label: _canResendOtp
+                ? 'Resend code'
+                : 'Resend code ($_resendTimer)',
+            onPressed: _resendOtp,
+            enabled: _canResendOtp,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOtpField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildUniqueInput(
+          controller: _otpController,
+          focusNode: _otpFocusNode,
+          isFocused: _otpFocused,
+          label: 'Verification code',
+          hint: '123456',
+          icon: Icons.pin_outlined,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          hasError: _otpError != null,
+        ),
+        if (_otpError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
+            child: Text(_otpError!, style: AppText.authError),
+          ),
       ],
     );
   }
 
   Widget _buildTitle() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          _selectedLanguage == Language.english
-              ? 'Create Account'
-              : _selectedLanguage == Language.amharic
-                  ? 'አካውንት ፍጠር'
-                  : 'Akaawuntii Uum',
-          style: const TextStyle(
-            color: TwColors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.normal,
-            letterSpacing: -0.5,
-          ),
+          _currentStep == 0
+              ? AppLocalizations.of(context)!.createAccount
+              : 'Verify your email',
+          textAlign: TextAlign.center,
+          style: AppText.authTitle,
         ),
-        const SizedBox(height: 10),
-        Text(
-          _t(_currentStep == 0 ? 'enter_otp' : 'create_new_account'),
-          style: TextStyle(
-            color: TwColors.slate400,
-            fontSize: 15,
-            fontWeight: FontWeight.normal,
+        if (_currentStep == 0) ...[
+          const SizedBox(height: AppTokens.spaceXs),
+          Text(
+            AppLocalizations.of(context)!.createNewAccount,
+            textAlign: TextAlign.center,
+            style: AppText.authSubtitle,
           ),
-        ),
+        ],
       ],
     );
   }
 
-  Widget _buildPhoneNumberField() {
-    return _buildUniqueInput(
-      controller: _phoneController,
-      focusNode: _phoneFocusNode,
-      isFocused: _phoneFocused,
-      label: _t('phone_number'),
-      hint: '+251 9XX XXX XXX',
-      icon: Icons.phone_outlined,
-      keyboardType: TextInputType.phone,
-      enabled: !_otpSent,
-    );
-  }
-
-  Widget _buildOtpField() {
-    return _buildUniqueInput(
-      controller: _otpController,
-      focusNode: _otpFocusNode,
-      isFocused: _otpFocused,
-      label: _t('otp_code'),
-      hint: '123456',
-      icon: Icons.pin_outlined,
-      keyboardType: TextInputType.number,
-      maxLength: 6,
+  Widget _buildEmailField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildUniqueInput(
+          controller: _emailController,
+          focusNode: _emailFocusNode,
+          isFocused: _emailFocused,
+          label: AppLocalizations.of(context)!.email,
+          hint: 'you@example.com',
+          icon: Icons.alternate_email_rounded,
+          keyboardType: TextInputType.emailAddress,
+          hasError: _emailError != null,
+        ),
+        if (_emailError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
+            child: Text(_emailError!, style: AppText.authError),
+          ),
+      ],
     );
   }
 
   Widget _buildFullNameField() {
-    return _buildUniqueInput(
-      controller: _fullNameController,
-      focusNode: _fullNameFocusNode,
-      isFocused: _fullNameFocused,
-      label: _t('full_name'),
-      hint: 'John Doe',
-      icon: Icons.person_outline_rounded,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildUniqueInput(
+          controller: _fullNameController,
+          focusNode: _fullNameFocusNode,
+          isFocused: _fullNameFocused,
+          label: AppLocalizations.of(context)!.fullName,
+          hint: 'e.g. Abebe Bekele',
+          icon: Icons.person_outline_rounded,
+          hasError: _fullNameError != null,
+          onChanged: (_) => _clearFullNameError(),
+        ),
+        if (_fullNameError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
+            child: Text(_fullNameError!, style: AppText.authError),
+          ),
+      ],
     );
   }
 
   Widget _buildBusinessNameField() {
-    return _buildUniqueInput(
-      controller: _businessNameController,
-      focusNode: _businessNameFocusNode,
-      isFocused: _businessNameFocused,
-      label: _t('business_name'),
-      hint: 'My Awesome Business',
-      icon: Icons.store_outlined,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildUniqueInput(
+          controller: _businessNameController,
+          focusNode: _businessNameFocusNode,
+          isFocused: _businessNameFocused,
+          label: AppLocalizations.of(context)!.businessName,
+          hint: 'My Awesome Business',
+          icon: Icons.store_outlined,
+          hasError: _businessNameError != null,
+          onChanged: (_) => _clearBusinessNameError(),
+        ),
+        if (_businessNameError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
+            child: Text(_businessNameError!, style: AppText.authError),
+          ),
+      ],
     );
   }
 
   Widget _buildBusinessTypeDropdown() {
-    return GestureDetector(
-      onTap: () => _showBusinessTypePicker(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: TwColors.cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _selectedBusinessType != null
-                ? TwColors.brightGreen
-                : TwColors.white.withOpacity(0.08),
-            width: _selectedBusinessType != null ? 1.5 : 1,
-          ),
-          boxShadow: _selectedBusinessType != null
-              ? [
-                  BoxShadow(
-                    color: TwColors.brightGreen.withOpacity(0.1),
-                    blurRadius: 15,
-                    offset: const Offset(0, 3),
-                  )
-                ]
-              : [],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                color: _selectedBusinessType != null
-                    ? TwColors.brightGreen.withOpacity(0.1)
-                    : TwColors.white.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.category_outlined,
-                color: _selectedBusinessType != null
-                    ? TwColors.brightGreen
-                    : TwColors.slate400,
-                size: 20,
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _t('business_type'),
-                    style: TextStyle(
-                      color: _selectedBusinessType != null
-                          ? TwColors.brightGreen
-                          : TwColors.slate400,
-                      fontSize: 14,
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                  if (_selectedBusinessType != null)
-                    Text(
-                      _selectedBusinessType!,
-                      style: const TextStyle(
-                        color: TwColors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.normal,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_drop_down_rounded,
-              color: TwColors.slate400,
-              size: 24,
-            ),
-          ],
-        ),
-      ),
+    return _buildOptionDropdown(
+      label: AppLocalizations.of(context)!.businessType,
+      placeholder: 'Select business type',
+      icon: Icons.category_outlined,
+      value: _selectedBusinessType,
+      error: _businessTypeError,
+      onTap: _openBusinessTypePicker,
     );
   }
 
-  void _showBusinessTypePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: TwColors.primaryBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: TwColors.slate700,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              _t('business_type'),
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: _businessTypes.map((type) {
-                    final isSelected = type == _selectedBusinessType;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedBusinessType = type);
-                        _clearError();
-                        Navigator.pop(context);
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? TwColors.brightGreen.withOpacity(0.1)
-                              : TwColors.cardBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected
-                                ? TwColors.brightGreen.withOpacity(0.4)
-                                : TwColors.white.withOpacity(0.08),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              type,
-                              style: TextStyle(
-                                color: isSelected
-                                    ? TwColors.brightGreen
-                                    : TwColors.white,
-                                fontSize: 16,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                            if (isSelected)
-                              const Icon(
-                                Icons.check_rounded,
-                                color: TwColors.brightGreen,
-                                size: 22,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCityField() {
-    return _buildUniqueInput(
-      controller: _cityController,
-      focusNode: _cityFocusNode,
-      isFocused: _cityFocused,
-      label: _t('city'),
-      hint: 'Addis Ababa',
+  Widget _buildCityDropdown() {
+    return _buildOptionDropdown(
+      label: AppLocalizations.of(context)!.city,
+      placeholder: 'Select city',
       icon: Icons.location_on_outlined,
+      value: _selectedCity,
+      error: _cityError,
+      onTap: _openCityPicker,
+    );
+  }
+
+  Widget _buildOptionDropdown({
+    required String label,
+    required String placeholder,
+    required IconData icon,
+    required String? value,
+    required String? error,
+    required VoidCallback onTap,
+  }) {
+    return AuthDropdownField(
+      label: label,
+      value: value,
+      placeholder: placeholder,
+      icon: icon,
+      error: error,
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _openBusinessTypePicker() async {
+    if (_businessTypePickerOpen) return;
+    setState(() => _businessTypePickerOpen = true);
+
+    final selected = await _showOptionPicker(
+      title: AppLocalizations.of(context)!.businessType,
+      options: _businessTypes,
+      selected: _selectedBusinessType,
+    );
+    if (!mounted) return;
+
+    if (selected != null) {
+      setState(() {
+        _selectedBusinessType = selected;
+        _businessTypeError = null;
+        _businessTypePickerOpen = false;
+      });
+      _clearError();
+      return;
+    }
+
+    setState(() => _businessTypePickerOpen = false);
+  }
+
+  Future<void> _openCityPicker() async {
+    if (_cityPickerOpen) return;
+    setState(() => _cityPickerOpen = true);
+
+    final selected = await _showOptionPicker(
+      title: AppLocalizations.of(context)!.city,
+      options: _cities,
+      selected: _selectedCity,
+    );
+    if (!mounted) return;
+
+    if (selected != null) {
+      setState(() {
+        _selectedCity = selected;
+        _cityError = null;
+        _cityPickerOpen = false;
+      });
+      _clearError();
+      return;
+    }
+
+    setState(() => _cityPickerOpen = false);
+  }
+
+  Future<String?> _showOptionPicker({
+    required String title,
+    required List<String> options,
+    required String? selected,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppTokens.ice50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.sheetTopRadius),
+        ),
+      ),
+      builder: (sheetContext) => AuthOptionSheet<String>(
+        title: title,
+        options: options,
+        labelFor: (option) => option,
+        selected: selected,
+        onSelected: (value) => Navigator.of(sheetContext).pop(value),
+      ),
     );
   }
 
   Widget _buildPasswordField() {
-    return _buildUniqueInput(
-      controller: _passwordController,
-      focusNode: _passwordFocusNode,
-      isFocused: _passwordFocused,
-      label: _t('password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscurePassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          color: _passwordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildUniqueInput(
+          controller: _passwordController,
+          focusNode: _passwordFocusNode,
+          isFocused: _passwordFocused,
+          label: AppLocalizations.of(context)!.password,
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscurePassword,
+          suffixIcon: PasswordVisibilityButton(
+            obscure: _obscurePassword,
+            onTap: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+          ),
+          hasError: _passwordError != null,
+          onChanged: (_) => _clearPasswordError(),
         ),
-        onPressed: () {
-          setState(() {
-            _obscurePassword = !_obscurePassword;
-          });
-        },
-      ),
+        if (_passwordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
+            child: Text(_passwordError!, style: AppText.authError),
+          ),
+      ],
     );
   }
 
   Widget _buildConfirmPasswordField() {
-    return _buildUniqueInput(
-      controller: _confirmPasswordController,
-      focusNode: _confirmPasswordFocusNode,
-      isFocused: _confirmPasswordFocused,
-      label: _t('confirm_password'),
-      hint: '••••••••',
-      icon: Icons.lock_outline_rounded,
-      obscureText: _obscureConfirmPassword,
-      suffixIcon: IconButton(
-        icon: Icon(
-          _obscureConfirmPassword
-              ? Icons.visibility_off_outlined
-              : Icons.visibility_outlined,
-          color: _confirmPasswordFocused ? TwColors.brightGreen : TwColors.slate400,
-          size: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildUniqueInput(
+          controller: _confirmPasswordController,
+          focusNode: _confirmPasswordFocusNode,
+          isFocused: _confirmPasswordFocused,
+          label: AppLocalizations.of(context)!.confirmPassword,
+          hint: '••••••••',
+          icon: Icons.lock_outline_rounded,
+          obscureText: _obscureConfirmPassword,
+          suffixIcon: PasswordVisibilityButton(
+            obscure: _obscureConfirmPassword,
+            onTap: () {
+              setState(() {
+                _obscureConfirmPassword = !_obscureConfirmPassword;
+              });
+            },
+          ),
+          hasError: _confirmPasswordError != null,
+          onChanged: (_) => _clearConfirmPasswordError(),
         ),
-        onPressed: () {
-          setState(() {
-            _obscureConfirmPassword = !_obscureConfirmPassword;
-          });
-        },
-      ),
+        if (_confirmPasswordError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
+            child: Text(_confirmPasswordError!, style: AppText.authError),
+          ),
+      ],
     );
   }
 
@@ -875,86 +936,66 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     bool enabled = true,
     int? maxLength,
     Widget? suffixIcon,
+    bool hasError = false,
+    ValueChanged<String>? onChanged,
   }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
-        color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isFocused ? TwColors.brightGreen : TwColors.white.withOpacity(0.08),
-          width: isFocused ? 1.5 : 1,
-        ),
-        boxShadow: isFocused
-            ? [
-                BoxShadow(
-                  color: TwColors.brightGreen.withOpacity(0.15),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                )
-              ]
-            : [],
-      ),
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        enabled: enabled,
-        obscureText: obscureText,
-        keyboardType: keyboardType,
-        maxLength: maxLength,
-        style: const TextStyle(
-          color: TwColors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
-        ),
-        decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          prefixIcon: Container(
-            margin: const EdgeInsets.only(left: 12, right: 8),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isFocused
-                  ? TwColors.brightGreen.withOpacity(0.1)
-                  : TwColors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              size: 20,
-            ),
+    return AuthFieldShell(
+      label: label,
+      focused: isFocused,
+      hasError: hasError,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: AppTokens.eyeIconSize,
+            color: hasError
+                ? AppTokens.danger
+                : isFocused
+                ? AppTokens.ink
+                : AppTokens.inkMuted,
           ),
-          suffixIcon: suffixIcon,
-          label: Text(
-            label,
-            style: TextStyle(
-              color: isFocused ? TwColors.brightGreen : TwColors.slate400,
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
+          const SizedBox(width: AppTokens.dropdownIconGap),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              cursorColor: AppTokens.obsidian950,
+              enabled: enabled,
+              obscureText: obscureText,
+              autocorrect: !obscureText,
+              enableSuggestions: !obscureText,
+              keyboardType: keyboardType,
+              maxLength: maxLength,
+              onChanged: onChanged,
+              textAlignVertical: TextAlignVertical.center,
+              style: AppText.authInput.copyWith(
+                color: enabled ? AppTokens.ink : AppTokens.inkMuted,
+              ),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: AppText.authHint.copyWith(
+                  color: AppTokens.hintInkMuted,
+                ),
+                filled: false,
+                fillColor: AppTokens.transparent,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                counterText: '',
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+              ),
             ),
           ),
-          hintText: hint,
-          hintStyle: TextStyle(
-            color: TwColors.white.withOpacity(0.3),
-            fontSize: 15,
-            fontWeight: FontWeight.normal,
-          ),
-          border: InputBorder.none,
-          counterText: '',
-        ),
+          ?suffixIcon,
+        ],
       ),
     );
   }
 
   Widget _buildNavigationButtons(AuthState authState) {
     if (authState.status == AuthStatus.loading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: TwColors.brightGreen,
-          strokeWidth: 3,
-        ),
-      );
+      return const Center(child: SvLoader.page());
     }
 
     if (authState.status == AuthStatus.error) {
@@ -963,81 +1004,34 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
     if (_currentStep == 0) {
       return _buildNextButton(
-        onPressed: _nextStep,
-        text: _otpSent ? _t('verify_continue') : _t('send_otp'),
-      );
-    } else {
-      return _buildNextButton(
-        onPressed: _nextStep,
-        text: _t('register_now'),
+        onPressed: _submitRegistration,
+        text: AppLocalizations.of(context)!.registerNow,
       );
     }
+    return _buildNextButton(
+      onPressed: _verifyEmailOtp,
+      text: AppLocalizations.of(context)!.verifyContinue,
+    );
   }
 
   Widget _buildErrorState(AuthState authState) {
+    void clearError() {
+      ref.read(authNotifierProvider.notifier).clearError();
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: TwColors.red500.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: TwColors.red500.withOpacity(0.3),
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: TwColors.red500.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.error_outline_rounded,
-                  color: TwColors.red500,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _t('error'),
-                      style: TextStyle(
-                        color: TwColors.red500,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      authState.errorMessage ?? _t('an_error_occurred'),
-                      style: TextStyle(
-                        color: TwColors.red500.withOpacity(0.8),
-                        fontSize: 13,
-                        fontWeight: FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        AuthErrorBanner(
+          title: AppLocalizations.of(context)!.error,
+          message:
+              authState.errorMessage ??
+              AppLocalizations.of(context)!.anErrorOccurred,
+          retryLabel: AppLocalizations.of(context)!.retry,
+          onRetry: clearError,
         ),
-        const SizedBox(height: 16),
-        _buildNextButton(
-          onPressed: () {
-            // Clear error state
-            ref.read(authNotifierProvider.notifier).clearError();
-          },
-          text: 'Try Again',
-        ),
+        const SizedBox(height: AppTokens.fieldGap),
+        _buildNextButton(onPressed: clearError, text: 'Try Again'),
       ],
     );
   }
@@ -1046,63 +1040,24 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     required VoidCallback onPressed,
     required String text,
   }) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.brightGreen,
-          foregroundColor: TwColors.primaryBg,
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 0,
-          shadowColor: Colors.transparent,
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+    return AuthPrimaryButton(
+      label: text,
+      loadingLabel: text,
+      isLoading: false,
+      onPressed: onPressed,
     );
   }
 
   Widget _buildLoginLink() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          _t('already_have_account'),
-          style: TextStyle(
-            color: TwColors.slate400,
-            fontSize: 14,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
-            );
-          },
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-          ),
-          child: Text(
-            _t('login_now'),
-            style: TextStyle(
-              color: TwColors.brightGreen,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
+    return AuthBottomLine(
+      prompt: AppLocalizations.of(context)!.alreadyHaveAccount,
+      action: AppLocalizations.of(context)!.loginNow,
+      onTap: () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      },
     );
   }
 }

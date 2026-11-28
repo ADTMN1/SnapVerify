@@ -24,7 +24,7 @@ export class BranchGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('User not authenticated');
+      throw new ForbiddenException('Authentication required. Please log in.');
     }
 
     const role = user.role as Role;
@@ -38,7 +38,7 @@ export class BranchGuard implements CanActivate {
     // For MANAGER, CASHIER, WAITER - they must have a branch assigned
     if (!user.branchId) {
       throw new ForbiddenException(
-        `${role} must be assigned to a branch to perform this action`,
+        'You must be assigned to a branch to perform this action.',
       );
     }
 
@@ -50,9 +50,7 @@ export class BranchGuard implements CanActivate {
       request.params?.branchId || request.query?.branchId;
 
     if (requestedBranchId && requestedBranchId !== user.branchId) {
-      throw new ForbiddenException(
-        `${role} can only access their assigned branch`,
-      );
+      throw new ForbiddenException('You can only access your assigned branch.');
     }
 
     return true;

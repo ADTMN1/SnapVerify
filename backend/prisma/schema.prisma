@@ -1,12 +1,369 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model PaymentAccount {
+  id                String            @id @default(uuid())
+  // Opaque, stable public identifier used in the account's QR deep link
+  // (/qr/v1/<publicId>). Generated server-side on creation, unique per
+  // account, and never derived from the bank account number so a QR code
+  // cannot be reversed into sensitive banking data.
+  publicId          String            @unique
+  organizationId    String
+  provider          PaymentProvider
+  accountNumber     String?
+  // SHA-256 hex of the normalized (whitespace/dash-stripped) account number.
+  // New matching paths compare against this hash; the legacy plaintext column
+  // is retained only until a backfill + deprecation migration is executed.
+  accountNumberHash String?
+  suffix            String?
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  accountHolderName String?
+  branchId          String?
+  branch            Branch?           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  verificationLogs  VerificationLog[] @relation("MatchedVerificationLog")
+
+  @@unique([organizationId, provider, branchId])
+  @@map("payment_accounts")
+}
+
+model Branch {
+  id              String                   @id @default(uuid())
+  organizationId  String
+  name            String
+  address         String?
+  latitude        Decimal?
+  longitude       Decimal?
+  phone           String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitations     Invitation[]
+  paymentAccounts PaymentAccount[]
+  userAssignments UserBusinessAssignment[]
+
+  @@map("branches")
+}
+
+model Organization {
+  id                    String                   @id @default(uuid())
+  name                  String
+  type                  String
+  phone                 String
+  email                 String?
+  address               String?
+  city                  String?
+  country               String?
+  logoUrl               String?
+  subscriptionPlan      String?
+  status                String                   @default("active")
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  activityLogs          ActivityLog[]
+  branches              Branch[]
+  invitations           Invitation[]
+  paymentAccounts       PaymentAccount[]
+  payments              Payment[]
+  subscriptions         Subscription[]
+  subscriptionCheckouts SubscriptionCheckout[]
+  userAssignments       UserBusinessAssignment[]
+  verificationLogs      VerificationLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                    String                   @id @default(uuid())
+  fullName              String?
+  // Staff log in with username + password; owners use email.
+  username              String?                  @unique
+  // Phone is optional since authentication moved to email; retained for
+  // legacy users and non-auth metadata.
+  phone                 String?                  @unique
+  email                 String?                  @unique
+  emailVerified         Boolean                  @default(false)
+  passwordHash          String?
+  status                String                   @default("active")
+  // Platform-level super admin. When true this user can access the SnapVerify
+  // platform control panel (all organizations) in addition to any org roles.
+  isPlatformAdmin       Boolean                  @default(false)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  // Timestamp of the most recent "mark all as read" action. Notification
+  // feed items created at or before this time are considered read.
+  notificationsReadAt   DateTime?
+  activityLogs          ActivityLog[]
+  payments              Payment[]
+  refreshTokens         RefreshToken[]
+  subscriptionCheckouts SubscriptionCheckout[]
+  userAssignments       UserBusinessAssignment[]
+  verificationLogs      VerificationLog[]
+
+  @@map("users")
+}
+
+model UserBusinessAssignment {
+  id             String       @id @default(uuid())
+  userId         String
+  organizationId String
+  branchId       String?
+  role           Role
+  status         String       @default("active")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  devices        Device[]
+  branch         Branch?      @relation(fields: [branchId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("user_business_assignments")
+}
+
+model Invitation {
+  id             String       @id @default(uuid())
+  // QR invitation flow: the owner creates a staff PROFILE (fullName +
+  // username + role + branch) and hands over a single-use QR code. Email is
+  // optional metadata; phone retained for legacy SMS invitations.
+  fullName       String?
+  username       String?
+  email          String?
+  phone          String?
+  organizationId String
+  branchId       String?
+  role           Role
+  // PENDING → ACTIVATED | EXPIRED | REVOKED
+  status         String       @default("PENDING")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  token          String       @unique
+  // QR invitations are short-lived (10 minutes); regenerate issues a new
+  // token and resets this.
+  expiresAt      DateTime
+  // Set when the staff member completes activation (single-use guard).
+  usedAt         DateTime?    @db.Timestamptz(3)
+  // Set when an owner/manager revokes the invitation.
+  revokedAt      DateTime?    @db.Timestamptz(3)
+  branch         Branch?      @relation(fields: [branchId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status], map: "invitations_organization_status_idx")
+  @@map("invitations")
+}
+
+model EmailOtp {
+  id         String    @id @default(uuid())
+  email      String
+  purpose    String
+  // OTP codes are never stored as plaintext — SHA-256 hex digest.
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@map("email_otps")
+}
+
+model RefreshToken {
+  id             String   @id @default(uuid())
+  userId         String
+  token          String   @unique
+  expiresAt      DateTime
+  deviceInfo     String?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+  organizationId String
+  role           String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Device {
+  id                String                 @id @default(uuid())
+  deviceFingerprint String
+  deviceName        String?
+  isActive          Boolean                @default(true)
+  lastLoginAt       DateTime               @default(now())
+  createdAt         DateTime               @default(now())
+  userAssignmentId  String
+  userAssignment    UserBusinessAssignment @relation(fields: [userAssignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userAssignmentId, deviceFingerprint])
+  @@map("devices")
+}
+
+model Payment {
+  id                      String            @id @default(uuid())
+  organizationId          String
+  userId                  String?
+  amount                  Decimal
+  currency                String            @default("ETB")
+  paymentMethod           String
+  transactionId           String
+  // Trimmed transactionId used for duplicate detection. Null for empty
+  // references. Backed by a unique constraint with organizationId.
+  normalizedTransactionId String?
+  paymentDate             DateTime?
+  senderName              String?
+  receiverName            String?
+  status                  PaymentStatus
+  riskScore               Int?
+  rawData                 Json?
+  // Which verification VENDOR produced this row: 'check_et' for new
+  // verification attempts, null for legacy Veritas-era rows. Historical
+  // Veritas records are never rewritten.
+  verificationProvider    String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  organization            Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User?             @relation(fields: [userId], references: [id])
+  verificationLogs        VerificationLog[]
+
+  @@unique([organizationId, normalizedTransactionId])
+  @@index([organizationId, createdAt])
+  @@map("payments")
+}
+
+model VerificationLog {
+  id                      String           @id @default(uuid())
+  organizationId          String?
+  paymentId               String?
+  userId                  String?
+  action                  String
+  reason                  String?
+  riskScore               Int?
+  createdAt               DateTime         @default(now())
+  matchedAccountNumber    String?
+  matchedBranchId         String?
+  matchedPaymentAccountId String?
+  matchedProvider         PaymentProvider?
+  matchedSuffix           String?
+  matchedPaymentAccount   PaymentAccount?  @relation("MatchedVerificationLog", fields: [matchedPaymentAccountId], references: [id])
+  organization            Organization?    @relation(fields: [organizationId], references: [id])
+  payment                 Payment?         @relation(fields: [paymentId], references: [id])
+  user                    User?            @relation(fields: [userId], references: [id])
+
+  @@map("verification_logs")
+}
+
+model Subscription {
+  id                String              @id @default(uuid())
+  organizationId    String
+  planName          String
+  status            SubscriptionStatus
+  startDate         DateTime
+  endDate           DateTime?
+  maxUsers          Int?
+  maxDevices        Int?
+  verificationLimit Int?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  usage             SubscriptionUsage[]
+
+  @@map("subscriptions")
+}
+
+model SubscriptionPlan {
+  id                String   @id
+  name              String
+  price             Int
+  currency          String   @default("ETB")
+  durationDays      Int?
+  durationMonths    Int?
+  isLifetime        Boolean  @default(false)
+  verificationLimit Int?
+  maxUsers          Int?
+  maxDevices        Int?
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("subscription_plans")
+}
+
+model SubscriptionUsage {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  periodStart    DateTime
+  count          Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, periodStart])
+  @@map("subscription_usage")
+}
+
+model SubscriptionCheckout {
+  id              String          @id @default(uuid())
+  organizationId  String
+  userId          String
+  planName        String
+  amount          Int
+  currency        String          @default("ETB")
+  provider        PaymentProvider @default(TELEBIRR)
+  reference       String          @unique
+  vendorReference String?         @unique
+  status          CheckoutStatus  @default(PENDING)
+  expiresAt       DateTime
+  paidAt          DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscription_checkouts")
+}
+
+model PaymentReceiptUsage {
+  id                  String          @id @default(uuid())
+  provider            PaymentProvider
+  normalizedReference String
+  source              String
+  organizationId      String?
+  checkoutId          String?
+  createdAt           DateTime        @default(now())
+
+  @@unique([provider, normalizedReference])
+  @@map("payment_receipt_usages")
+}
+
+model PlatformPaymentAccount {
+  id                String          @id @default(uuid())
+  provider          PaymentProvider @unique
+  accountNumber     String
+  accountHolderName String?
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@map("platform_payment_accounts")
+}
+
+model ActivityLog {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String?
+  action         String
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
 }
 
 enum Role {
@@ -29,6 +386,13 @@ enum SubscriptionStatus {
   EXPIRED
 }
 
+enum CheckoutStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
 enum PaymentStatus {
   PENDING
   VERIFIED
@@ -43,233 +407,4 @@ enum PaymentProvider {
   ABYSSINIA
   CBEBIRR
   M_PESA
-}
-
-model PaymentAccount {
-  id                String             @id @default(uuid())
-  organizationId    String
-  branchId          String?
-  provider          PaymentProvider
-  accountNumber     String?
-  suffix            String?
-  accountHolderName String?
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch            Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  verificationLogs  VerificationLog[] @relation("MatchedVerificationLog")
-
-  @@unique([organizationId, provider, branchId])
-  @@map("payment_accounts")
-}
-
-model Branch {
-  id              String               @id @default(uuid())
-  organizationId  String
-  name            String
-  address         String?
-  latitude        Decimal?
-  longitude       Decimal?
-  phone           String?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  paymentAccounts PaymentAccount[]
-  userAssignments UserBusinessAssignment[]
-  invitations     Invitation[]
-
-  @@map("branches")
-}
-
-model Organization {
-  id               String               @id @default(uuid())
-  name             String
-  type             String
-  phone            String
-  email            String?
-  address          String?
-  city             String?
-  country          String?
-  logoUrl          String?
-  subscriptionPlan String?
-  status           String               @default("active")
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  branches         Branch[]
-  payments         Payment[]
-  verificationLogs VerificationLog[]
-  subscriptions    Subscription[]
-  activityLogs     ActivityLog[]
-  paymentAccounts  PaymentAccount[]
-  userAssignments  UserBusinessAssignment[]
-  invitations      Invitation[]
-
-  @@map("organizations")
-}
-
-model User {
-  id               String                @id @default(uuid())
-  fullName         String?
-  phone            String                @unique
-  email            String?
-  passwordHash     String?
-  status           String                @default("active")
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  userAssignments  UserBusinessAssignment[]
-  refreshTokens    RefreshToken[]
-  payments         Payment[]
-  verificationLogs VerificationLog[]
-  activityLogs     ActivityLog[]
-
-  @@map("users")
-}
-
-model UserBusinessAssignment {
-  id               String        @id @default(uuid())
-  userId           String
-  organizationId   String
-  branchId         String?
-  role             Role
-  status           String        @default("active")
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch           Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  devices          Device[]
-
-  @@unique([userId, organizationId])
-  @@map("user_business_assignments")
-}
-
-model Invitation {
-  id               String        @id @default(uuid())
-  phone            String
-  organizationId   String
-  branchId         String?
-  role             Role
-  status           String        @default("PENDING")
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch           Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-
-  @@map("invitations")
-}
-
-model OtpCode {
-  id        String   @id @default(uuid())
-  phone     String
-  otpHash   String
-  expiresAt DateTime
-  attempts  Int      @default(0)
-  isUsed    Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@map("otp_codes")
-}
-
-model RefreshToken {
-  id             String   @id @default(uuid())
-  userId         String
-  token          String   @unique
-  organizationId String
-  role           String
-  expiresAt      DateTime
-  deviceInfo     String?
-  ipAddress      String?
-  createdAt      DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("refresh_tokens")
-}
-
-model Device {
-  id                   String               @id @default(uuid())
-  userAssignmentId     String
-  deviceFingerprint    String
-  deviceName           String?
-  isActive             Boolean              @default(true)
-  lastLoginAt          DateTime             @default(now())
-  createdAt            DateTime             @default(now())
-  userAssignment       UserBusinessAssignment @relation(fields: [userAssignmentId], references: [id], onDelete: Cascade)
-
-  @@unique([userAssignmentId, deviceFingerprint])
-  @@map("devices")
-}
-
-model Payment {
-  id               String             @id @default(uuid())
-  organizationId   String
-  userId           String?
-  amount           Decimal
-  currency         String             @default("ETB")
-  paymentMethod    String
-  transactionId    String
-  senderName       String?
-  receiverName     String?
-  status           PaymentStatus
-  riskScore        Int?
-  rawData          Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  verificationLogs VerificationLog[]
-
-  @@map("payments")
-}
-
-model VerificationLog {
-  id                    String             @id @default(uuid())
-  organizationId        String?
-  paymentId             String?
-  userId                String?
-  action                String
-  reason                String?
-  riskScore             Int?
-  matchedProvider       PaymentProvider?
-  matchedAccountNumber  String?
-  matchedSuffix         String?
-  matchedBranchId       String?
-  createdAt             DateTime           @default(now())
-  organization          Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  payment               Payment?           @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  user                  User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  matchedPaymentAccount PaymentAccount?    @relation("MatchedVerificationLog", fields: [matchedPaymentAccountId], references: [id], onDelete: SetNull)
-  matchedPaymentAccountId String?
-
-  @@map("verification_logs")
-}
-
-model Subscription {
-  id              String             @id @default(uuid())
-  organizationId  String
-  planName        String
-  status          SubscriptionStatus
-  startDate       DateTime
-  endDate         DateTime?
-  maxUsers        Int?
-  maxDevices      Int?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("subscriptions")
-}
-
-model ActivityLog {
-  id              String             @id @default(uuid())
-  organizationId  String
-  userId          String?
-  action          String
-  metadata        Json?
-  ipAddress       String?
-  createdAt       DateTime           @default(now())
-  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@map("activity_logs")
 }

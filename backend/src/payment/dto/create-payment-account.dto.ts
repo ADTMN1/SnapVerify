@@ -12,10 +12,6 @@ export class CreatePaymentAccountDto {
 
   @IsOptional()
   @IsString()
-  suffix?: string;
-
-  @IsOptional()
-  @IsString()
   accountHolderName?: string;
 
   @IsOptional()

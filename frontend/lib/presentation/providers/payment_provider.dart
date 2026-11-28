@@ -1,13 +1,14 @@
-import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import '../../data/datasources/payment_remote_datasource.dart';
 import '../../domain/entities/verification_result.dart';
 import 'auth_provider.dart';
+import 'notifications_provider.dart';
+import 'reports_provider.dart';
 
 final paymentDatasourceProvider = Provider<PaymentRemoteDatasource>((ref) {
-  return PaymentRemoteDatasource(client: http.Client());
+  return PaymentRemoteDatasource(client: ref.watch(httpClientProvider));
 });
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -45,17 +46,28 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
   String? _getToken() => ref.read(authNotifierProvider).tokens?.accessToken;
 
+  Future<String?> _freshToken() =>
+      ref.read(authNotifierProvider.notifier).ensureFreshAccessToken();
+
   /// Refresh the access token silently, returns the new token.
-  /// Throws (and sets error state) if the refresh token is also expired.
+  /// Sets error state and returns null if the refresh token is also expired.
   Future<String?> _refreshToken() async {
-    dev.log('[PaymentProvider] access token expired — refreshing');
+    debugPrint('[PaymentProvider] access token expired — refreshing');
     try {
-      final newTokens =
-          await ref.read(authNotifierProvider.notifier).silentRefresh();
-      dev.log('[PaymentProvider] token refreshed successfully');
-      return newTokens?.accessToken;
+      final newTokens = await ref
+          .read(authNotifierProvider.notifier)
+          .silentRefresh();
+      if (newTokens == null) {
+        state = state.copyWith(
+          status: PaymentVerifyStatus.error,
+          errorMessage: 'Session expired — please log in again',
+        );
+        return null;
+      }
+      debugPrint('[PaymentProvider] token refreshed successfully');
+      return newTokens.accessToken;
     } catch (e) {
-      dev.log('[PaymentProvider] token refresh failed: $e');
+      debugPrint('[PaymentProvider] token refresh failed: $e');
       state = state.copyWith(
         status: PaymentVerifyStatus.error,
         errorMessage: 'Session expired — please log in again',
@@ -71,11 +83,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         msg.contains('Unauthorized');
   }
 
-  /// Verify from captured image bytes
-  Future<void> verifyImage(Uint8List imageBytes) async {
-    var token = _getToken();
-    dev.log(
-        '[PaymentProvider] verifyImage token=${token != null ? "present" : "MISSING"}');
+  /// Verify from captured image bytes. [ocrText] is the on-device OCR text
+  /// of the receipt (required by the provider for image verification; the
+  /// backend rejects image uploads without it).
+  Future<void> verifyImage(Uint8List imageBytes, {String? ocrText}) async {
+    var token = await _freshToken();
+    debugPrint(
+      '[PaymentProvider] verifyImage token=${token != null ? "present" : "MISSING"}',
+    );
 
     if (token == null) {
       state = state.copyWith(
@@ -86,8 +101,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
 
     state = state.copyWith(status: PaymentVerifyStatus.loading);
-    dev.log(
-        '[PaymentProvider] verifyImage → calling datasource (${imageBytes.length} bytes)');
+    debugPrint(
+      '[PaymentProvider] verifyImage → calling datasource (${imageBytes.length} bytes)',
+    );
 
     try {
       final ds = ref.read(paymentDatasourceProvider);
@@ -97,42 +113,57 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         result = await ds.verifyByImage(
           accessToken: token,
           imageBytes: imageBytes,
+          ocrText: ocrText,
         );
       } catch (e) {
         // On 401, refresh token once and retry
         if (_is401(e)) {
-          dev.log('[PaymentProvider] verifyImage got 401 — refreshing token and retrying');
+          debugPrint(
+            '[PaymentProvider] verifyImage got 401 — refreshing token and retrying',
+          );
           token = await _refreshToken();
           if (token == null) return; // refresh failed, error state already set
           result = await ds.verifyByImage(
             accessToken: token,
             imageBytes: imageBytes,
+            ocrText: ocrText,
           );
         } else {
           rethrow;
         }
       }
 
-      dev.log('[PaymentProvider] verifyImage success verified=${result.verified}');
+      debugPrint(
+        '[PaymentProvider] verifyImage success verified=${result.verified}',
+      );
       state = state.copyWith(
         status: PaymentVerifyStatus.success,
         result: result,
       );
+      ref.invalidate(reportSummaryProvider);
+      ref.invalidate(notificationsProvider);
     } catch (e, st) {
-      dev.log('[PaymentProvider] verifyImage error: $e', stackTrace: st);
+      debugPrint('[PaymentProvider] verifyImage error: $e');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      // Provider outages must never be surfaced as an invalid receipt.
       state = state.copyWith(
         status: PaymentVerifyStatus.error,
-        errorMessage: e.toString().replaceFirst('Exception: ', ''),
+        errorMessage: msg,
       );
     }
   }
 
   /// Verify from reference number
-  Future<void> verifyReference(String referenceNumber,
-      {double? amount, String? provider, String? suffix}) async {
-    var token = _getToken();
-    dev.log(
-        '[PaymentProvider] verifyReference ref=$referenceNumber provider=$provider suffix=$suffix token=${token != null ? "present" : "MISSING"}');
+  Future<void> verifyReference(
+    String referenceNumber, {
+    double? amount,
+    String? provider,
+    String? suffix,
+  }) async {
+    var token = await _freshToken();
+    debugPrint(
+      '[PaymentProvider] verifyReference ref=$referenceNumber provider=$provider suffix=$suffix token=${token != null ? "present" : "MISSING"}',
+    );
 
     if (token == null) {
       state = state.copyWith(
@@ -159,7 +190,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       } catch (e) {
         // On 401, refresh token once and retry
         if (_is401(e)) {
-          dev.log('[PaymentProvider] verifyReference got 401 — refreshing token and retrying');
+          debugPrint(
+            '[PaymentProvider] verifyReference got 401 — refreshing token and retrying',
+          );
           token = await _refreshToken();
           if (token == null) return; // refresh failed, error state already set
           result = await ds.verifyByReference(
@@ -174,14 +207,17 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         }
       }
 
-      dev.log(
-          '[PaymentProvider] verifyReference success verified=${result.verified}');
+      debugPrint(
+        '[PaymentProvider] verifyReference success verified=${result.verified}',
+      );
       state = state.copyWith(
         status: PaymentVerifyStatus.success,
         result: result,
       );
+      ref.invalidate(reportSummaryProvider);
+      ref.invalidate(notificationsProvider);
     } catch (e, st) {
-      dev.log('[PaymentProvider] verifyReference error: $e', stackTrace: st);
+      debugPrint('[PaymentProvider] verifyReference error: $e');
       state = state.copyWith(
         status: PaymentVerifyStatus.error,
         errorMessage: e.toString().replaceFirst('Exception: ', ''),
@@ -192,6 +228,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   void reset() => state = const PaymentState();
 }
 
-final paymentProvider = StateNotifierProvider<PaymentNotifier, PaymentState>((ref) {
+final paymentProvider = StateNotifierProvider<PaymentNotifier, PaymentState>((
+  ref,
+) {
   return PaymentNotifier(ref);
 });

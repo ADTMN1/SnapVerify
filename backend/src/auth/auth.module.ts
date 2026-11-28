@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { JwtService } from './jwt.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { PasswordService } from './password.service';
 import { OtpModule } from '../otp/otp.module';
 
 @Module({
@@ -20,7 +21,13 @@ import { OtpModule } from '../otp/otp.module';
     }),
     OtpModule,
   ],
-  providers: [AuthService, JwtService, JwtAuthGuard, RolesGuard],
+  providers: [
+    AuthService,
+    JwtService,
+    JwtAuthGuard,
+    RolesGuard,
+    PasswordService,
+  ],
   controllers: [AuthController],
   exports: [AuthService, JwtService, JwtAuthGuard, RolesGuard, JwtModule],
 })

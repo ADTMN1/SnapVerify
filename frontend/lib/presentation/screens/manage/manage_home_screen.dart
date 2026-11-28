@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/tailwind.dart';
+import 'package:intl/intl.dart';
+import '../../../domain/entities/report_summary.dart';
 import '../../../presentation/providers/auth_provider.dart';
+import '../../../theme/app_text.dart';
+import '../../../theme/app_tokens.dart';
+import '../../../ui/ui.dart';
+import '../../providers/notifications_provider.dart';
+import '../../providers/reports_provider.dart';
+import '../notifications_screen.dart';
+import '../profile_screen.dart';
 import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
 import 'payment_activity_screen.dart';
-import 'qr_management_screen.dart';
 import 'reports_screen.dart';
 import 'payment_account_management_screen.dart';
 
@@ -20,6 +27,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   List<dynamic> _branches = [];
   List<dynamic> _staff = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -29,10 +37,25 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
 
   Future<void> _loadData() async {
     try {
+      if (mounted) {
+        setState(() => _loadError = null);
+      }
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches(authState.tokens!.accessToken);
-        final staff = await ref.read(authRepositoryProvider).getStaff(authState.tokens!.accessToken);
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
+        final staff = await ref
+            .read(authRepositoryProvider)
+            .getStaff(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
         if (mounted) {
           setState(() {
             _branches = branches;
@@ -41,7 +64,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         }
       }
     } catch (e) {
-      // Ignore error
+      if (mounted) {
+        setState(() {
+          _loadError = e.toString().replaceFirst(
+            RegExp(r'^[A-Za-z]+\(?\d*\)?:\s*'),
+            '',
+          );
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -52,11 +82,9 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   }
 
   Future<void> _navigateAndRefresh(Widget screen) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => screen,
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => screen));
     _loadData();
   }
 
@@ -64,63 +92,128 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final role = authState.role;
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todaySummary = ref.watch(
+      reportSummaryProvider((from: today, to: today)),
+    );
+    final unread = ref.watch(unreadNotificationCountProvider);
 
     return Column(
       children: [
-        _buildHeader(),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildStatisticsGrid(),
-                const SizedBox(height: 20),
-                _buildQuickActions(role),
-                const SizedBox(height: 20),
-                _buildRecentActivity(),
-                const SizedBox(height: 20),
-                _buildLogoutButton(),
-              ],
-            ),
+        _buildHeader(unread),
+        Expanded(child: _buildSheet(role, todaySummary)),
+      ],
+    );
+  }
+
+  Widget _buildHeader(int unread) {
+    return SvDashboardHeader(
+      title: 'Manage',
+      actions: [
+        SvDashboardHeaderButton(
+          icon: Icons.notifications_none_rounded,
+          badgeCount: unread,
+          tooltip: 'Notifications',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
           ),
+        ),
+        SvDashboardHeaderButton(
+          icon: Icons.person_outline_rounded,
+          tooltip: 'Profile',
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
         ),
       ],
     );
   }
 
-  Widget _buildHeader() {
-    final authState = ref.watch(authNotifierProvider);
-    final businessName = authState.organization?.name ?? 'Your Business';
-
+  Widget _buildSheet(UserRole role, AsyncValue<ReportSummary> todaySummary) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: TwColors.slate800,
-            width: 1,
+      color: AppTokens.ice50,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: AppTokens.formMaxWidth),
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.spaceLg,
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.sheetBottomPadding,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeading(),
+                const SizedBox(height: AppTokens.space2xl),
+                if (_loadError != null) ...[
+                  _buildLoadError(),
+                  const SizedBox(height: AppTokens.spaceXl),
+                ],
+                _buildStatisticsGrid(todaySummary),
+                const SizedBox(height: AppTokens.spaceXl),
+                _buildQuickActions(role),
+                const SizedBox(height: AppTokens.spaceXl),
+                _buildRecentActivity(todaySummary),
+                const SizedBox(height: AppTokens.spaceXl),
+                _buildLogoutButton(),
+              ],
+            ),
           ),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+
+  Widget _buildHeading() {
+    final authState = ref.watch(authNotifierProvider);
+    final businessName = authState.organization?.name ?? 'Your Business';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          businessName,
+          style: AppTokens.poppins(
+            size: AppTokens.textHeadline,
+            weight: FontWeight.w800,
+            color: AppTokens.ink,
+            letterSpacing: AppTokens.trackingTight,
+          ),
+        ),
+        const SizedBox(height: AppTokens.spaceXs),
+        Text(
+          'Overview of your business performance',
+          style: AppText.caption.copyWith(color: AppTokens.inkMuted),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadError() {
+    return _ManageCard(
+      backgroundColor: AppTokens.dangerBg,
+      borderColor: AppTokens.danger,
+      padding: const EdgeInsets.all(AppTokens.errorPadding),
+      child: Row(
         children: [
-          Text(
-            businessName,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+          Expanded(
+            child: Text(
+              'Could not load branches and staff: $_loadError',
+              style: AppText.bodySmall.copyWith(color: AppTokens.danger),
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Overview of your business performance',
-            style: TextStyle(
-              color: Colors.white60,
-              fontSize: 13,
+          TextButton(
+            onPressed: _loadData,
+            style: TextButton.styleFrom(
+              foregroundColor: AppTokens.danger,
+              textStyle: AppText.labelLarge,
+            ),
+            child: Text(
+              'Retry',
+              style: AppText.labelLarge.copyWith(color: AppTokens.danger),
             ),
           ),
         ],
@@ -131,23 +224,38 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
   Widget _buildLogoutButton() {
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
+      child: OutlinedButton.icon(
         onPressed: () async {
           // Show confirmation dialog
           final shouldLogout = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              backgroundColor: TwColors.slate900,
-              title: const Text('Logout', style: TextStyle(color: TwColors.white)),
-              content: const Text('Are you sure you want to logout?', style: TextStyle(color: TwColors.slate400)),
+              backgroundColor: AppTokens.ice50,
+              elevation: AppTokens.dialogElevation,
+              title: Text(
+                'Logout',
+                style: AppText.titleMedium.copyWith(color: AppTokens.ink),
+              ),
+              content: Text(
+                'Are you sure you want to logout?',
+                style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel', style: TextStyle(color: TwColors.slate400)),
+                  child: Text(
+                    'Cancel',
+                    style: AppText.bodySmall.copyWith(
+                      color: AppTokens.inkMuted,
+                    ),
+                  ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Logout', style: TextStyle(color: TwColors.red500)),
+                  child: Text(
+                    'Logout',
+                    style: AppText.labelLarge.copyWith(color: AppTokens.danger),
+                  ),
                 ),
               ],
             ),
@@ -157,27 +265,40 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             await ref.read(authNotifierProvider.notifier).logout();
           }
         },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.red500.withOpacity(0.1),
-          foregroundColor: TwColors.red500,
-          padding: const EdgeInsets.symmetric(vertical: 16),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: AppTokens.white,
+          foregroundColor: AppTokens.danger,
+          padding: const EdgeInsets.symmetric(vertical: AppTokens.spaceLg),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: TwColors.red500.withOpacity(0.3)),
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
           ),
-          elevation: 0,
+          side: BorderSide(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
+          textStyle: AppText.labelLarge,
         ),
-        child: const Text(
-          'Logout',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        icon: const Icon(
+          Icons.logout_rounded,
+          color: AppTokens.ink,
+          size: AppTokens.progressSize,
         ),
+        label: const Text('Logout'),
       ),
     );
   }
 
-  Widget _buildStatisticsGrid() {
+  Widget _buildStatisticsGrid(AsyncValue<ReportSummary> todaySummary) {
     final onlineStaff = _staff.where((s) => s['status'] == 'active').length;
     final offlineStaff = _staff.length - onlineStaff;
+    final summary = todaySummary.valueOrNull?.summary;
+    final verifiedCount = summary == null
+        ? (todaySummary.isLoading ? '...' : '—')
+        : '${summary.verified}';
+    final currency = summary?.currency ?? 'ETB';
+    final verifiedAmount = summary == null
+        ? (todaySummary.isLoading ? '...' : '—')
+        : '$currency ${summary.verifiedAmount.toStringAsFixed(2)}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,107 +309,100 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Total Branches',
               value: _isLoading ? '...' : _branches.length.toString(),
               icon: Icons.storefront_rounded,
-              color: TwColors.brightGreen,
+              color: AppTokens.ink,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
               title: 'Total Staff',
               value: _isLoading ? '...' : _staff.length.toString(),
               icon: Icons.people_rounded,
-              color: TwColors.lime400,
+              color: AppTokens.ink,
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppTokens.statChangePaddingH),
         Row(
           children: [
             _StatItem(
               title: 'Online Staff',
               value: _isLoading ? '...' : onlineStaff.toString(),
               icon: Icons.wifi_rounded,
-              color: Colors.green,
+              color: AppTokens.ink,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
               title: 'Offline Staff',
               value: _isLoading ? '...' : offlineStaff.toString(),
               icon: Icons.signal_wifi_off_rounded,
-              color: Colors.orange,
+              color: AppTokens.ink,
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: TwColors.slate700,
-              width: 1,
-            ),
-          ),
+        const SizedBox(height: AppTokens.spaceMd),
+        _ManageCard(
+          backgroundColor: AppTokens.white,
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: TwColors.brightGreen.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.payments_rounded,
-                  color: TwColors.brightGreen,
-                  size: 24,
-                ),
+              const Icon(
+                Icons.payments_rounded,
+                color: AppTokens.ink,
+                size: AppTokens.componentIconMd,
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: AppTokens.spaceSm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       "Today's Verified Payments",
-                      style: TextStyle(
-                        color: TwColors.white.withOpacity(0.65),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.labelSmall.copyWith(
+                        color: AppTokens.inkMuted,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppTokens.statTitleGap),
                     Text(
-                      "0 payments",
-                      style: const TextStyle(
-                        color: TwColors.white,
-                        fontSize: 20,
+                      '$verifiedCount payments',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.labelLarge.copyWith(
+                        color: AppTokens.ink,
                         fontWeight: FontWeight.w700,
+                        letterSpacing: AppTokens.trackingTight,
                       ),
                     ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    "Total Amount",
-                    style: TextStyle(
-                      color: TwColors.white.withOpacity(0.5),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+              const SizedBox(width: AppTokens.spaceSm),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Total Amount',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.overline.copyWith(
+                        color: AppTokens.inkMuted,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "ETB 0.00",
-                    style: const TextStyle(
-                      color: TwColors.brightGreen,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: AppTokens.spaceXs),
+                    Text(
+                      verifiedAmount,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: AppText.labelLarge.copyWith(
+                        color: AppTokens.ink,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: AppTokens.trackingTight,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -305,7 +419,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.store_mall_directory_rounded,
           label: 'Branches',
-          color: TwColors.brightGreen,
+          color: AppTokens.ink,
           onTap: () => _navigateAndRefresh(const BranchManagementScreen()),
         ),
       );
@@ -316,7 +430,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.person_add_rounded,
           label: 'Staff',
-          color: TwColors.lime400,
+          color: AppTokens.ink,
           onTap: () => _navigateAndRefresh(const StaffManagementScreen()),
         ),
       );
@@ -327,8 +441,9 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.account_balance_rounded,
           label: 'Accounts',
-          color: TwColors.sky500,
-          onTap: () => _navigateAndRefresh(const PaymentAccountManagementScreen()),
+          color: AppTokens.ink,
+          onTap: () =>
+              _navigateAndRefresh(const PaymentAccountManagementScreen()),
         ),
       );
     }
@@ -338,28 +453,17 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
       _QuickAction(
         icon: Icons.payments_rounded,
         label: 'Payments',
-        color: TwColors.sky500,
+        color: AppTokens.ink,
         onTap: () => _navigateAndRefresh(const PaymentActivityScreen()),
       ),
     );
-
-    if (role.canGenerateQRCode) {
-      actions.add(
-        _QuickAction(
-          icon: Icons.qr_code_2_rounded,
-          label: 'QR',
-          color: Colors.purple,
-          onTap: () => _navigateAndRefresh(const QRManagementScreen()),
-        ),
-      );
-    }
 
     if (role.canExportReports) {
       actions.add(
         _QuickAction(
           icon: Icons.bar_chart_rounded,
           label: 'Reports',
-          color: Colors.orange,
+          color: AppTokens.ink,
           onTap: () => _navigateAndRefresh(const ReportsScreen()),
         ),
       );
@@ -372,54 +476,173 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Quick Actions',
-          style: TextStyle(
-            color: TwColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
+        const SvSectionLabel('Quick Actions'),
+        const SizedBox(height: AppTokens.spaceMd),
         GridView.count(
-          crossAxisCount: 3,
+          crossAxisCount: 2,
+          mainAxisExtent: AppTokens.tapTarget + AppTokens.space2xl,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
+          mainAxisSpacing: AppTokens.spaceMd,
+          crossAxisSpacing: AppTokens.spaceMd,
           children: actions,
         ),
       ],
     );
   }
 
-  Widget _buildRecentActivity() {
+  Widget _buildRecentActivity(AsyncValue<ReportSummary> todaySummary) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Recent Activity',
-          style: TextStyle(
-            color: TwColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text(
-              'No recent activity',
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 14,
-              ),
+        const SvSectionLabel('Recent Activity'),
+        const SizedBox(height: AppTokens.spaceMd),
+        todaySummary.when(
+          data: (data) {
+            if (data.recent.isEmpty) {
+              return _emptyActivity('No recent activity');
+            }
+            return Column(
+              children: data.recent.take(3).map((p) {
+                final time = DateFormat('h:mm a').format(p.createdAt);
+                return _ManageCard(
+                  margin: const EdgeInsets.only(bottom: AppTokens.spaceSm),
+                  backgroundColor: AppTokens.surfaceLight,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.heroStatusPaddingH,
+                    vertical: AppTokens.spaceMd,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: AppTokens.heroDotSize,
+                        height: AppTokens.heroDotSize,
+                        decoration: const BoxDecoration(
+                          color: AppTokens.inkMuted,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: AppTokens.statChangePaddingH),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.transactionId?.isNotEmpty == true
+                                  ? p.transactionId!
+                                  : p.id,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.labelMedium.copyWith(
+                                color: AppTokens.ink,
+                              ),
+                            ),
+                            const SizedBox(height: AppTokens.spaceXs),
+                            Text(
+                              '${p.status} · $time',
+                              style: AppText.overline.copyWith(
+                                color: AppTokens.inkMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${p.currency} ${p.amount.toStringAsFixed(2)}',
+                        style: AppText.labelMedium.copyWith(
+                          color: AppTokens.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: AppTokens.space2xl),
+              child: SvLoader.page(color: AppTokens.inkMuted),
             ),
+          ),
+          error: (e, _) => _emptyActivity(
+            'Could not load activity: '
+            '${e.toString().replaceFirst('Exception: ', '')}',
+            onRetry: () {
+              final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+              ref.invalidate(reportSummaryProvider((from: today, to: today)));
+            },
           ),
         ),
       ],
     );
+  }
+
+  Widget _emptyActivity(String message, {VoidCallback? onRetry}) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppTokens.space3xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: AppTokens.spaceSm),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTokens.inkMuted,
+                  textStyle: AppText.labelLarge,
+                ),
+                child: Text(
+                  'Retry',
+                  style: AppText.labelLarge.copyWith(color: AppTokens.inkMuted),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ManageCard extends StatelessWidget {
+  const _ManageCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(AppTokens.spaceLg),
+    this.margin,
+    this.onTap,
+    this.backgroundColor = AppTokens.white,
+    this.borderColor = AppTokens.ice200,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
+  final VoidCallback? onTap;
+  final Color backgroundColor;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget card = SvSurfaceCard(
+      color: backgroundColor,
+      borderColor: borderColor,
+      padding: padding,
+      onTap: onTap,
+      child: child,
+    );
+
+    final cardMargin = margin;
+    if (cardMargin != null) {
+      card = Padding(padding: cardMargin, child: card);
+    }
+    return card;
   }
 }
 
@@ -439,53 +662,41 @@ class _StatItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: TwColors.slate700,
-            width: 1,
-          ),
-        ),
+      child: _ManageCard(
+        backgroundColor: AppTokens.surfaceLight,
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              value,
+              style: AppTokens.poppins(
+                size: AppTokens.textHeadline,
+                weight: FontWeight.w800,
+                color: color,
+                letterSpacing: AppTokens.trackingTight,
+              ),
+            ),
+            const SizedBox(height: AppTokens.focusBorderWidth),
             Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 20,
+                Icon(
+                  icon,
+                  size: AppTokens.componentIconSm,
+                  color: AppTokens.inkMuted,
+                ),
+                const SizedBox(width: AppTokens.spaceXs),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: AppText.overline.copyWith(
+                      color: AppTokens.inkMuted,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: AppTokens.trackingNormal,
+                    ),
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                color: TwColors.white.withOpacity(0.65),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-              ),
             ),
           ],
         ),
@@ -509,46 +720,39 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return _ManageCard(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: TwColors.slate700,
-            width: 1,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceMd,
+        vertical: AppTokens.spaceMd,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: color,
+            size: AppTokens.componentIconSm + AppTokens.spaceXs,
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 22,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
+          const SizedBox(width: AppTokens.spaceXs),
+          Expanded(
+            child: Text(
               label,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.labelLarge.copyWith(
+                color: AppTokens.ink,
+                fontWeight: FontWeight.w700,
+                letterSpacing: AppTokens.trackingTight,
               ),
-              textAlign: TextAlign.center,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: AppTokens.spaceXs),
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: AppTokens.inkMuted,
+            size: AppTokens.componentIconSm,
+          ),
+        ],
       ),
     );
   }
