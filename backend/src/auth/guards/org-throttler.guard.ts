@@ -19,8 +19,8 @@ import { JwtService } from '@nestjs/jwt';
  *   2. organizationId from a SIGNATURE-VERIFIED Bearer token — the raw payload
  *      is never trusted, so a client cannot claim another organization's
  *      bucket by forging a header
- *   3. client IP (Express `req.ip`; X-Forwarded-For is only honored by
- *      Express when `trust proxy` is configured — it is not)
+ *   3. client IP (Express `req.ip`; `trust proxy` is configured to one trusted
+ *      proxy hop in bootstrap, so a single platform proxy hop is honored)
  *
  * SECURITY LIMITATION (documented, by design): authenticated requests are
  * tracked per ORGANIZATION, so all staff of one merchant share one bucket.

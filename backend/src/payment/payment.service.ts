@@ -1855,8 +1855,11 @@ export class PaymentService {
           HttpStatus.CONFLICT,
         );
       }
+      this.logger.error(
+        `[_saveAndReturn] Database error (org=${organizationId}): ${dbErr?.message}`,
+      );
       throw new InternalServerErrorException(
-        `Database error: ${dbErr?.message}`,
+        'Unable to save the payment right now. Please try again.',
       );
     }
 

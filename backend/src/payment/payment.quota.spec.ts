@@ -212,7 +212,7 @@ describe('PaymentService quota atomicity', () => {
     mockPrisma.payment.create.mockRejectedValue(new Error('db unavailable'));
 
     await expect(verify('FT-FAIL')).rejects.toThrow(
-      'Database error: db unavailable',
+      'Unable to save the payment right now. Please try again.',
     );
     expect(mockPrisma.subscriptionUsage.updateMany).toHaveBeenCalledTimes(1);
     expect(usageCount).toBe(0);

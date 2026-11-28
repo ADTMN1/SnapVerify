@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
 
 class PremiumHeroSection extends StatefulWidget {
   final List<String> imageAssets;
@@ -20,8 +20,12 @@ class PremiumHeroSection extends StatefulWidget {
     required this.statusLabel,
     required this.statusColor,
     required this.stats,
-    this.transitionDuration = const Duration(milliseconds: 1500),
-    this.imageDuration = const Duration(seconds: 4),
+    this.transitionDuration = const Duration(
+      milliseconds: AppTokens.motionHeroTransition,
+    ),
+    this.imageDuration = const Duration(
+      milliseconds: AppTokens.motionHeroImage,
+    ),
   });
 
   @override
@@ -42,23 +46,26 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
   void initState() {
     super.initState();
     _pageController = PageController();
-    
-    // Scale animation controller for subtle zoom effect
     _scaleController = AnimationController(
       duration: widget.imageDuration,
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
-    );
-    
-    // Fade animation for smooth transitions
+    _scaleAnimation = Tween<double>(begin: 1.0, end: AppTokens.heroScaleEnd)
+        .animate(
+          CurvedAnimation(
+            parent: _scaleController,
+            curve: AppTokens.curveEmphasized,
+          ),
+        );
     _fadeController = AnimationController(
       duration: widget.transitionDuration,
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+      CurvedAnimation(
+        parent: _fadeController,
+        curve: AppTokens.curveEmphasized,
+      ),
     );
 
     _startAutoScroll();
@@ -66,7 +73,6 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
   }
 
   void _startAutoScroll() {
-    // No images to cycle — skip the timer entirely to avoid a no-op loop.
     if (widget.imageAssets.isEmpty) return;
 
     _autoScrollTimer = Timer.periodic(widget.imageDuration, (timer) {
@@ -79,7 +85,7 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
       _pageController.animateToPage(
         _currentPage,
         duration: widget.transitionDuration,
-        curve: Curves.easeInOutCubic,
+        curve: AppTokens.curveHeroPage,
       );
     });
   }
@@ -95,39 +101,30 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
 
   @override
   Widget build(BuildContext context) {
-    final isWideScreen = MediaQuery.of(context).size.width > 768;
+    final isWideScreen =
+        MediaQuery.of(context).size.width > AppTokens.heroBreakpoint;
 
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppTokens.heroRadius),
         border: Border.all(
-          color: widget.statusColor.withOpacity(0.25),
-          width: 1,
+          color: widget.statusColor.withValues(alpha: AppTokens.alphaStrong),
+          width: AppTokens.componentBorderWidth,
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: isWideScreen
-          ? _buildWideScreenLayout()
-          : _buildMobileLayout(),
+      child: isWideScreen ? _buildWideScreenLayout() : _buildMobileLayout(),
     );
   }
 
   Widget _buildWideScreenLayout() {
     return SizedBox(
-      height: 400,
+      height: AppTokens.heroWideHeight,
       child: Row(
         children: [
-          // Left side - Static text content
-          Expanded(
-            flex: 5,
-            child: _buildTextContent(),
-          ),
-          // Right side - Immersive background visual
-          Expanded(
-            flex: 7,
-            child: _buildImageSequence(),
-          ),
+          Expanded(flex: 5, child: _buildTextContent()),
+          Expanded(flex: 7, child: _buildImageSequence()),
         ],
       ),
     );
@@ -136,12 +133,10 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
   Widget _buildMobileLayout() {
     return Column(
       children: [
-        // Top - Image visual (reduced height on mobile)
         SizedBox(
-          height: 280,
+          height: AppTokens.heroMobileHeight,
           child: _buildImageSequence(),
         ),
-        // Bottom - Text content
         _buildTextContent(),
       ],
     );
@@ -149,87 +144,83 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
 
   Widget _buildTextContent() {
     return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.all(AppTokens.heroPadding),
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF0D1F0A),
-            const Color(0xFF050D18),
-          ],
+          colors: [AppTokens.heroGradientStart, AppTokens.heroGradientEnd],
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Status badge
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.heroStatusPaddingH,
+              vertical: AppTokens.heroStatusPaddingV,
+            ),
             decoration: BoxDecoration(
-              color: widget.statusColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(24),
+              color: widget.statusColor.withValues(alpha: AppTokens.alphaLow),
+              borderRadius: BorderRadius.circular(AppTokens.radius2xl),
               border: Border.all(
-                color: widget.statusColor.withOpacity(0.3),
-                width: 1,
+                color: widget.statusColor.withValues(
+                  alpha: AppTokens.alphaStrong,
+                ),
+                width: AppTokens.componentBorderWidth,
               ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: AppTokens.heroDotSize,
+                  height: AppTokens.heroDotSize,
                   decoration: BoxDecoration(
                     color: widget.statusColor,
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppTokens.spaceSm),
                 Text(
                   widget.statusLabel,
-                  style: TextStyle(
+                  style: AppTokens.dmSans(
+                    size: AppTokens.statChangeFontSize,
+                    weight: FontWeight.w700,
                     color: widget.statusColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
+                    letterSpacing: AppTokens.heroTrackingStatus,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
-          
-          // Title
+          const SizedBox(height: AppTokens.space2xl),
           Text(
             widget.title,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 42,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -1.5,
-              height: 1.1,
+            style: AppTokens.poppins(
+              size: AppTokens.heroTitleSize,
+              weight: FontWeight.w900,
+              color: AppTokens.white,
+              letterSpacing: AppTokens.heroTrackingTight,
+              height: AppTokens.heroLineHeightTitle,
             ),
           ),
-          const SizedBox(height: 12),
-          
-          // Subtitle
+          const SizedBox(height: AppTokens.spaceMd),
           Text(
             widget.subtitle,
-            style: TextStyle(
-              color: TwColors.white.withOpacity(0.6),
-              fontSize: 16,
-              height: 1.6,
-              letterSpacing: 0.2,
+            style: AppTokens.dmSans(
+              size: AppTokens.heroSubtitleSize,
+              weight: FontWeight.w400,
+              color: AppTokens.white.withValues(alpha: AppTokens.alphaTertiary),
+              height: AppTokens.heroLineHeightSubtitle,
+              letterSpacing: AppTokens.heroTrackingSubtitle,
             ),
           ),
-          const SizedBox(height: 32),
-          
-          // Stats row
+          const SizedBox(height: AppTokens.space3xl),
           Wrap(
-            spacing: 32,
-            runSpacing: 20,
+            spacing: AppTokens.space3xl,
+            runSpacing: AppTokens.spaceXl,
             children: widget.stats
                 .map((stat) => _buildStatColumn(stat))
                 .toList(),
@@ -245,20 +236,20 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
       children: [
         Text(
           stat.value,
-          style: TextStyle(
+          style: AppTokens.poppins(
+            size: AppTokens.heroStatValueSize,
+            weight: FontWeight.w900,
             color: stat.color,
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.8,
+            letterSpacing: AppTokens.heroTrackingStat,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppTokens.spaceXs),
         Text(
           stat.label,
-          style: TextStyle(
-            color: TwColors.white.withOpacity(0.5),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+          style: AppTokens.dmSans(
+            size: AppTokens.heroStatLabelSize,
+            weight: FontWeight.w600,
+            color: AppTokens.white.withValues(alpha: AppTokens.alphaSecondary),
           ),
         ),
       ],
@@ -266,19 +257,17 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
   }
 
   Widget _buildImageSequence() {
-    // No image assets supplied — render the gradient background only so the
-    // hero still looks correct without any missing-asset exceptions.
     if (widget.imageAssets.isEmpty) {
       return Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
             colors: [
-              Colors.black.withOpacity(0.45),
-              const Color(0xFF050D18),
+              AppTokens.heroImageOverlayStart,
+              AppTokens.heroGradientEnd,
             ],
-            stops: const [0.0, 1.0],
+            stops: [0.0, 1.0],
           ),
         ),
       );
@@ -287,7 +276,6 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Animated page view for smooth transitions
         AnimatedBuilder(
           animation: _scaleController,
           builder: (context, child) {
@@ -299,27 +287,26 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
                   _currentPage = index;
                 });
               },
-itemBuilder: (context, index) {
+              itemBuilder: (context, index) {
                 return Transform.scale(
                   scale: _scaleAnimation.value,
                   child: Container(
                     decoration: BoxDecoration(
                       image: DecorationImage(
-                        image:AssetImage(widget.imageAssets[index]),
+                        image: AssetImage(widget.imageAssets[index]),
                         fit: BoxFit.cover,
                         alignment: Alignment.center,
                       ),
                     ),
-                    // Gradient overlay for better text readability
-                    foregroundDecoration: BoxDecoration(
+                    foregroundDecoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                         colors: [
-                          Colors.black.withOpacity(0.4),
-                          Colors.transparent,
+                          AppTokens.heroOverlayFadeStart,
+                          AppTokens.transparent,
                         ],
-                        stops: const [0.0, 0.5],
+                        stops: [0.0, AppTokens.heroOverlayStop],
                       ),
                     ),
                   ),
@@ -328,8 +315,6 @@ itemBuilder: (context, index) {
             );
           },
         ),
-        
-        // Parallax overlay effect
         Positioned.fill(
           child: AnimatedBuilder(
             animation: _pageController,
@@ -339,15 +324,17 @@ itemBuilder: (context, index) {
                 value = _pageController.page ?? 0.0;
               }
               return Transform.translate(
-                offset: Offset(value * 30, 0),
+                offset: Offset(value * AppTokens.heroParallaxShift, 0),
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: RadialGradient(
                       center: Alignment.topRight,
-                      radius: 1.5,
+                      radius: AppTokens.heroRadialRadius,
                       colors: [
-                        widget.statusColor.withOpacity(0.15),
-                        Colors.transparent,
+                        widget.statusColor.withValues(
+                          alpha: AppTokens.alphaMedium,
+                        ),
+                        AppTokens.transparent,
                       ],
                     ),
                   ),
@@ -356,11 +343,9 @@ itemBuilder: (context, index) {
             },
           ),
         ),
-        
-        // Page indicators
         Positioned(
-          bottom: 24,
-          right: 24,
+          bottom: AppTokens.heroIndicatorOffset,
+          right: AppTokens.heroIndicatorOffset,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: List.generate(
@@ -376,15 +361,19 @@ itemBuilder: (context, index) {
   Widget _buildPageIndicator(int index) {
     final isActive = index == _currentPage;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: isActive ? 32 : 8,
-      height: 8,
+      duration: const Duration(milliseconds: AppTokens.motionHeroIndicator),
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppTokens.heroIndicatorGap,
+      ),
+      width: isActive
+          ? AppTokens.heroIndicatorActiveWidth
+          : AppTokens.heroIndicatorWidth,
+      height: AppTokens.heroIndicatorHeight,
       decoration: BoxDecoration(
         color: isActive
             ? widget.statusColor
-            : TwColors.white.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(4),
+            : AppTokens.white.withValues(alpha: AppTokens.alphaStrong),
+        borderRadius: BorderRadius.circular(AppTokens.heroIndicatorRadius),
       ),
     );
   }

@@ -1,13 +1,10 @@
-import 'package:flutter/foundation.dart';
-import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
+import '../../ui/ui.dart';
 import '../providers/auth_provider.dart';
 import '../providers/payment_provider.dart';
-import '../widgets/sv_loader.dart';
-import '../widgets/sv_status_badge.dart';
 
 class HistoryTab extends ConsumerStatefulWidget {
   const HistoryTab({super.key});
@@ -55,7 +52,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
         _items = items;
         _loading = false;
       });
-    } catch (e, st) {
+    } catch (e) {
       debugPrint('[HistoryTab] load error: $e');
       if (!mounted) return;
       setState(() {
@@ -69,99 +66,106 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _buildHeader(),
+        _HistoryHeader(loading: _loading, onRefresh: _load),
         Expanded(
-          child: RefreshIndicator(
+          child: _HistorySheet(
+            loading: _loading,
+            error: _error,
+            items: _items,
             onRefresh: _load,
-            color: TwColors.brightGreen,
-            backgroundColor: TwColors.slate800,
-            child: _buildBody(),
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildHeader() {
+class _HistoryHeader extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onRefresh;
+
+  const _HistoryHeader({required this.loading, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return SvDashboardHeader(
+      title: 'Verification History',
+      actions: [
+        SvDashboardHeaderButton(
+          icon: Icons.refresh_rounded,
+          tooltip: 'Refresh',
+          enabled: !loading,
+          onTap: onRefresh,
+        ),
+      ],
+    );
+  }
+}
+
+class _HistorySheet extends StatelessWidget {
+  final bool loading;
+  final String? error;
+  final List<_HistoryItem> items;
+  final Future<void> Function() onRefresh;
+
+  const _HistorySheet({
+    required this.loading,
+    required this.error,
+    required this.items,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Verification History',
-                  style: TextStyle(
-                    color: TwColors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Recent payment verification activity',
-                  style: TextStyle(color: TwColors.slate400, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _loading ? null : _load,
-            icon: Icon(
-              Icons.refresh_rounded,
-              color: _loading ? TwColors.slate600 : TwColors.brightGreen,
-            ),
-            tooltip: 'Refresh',
-          ),
-        ],
+      color: AppTokens.ice50,
+      child: RefreshIndicator(
+        onRefresh: onRefresh,
+        color: AppTokens.inkMuted,
+        backgroundColor: AppTokens.white,
+        child: _buildBody(),
       ),
     );
   }
 
   Widget _buildBody() {
-    if (_loading && _items.isEmpty) {
+    if (loading && items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
-          SizedBox(height: 120),
-          Center(child: SvLoader.page()),
+          SizedBox(height: AppTokens.loaderLargeSize),
+          Center(child: SvLoader.page(color: AppTokens.inkMuted)),
         ],
       );
     }
 
-    if (_error != null && _items.isEmpty) {
+    if (error != null && items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppTokens.space2xl),
         children: [
-          const SizedBox(height: 60),
+          const SizedBox(height: AppTokens.loaderLargeSize),
           _StateCard(
             icon: Icons.error_outline_rounded,
-            iconColor: TwColors.red500,
+            iconColor: AppTokens.ink,
             title: 'Could not load history',
-            message: _error!,
+            message: error!,
             actionLabel: 'Try again',
-            onAction: _load,
+            onAction: onRefresh,
           ),
         ],
       );
     }
 
-    if (_items.isEmpty) {
+    if (items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppTokens.space2xl),
         children: const [
-          SizedBox(height: 60),
+          SizedBox(height: AppTokens.loaderLargeSize),
           _StateCard(
             icon: Icons.receipt_long_rounded,
-            iconColor: TwColors.brightGreen,
+            iconColor: AppTokens.ink,
             title: 'No verifications yet',
             message:
                 'Verified and failed payment checks will appear here once you start verifying transactions.',
@@ -170,31 +174,42 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
       );
     }
 
-    final verified = _items.where((e) => e.isVerified).length;
-    final failed = _items.length - verified;
-    final total = _items.fold<double>(
+    final verified = items.where((e) => e.isVerified).length;
+    final failed = items.length - verified;
+    final total = items.fold<double>(
       0,
       (sum, e) => sum + (e.isVerified ? e.amount : 0),
     );
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      itemCount: _items.length + 1,
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.spaceLg,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetBottomPadding,
+      ),
+      itemCount: items.length + 2,
       itemBuilder: (context, index) {
         if (index == 0) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: AppTokens.spaceMd),
+            child: SvSectionLabel('Verification summary'),
+          );
+        }
+        if (index == 1) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.only(bottom: AppTokens.spaceLg),
             child: _SummaryRow(
-              total: _items.length,
+              total: items.length,
               verified: verified,
               failed: failed,
               verifiedAmount: total,
-              currency: _items.first.currency,
+              currency: items.first.currency,
             ),
           );
         }
-        return _HistoryTile(item: _items[index - 1]);
+        return _HistoryTile(item: items[index - 2]);
       },
     );
   }
@@ -225,25 +240,25 @@ class _SummaryRow extends StatelessWidget {
             label: 'Verified',
             value: '$verified',
             icon: Icons.check_circle_rounded,
-            color: TwColors.brightGreen,
+            color: AppTokens.inkMuted,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: AppTokens.badgeSmallPaddingH),
         Expanded(
           child: _MetricCard(
             label: 'Failed',
             value: '$failed',
             icon: Icons.cancel_rounded,
-            color: TwColors.red500,
+            color: AppTokens.inkMuted,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: AppTokens.badgeSmallPaddingH),
         Expanded(
           child: _MetricCard(
             label: 'Confirmed',
             value: '$currency $amountText',
             icon: Icons.payments_rounded,
-            color: TwColors.sky500,
+            color: AppTokens.inkMuted,
             compactValue: true,
           ),
         ),
@@ -270,40 +285,48 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppTokens.spaceMd),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700),
+        color: AppTokens.transparent,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 6),
+              Icon(icon, size: AppTokens.checkIconSize, color: color),
+              const SizedBox(width: AppTokens.statTitleGap),
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
-                    color: TwColors.slate400,
-                    fontSize: 12,
+                  style: AppTokens.dmSans(
+                    size: AppTokens.textOverline,
+                    weight: FontWeight.w700,
+                    color: AppTokens.inkMuted,
+                    letterSpacing: AppTokens.trackingNormal,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTokens.spaceSm),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: TwColors.white,
-              fontSize: compactValue ? 14 : 18,
-              fontWeight: FontWeight.w700,
+            style: AppTokens.poppins(
+              size: compactValue
+                  ? AppTokens.textBodySmall
+                  : AppTokens.textSubtitle,
+              weight: FontWeight.w800,
+              color: AppTokens.ink,
+              letterSpacing: AppTokens.trackingTight,
             ),
           ),
         ],
@@ -322,32 +345,25 @@ class _HistoryTile extends StatelessWidget {
     final methodLabel = item.methodLabel;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: TwColors.slate700),
+        color: AppTokens.transparent,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: item.isVerified
-                  ? TwColors.brightGreen.withValues(alpha: 0.12)
-                  : TwColors.red500.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              item.isVerified ? Icons.verified_rounded : Icons.error_rounded,
-              color: item.isVerified ? TwColors.brightGreen : TwColors.red500,
-              size: 22,
-            ),
+          Icon(
+            item.isVerified ? Icons.verified_rounded : Icons.error_rounded,
+            color: AppTokens.ink,
+            size: AppTokens.componentIconLg,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppTokens.spaceMd),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -359,83 +375,86 @@ class _HistoryTile extends StatelessWidget {
                         item.primaryTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: TwColors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                        style: AppTokens.manrope(
+                          size: AppTokens.textBodySmall,
+                          weight: FontWeight.w800,
+                          color: AppTokens.ink,
+                          letterSpacing: AppTokens.trackingTight,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    SVStatusBadge(
-                      text: item.statusLabel,
-                      type: item.isVerified
-                          ? BadgeType.success
-                          : BadgeType.error,
-                      isSmall: true,
+                    const SizedBox(width: AppTokens.spaceSm),
+                    SvStatusPill(
+                      item.statusLabel,
+                      tone: SvTone.neutral,
+                      small: true,
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppTokens.spaceXs),
                 Text(
                   '${item.currency} $amountFmt  ·  $methodLabel',
-                  style: const TextStyle(
-                    color: TwColors.brightGreen,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                  style: AppTokens.manrope(
+                    size: AppTokens.textLabel,
+                    weight: FontWeight.w700,
+                    color: AppTokens.ink,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppTokens.statTitleGap),
                 Text(
                   item.transactionId.isEmpty
                       ? 'No transaction reference'
                       : item.transactionId,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: TwColors.slate400,
-                    fontSize: 12,
+                  style: AppTokens.dmSans(
+                    size: AppTokens.textCaption,
+                    weight: FontWeight.w400,
+                    color: AppTokens.inkMuted,
                   ),
                 ),
                 if (item.subtitle != null) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: AppTokens.spaceXs),
                   Text(
                     item.subtitle!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: TwColors.slate500,
-                      fontSize: 12,
+                    style: AppTokens.dmSans(
+                      size: AppTokens.textCaption,
+                      weight: FontWeight.w400,
+                      color: AppTokens.inkMuted,
                     ),
                   ),
                 ],
-                const SizedBox(height: 6),
+                const SizedBox(height: AppTokens.statTitleGap),
                 Row(
                   children: [
                     const Icon(
                       Icons.schedule_rounded,
-                      size: 13,
-                      color: TwColors.slate500,
+                      size: AppTokens.componentIconSm,
+                      color: AppTokens.inkMuted,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: AppTokens.spaceXs),
                     Expanded(
                       child: Text(
                         item.timeLabel,
-                        style: const TextStyle(
-                          color: TwColors.slate500,
-                          fontSize: 12,
+                        style: AppTokens.dmSans(
+                          size: AppTokens.textCaption,
+                          weight: FontWeight.w400,
+                          color: AppTokens.inkMuted,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (item.verifiedByName != null) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppTokens.spaceSm),
                       Flexible(
                         child: Text(
                           'by ${item.verifiedByName}',
-                          style: const TextStyle(
-                            color: TwColors.slate500,
-                            fontSize: 12,
+                          style: AppTokens.dmSans(
+                            size: AppTokens.textCaption,
+                            weight: FontWeight.w400,
+                            color: AppTokens.inkMuted,
                           ),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
@@ -473,62 +492,53 @@ class _StateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTokens.space2xl),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: TwColors.slate700),
+        color: AppTokens.transparent,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
+              color: AppTokens.ice100,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: iconColor, size: 36),
+            child: Icon(icon, color: iconColor, size: AppTokens.optionIconSize),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceLg),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
+            style: AppTokens.manrope(
+              size: AppTokens.textBodyLarge,
+              weight: FontWeight.w800,
+              color: AppTokens.ink,
+              letterSpacing: AppTokens.trackingTight,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTokens.spaceSm),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: TwColors.slate400,
-              fontSize: 14,
-              height: 1.4,
+            style: AppTokens.dmSans(
+              size: AppTokens.textBodySmall,
+              weight: FontWeight.w400,
+              color: AppTokens.inkMuted,
+              height: AppTokens.lineHeightRelaxed,
             ),
           ),
           if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: 18),
-            ElevatedButton(
+            const SizedBox(height: AppTokens.statGap),
+            SvActionButton(
+              label: actionLabel!,
+              tone: SvTone.neutral,
               onPressed: onAction,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: TwColors.brightGreen,
-                foregroundColor: TwColors.slate900,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                actionLabel!,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
             ),
           ],
         ],
@@ -641,8 +651,9 @@ class _HistoryItem {
 
   String get primaryTitle {
     if (senderName != null && senderName!.trim().isNotEmpty) return senderName!;
-    if (receiverName != null && receiverName!.trim().isNotEmpty)
+    if (receiverName != null && receiverName!.trim().isNotEmpty) {
       return receiverName!;
+    }
     return 'Payment verification';
   }
 

@@ -76,11 +76,28 @@ export class PaymentAccountService {
     return digits.slice(-length);
   }
 
+  private async assertBranchInOrganization(
+    organizationId: string,
+    branchId?: string,
+  ) {
+    if (!branchId) return;
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, organizationId },
+    });
+    if (!branch) {
+      throw new BadRequestException(
+        'Branch not found. Please check the branch details.',
+      );
+    }
+  }
+
   // Create a payment account
   async create(organizationId: string, dto: CreatePaymentAccountDto) {
     this.logger.log(
       `[create] Creating payment account for org: ${organizationId}, provider: ${dto.provider}`,
     );
+
+    await this.assertBranchInOrganization(organizationId, dto.branchId);
 
     const suffix = this.deriveSuffix(dto.provider, dto.accountNumber);
 
@@ -215,6 +232,12 @@ export class PaymentAccountService {
     this.logger.log(
       `[update] Updating payment account for org: ${organizationId}, provider: ${provider}`,
     );
+
+    if (dto.branchId) {
+      throw new BadRequestException(
+        'Branch cannot be changed while editing a payment account.',
+      );
+    }
 
     const nextProvider = dto.provider ?? provider;
     const accountNumberChanged = dto.accountNumber !== undefined;

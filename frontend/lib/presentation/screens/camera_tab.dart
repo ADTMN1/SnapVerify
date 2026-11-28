@@ -1,6 +1,3 @@
-import 'package:flutter/foundation.dart';
-
-import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,13 +5,14 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/tailwind.dart';
 import '../../core/utils/ocr_parser.dart';
 import '../../core/utils/toast_service.dart';
 import '../../domain/entities/verification_result.dart';
 import '../../domain/entities/payment_account.dart';
+import '../../theme/app_text.dart';
+import '../../theme/app_tokens.dart';
+import '../../ui/ui.dart';
 import '../providers/payment_provider.dart';
-import '../widgets/sv_loader.dart';
 
 class CameraTab extends ConsumerStatefulWidget {
   const CameraTab({super.key, this.isActive = true});
@@ -85,8 +83,9 @@ class _CameraTabState extends ConsumerState<CameraTab> {
       _cameras = await availableCameras();
       if (_cameras.isEmpty) {
         debugPrint('[CameraTab] No cameras found');
-        if (mounted)
+        if (mounted) {
           setState(() => _initError = 'No camera found on this device');
+        }
         return;
       }
 
@@ -212,18 +211,20 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     return showModalBottomSheet<PaymentProvider>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       builder: (sheetContext) {
         return Container(
           decoration: const BoxDecoration(
-            color: TwColors.primaryBg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            color: AppTokens.ice50,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppTokens.sheetTopRadius),
+            ),
           ),
           padding: EdgeInsets.fromLTRB(
-            24,
-            16,
-            24,
-            24 + MediaQuery.of(sheetContext).padding.bottom,
+            AppTokens.sheetHorizontalPadding,
+            AppTokens.spaceLg,
+            AppTokens.sheetHorizontalPadding,
+            AppTokens.space2xl + MediaQuery.of(sheetContext).padding.bottom,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -231,81 +232,56 @@ class _CameraTabState extends ConsumerState<CameraTab> {
             children: [
               Center(
                 child: Container(
-                  width: 40,
-                  height: 4,
+                  width: AppTokens.logoIconSize,
+                  height: AppTokens.handleHeight,
                   decoration: BoxDecoration(
-                    color: TwColors.slate600,
-                    borderRadius: BorderRadius.circular(2),
+                    color: AppTokens.border,
+                    borderRadius: BorderRadius.circular(
+                      AppTokens.progressStroke,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
-              Text(
-                'Select Payment Provider',
-                style: TextStyle(
-                  color: TwColors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
+              const SizedBox(height: AppTokens.space2xl),
+              Text('Select Payment Provider', style: AppText.authTitle),
+              const SizedBox(height: AppTokens.titleLanguageGap),
               Text(
                 'We could not confidently detect the provider from this receipt. '
                 'Choose the provider shown on the receipt.',
-                style: TextStyle(
-                  color: TwColors.white.withValues(alpha: 0.55),
-                  fontSize: 13,
-                  height: 1.4,
-                ),
+                style: AppText.authSubtitle,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTokens.spaceLg),
               ...PaymentProvider.values.map(
                 (provider) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Material(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(12),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () => Navigator.of(sheetContext).pop(provider),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 14,
+                  padding: const EdgeInsets.only(bottom: AppTokens.spaceSm),
+                  child: SvSurfaceCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTokens.badgePaddingH,
+                      vertical: AppTokens.badgePaddingH,
+                    ),
+                    onTap: () => Navigator.of(sheetContext).pop(provider),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.account_balance_rounded,
+                          color: AppTokens.inkMuted,
+                          size: AppTokens.formPrefixIconSize,
                         ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: TwColors.slate700,
-                            width: 1,
+                        const SizedBox(width: AppTokens.spaceMd),
+                        Expanded(
+                          child: Text(
+                            provider.label,
+                            style: AppText.labelLarge.copyWith(
+                              color: AppTokens.ink,
+                            ),
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.account_balance_rounded,
-                              color: TwColors.brightGreen,
-                              size: 22,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                provider.label,
-                                style: TextStyle(
-                                  color: TwColors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: TwColors.slate500,
-                              size: 22,
-                            ),
-                          ],
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppTokens.inkMuted,
+                          size: AppTokens.formPrefixIconSize,
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
@@ -320,72 +296,42 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   void _showInvalidReceiptDialog() {
     showDialog(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.85),
+      barrierColor: AppTokens.inkOverlay14,
       builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: TwColors.slate700),
-          ),
+        backgroundColor: AppTokens.transparent,
+        child: SvSurfaceCard(
+          padding: const EdgeInsets.all(AppTokens.space2xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: TwColors.red500.withValues(alpha: 0.1),
+                padding: const EdgeInsets.all(AppTokens.inputPaddingH),
+                decoration: const BoxDecoration(
+                  color: AppTokens.surfaceLight,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.receipt_long_rounded,
-                  color: TwColors.red500,
-                  size: 40,
+                  color: AppTokens.inkMuted,
+                  size: AppTokens.logoIconSize,
                 ),
               ),
-              const SizedBox(height: 18),
-              const Text(
-                'Invalid Receipt',
-                style: TextStyle(
-                  color: TwColors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
+              const SizedBox(height: AppTokens.inputPaddingH),
+              const SvSectionLabel('Invalid Receipt'),
+              const SizedBox(height: AppTokens.spaceSm),
+              Text(
                 "We couldn't find a valid transaction in the captured image. "
                 'Please make sure the receipt is clear and contains a '
                 'transaction reference number.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: TwColors.slate400,
-                  fontSize: 13,
-                  height: 1.4,
-                ),
+                style: AppText.authSubtitle,
               ),
-              const SizedBox(height: 20),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  width: double.infinity,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: TwColors.brightGreen,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Text(
-                    'Try Again',
-                    style: TextStyle(
-                      color: TwColors.slate900,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
+              const SizedBox(height: AppTokens.spaceXl),
+              SvActionButton(
+                label: 'Try Again',
+                icon: Icons.refresh_rounded,
+                tone: SvTone.neutral,
+                onPressed: () => Navigator.pop(context),
               ),
             ],
           ),
@@ -398,7 +344,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       isDismissible: true,
       enableDrag: true,
       builder: (_) => ProviderScope(
@@ -411,7 +357,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppTokens.ice50,
       body: _initError != null
           ? _ErrorView(
               message: _initError!,
@@ -419,18 +365,23 @@ class _CameraTabState extends ConsumerState<CameraTab> {
               onOpenSettings: _openCameraSettings,
             )
           : !_initialized
-          ? const Center(child: SvLoader.page())
+          ? const Column(
+              children: [
+                _CameraHeader(),
+                Expanded(child: Center(child: SvLoader.page())),
+              ],
+            )
           : _buildScanner(),
     );
   }
 
   Widget _buildScanner() {
     final ctrl = _controller!;
-    final size = MediaQuery.of(context).size;
 
     return Stack(
+      fit: StackFit.expand,
       children: [
-        SizedBox.expand(
+        Positioned.fill(
           child: GestureDetector(
             onTap: _processing ? null : _captureAndProcess,
             child: FittedBox(
@@ -443,153 +394,147 @@ class _CameraTabState extends ConsumerState<CameraTab> {
             ),
           ),
         ),
-
         if (_processing)
           Positioned.fill(
             child: Container(
-              color: Colors.black.withValues(alpha: 0.6),
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SvLoader.page(),
-                    SizedBox(height: 16),
-                    Text(
-                      'Reading receipt…',
-                      style: TextStyle(color: TwColors.white, fontSize: 14),
-                    ),
-                  ],
+              color: AppTokens.obsidian950.withValues(
+                alpha: AppTokens.alphaTertiary,
+              ),
+              child: Center(
+                child: SvSurfaceCard(
+                  color: AppTokens.ice50,
+                  borderColor: AppTokens.ice200,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.space2xl,
+                    vertical: AppTokens.spaceLg,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SvLoader.page(color: AppTokens.inkMuted),
+                      const SizedBox(height: AppTokens.spaceLg),
+                      Text('Reading receipt…', style: AppText.authSubtitle),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-
-        SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [TwColors.brightGreen, TwColors.lime400],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(
-                            Icons.verified_rounded,
-                            color: Colors.black,
-                            size: 18,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'SnapVerify',
-                              style: TextStyle(
-                                color: TwColors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                            Text(
-                              'Capture receipt to verify',
-                              style: TextStyle(
-                                color: TwColors.slate400,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    GestureDetector(
-                      onTap: () async {
-                        await ctrl.setFlashMode(
-                          _torchOn ? FlashMode.off : FlashMode.torch,
-                        );
-                        setState(() => _torchOn = !_torchOn);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: _torchOn
-                              ? TwColors.brightGreen.withOpacity(0.2)
-                              : Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _torchOn
-                                ? TwColors.brightGreen.withOpacity(0.5)
-                                : Colors.white.withOpacity(0.15),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(
-                          _torchOn
-                              ? Icons.flashlight_on_rounded
-                              : Icons.flashlight_off_rounded,
-                          color: _torchOn
-                              ? TwColors.brightGreen
-                              : TwColors.white,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Spacer(),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 32,
-                ),
-                child: GestureDetector(
-                  onTap: _processing ? null : _captureAndProcess,
-                  child: Container(
-                    width: 70,
-                    height: 70,
-                    decoration: BoxDecoration(
-                      color: _processing
-                          ? TwColors.slate700
-                          : TwColors.brightGreen,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _processing
-                            ? TwColors.slate600
-                            : TwColors.lime400,
-                        width: 3,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.camera_alt,
-                      color: _processing ? TwColors.slate400 : Colors.black,
-                      size: 30,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _CameraHeader(
+            torchOn: _torchOn,
+            onTorchTap: () async {
+              await ctrl.setFlashMode(
+                _torchOn ? FlashMode.off : FlashMode.torch,
+              );
+              setState(() => _torchOn = !_torchOn);
+            },
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _CapturePanel(
+            processing: _processing,
+            onCapture: _captureAndProcess,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CameraHeader extends StatelessWidget {
+  final bool torchOn;
+  final VoidCallback? onTorchTap;
+
+  const _CameraHeader({this.torchOn = false, this.onTorchTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SvDashboardHeader(
+      title: 'Scan',
+      actions: onTorchTap == null
+          ? const []
+          : [
+              SvDashboardHeaderButton(
+                icon: torchOn
+                    ? Icons.flash_on_rounded
+                    : Icons.flash_off_rounded,
+                tooltip: torchOn ? 'Turn flash off' : 'Turn flash on',
+                onTap: onTorchTap!,
+                selected: torchOn,
+                iconSize: AppTokens.componentIconLg,
+              ),
+            ],
+    );
+  }
+}
+
+class _CapturePanel extends StatelessWidget {
+  final bool processing;
+  final VoidCallback onCapture;
+
+  const _CapturePanel({required this.processing, required this.onCapture});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: AppTokens.space2xl + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Center(
+        child: _CameraCaptureButton(
+          processing: processing,
+          onTap: processing ? null : onCapture,
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraCaptureButton extends StatelessWidget {
+  final bool processing;
+  final VoidCallback? onTap;
+
+  const _CameraCaptureButton({required this.processing, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: AppTokens.navCameraSize,
+        height: AppTokens.navCameraSize,
+        decoration: BoxDecoration(
+          color: processing
+              ? AppTokens.cameraActionDisabledBackground
+              : AppTokens.cameraActionBackground,
+          shape: BoxShape.circle,
+          boxShadow: processing
+              ? const []
+              : [
+                  BoxShadow(
+                    color: AppTokens.cameraActionBackground.withValues(
+                      alpha: AppTokens.navGlowAlpha,
+                    ),
+                    blurRadius: AppTokens.shadowBlurMedium,
+                    spreadRadius: AppTokens.shadowSpreadMedium,
+                  ),
+                ],
+        ),
+        child: Icon(
+          Icons.camera_alt_rounded,
+          color: processing
+              ? AppTokens.cameraActionDisabledForeground
+              : AppTokens.cameraActionForeground,
+          size: AppTokens.navIconSize,
+        ),
+      ),
     );
   }
 }
@@ -607,59 +552,75 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: TwColors.red500.withOpacity(0.1),
-                shape: BoxShape.circle,
-                border: Border.all(color: TwColors.red500.withOpacity(0.3)),
-              ),
-              child: const Icon(
-                Icons.no_photography_rounded,
-                color: TwColors.red500,
-                size: 40,
+    return Column(
+      children: [
+        const _CameraHeader(),
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: AppTokens.ice50,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(AppTokens.sheetTopRadius),
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              message,
-              style: TextStyle(
-                color: TwColors.white.withOpacity(0.7),
-                fontSize: 14,
-              ),
-              textAlign: TextAlign.center,
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.spaceLg,
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.space2xl + MediaQuery.of(context).padding.bottom,
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: onRetry,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: TwColors.brightGreen,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: AppTokens.formMaxWidth,
+                ),
+                child: SvSurfaceCard(
+                  padding: const EdgeInsets.all(AppTokens.space2xl),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SvSectionLabel('Camera Unavailable'),
+                      const SizedBox(height: AppTokens.spaceLg),
+                      Container(
+                        padding: const EdgeInsets.all(AppTokens.spaceLg),
+                        decoration: const BoxDecoration(
+                          color: AppTokens.surfaceLight,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.no_photography_rounded,
+                          color: AppTokens.inkMuted,
+                          size: AppTokens.logoIconSize,
+                        ),
+                      ),
+                      const SizedBox(height: AppTokens.spaceLg),
+                      Text(
+                        message,
+                        style: AppText.authSubtitle,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppTokens.spaceXl),
+                      SvActionButton(
+                        label: 'Retry',
+                        icon: Icons.refresh_rounded,
+                        tone: SvTone.neutral,
+                        onPressed: onRetry,
+                      ),
+                      const SizedBox(height: AppTokens.spaceSm),
+                      SvActionButton(
+                        label: 'Open Settings',
+                        icon: Icons.settings_rounded,
+                        tone: SvTone.neutral,
+                        onPressed: onOpenSettings,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              child: const Text(
-                'Retry',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
             ),
-            const SizedBox(height: 10),
-            TextButton.icon(
-              onPressed: onOpenSettings,
-              icon: const Icon(Icons.settings_rounded, size: 16),
-              label: const Text('Open Settings'),
-              style: TextButton.styleFrom(foregroundColor: TwColors.slate300),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -677,6 +638,7 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(paymentProvider);
+    final result = state.result;
     final isLoading = state.status == PaymentVerifyStatus.loading;
 
     Color statusColor;
@@ -687,137 +649,137 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
     if (isLoading) {
       // Keep the loading state on the app's accent color (brightGreen) to
       // match the spinner and the rest of the app's active states.
-      statusColor = TwColors.brightGreen;
+      statusColor = AppTokens.accent;
       statusIcon = Icons.hourglass_top_rounded;
       statusTitle = 'Verifying Transaction...';
       statusSubtitle = 'Checking with payment provider...';
     } else if (state.status == PaymentVerifyStatus.error) {
-      statusColor = TwColors.amber500;
+      statusColor = AppTokens.warning;
       statusIcon = Icons.cloud_off_rounded;
       statusTitle = 'Verification Unavailable';
       statusSubtitle =
           state.errorMessage ??
           'Verification service is temporarily unavailable. Please try again in a few minutes.';
-    } else if (state.result != null) {
-      switch (state.result!.status) {
+    } else if (result != null) {
+      switch (result.status) {
         case VerificationStatus.verified:
-          statusColor = TwColors.brightGreen;
+          statusColor = AppTokens.accent;
           statusIcon = Icons.check_circle_rounded;
-          statusTitle = 'Verified ✅';
-          statusSubtitle = state.result!.message.isNotEmpty
-              ? state.result!.message
+          statusTitle = 'Verified';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
               : 'Payment confirmed';
           break;
         case VerificationStatus.alreadyVerified:
         case VerificationStatus.previouslyVerified:
-          statusColor = TwColors.brightGreen;
+          statusColor = AppTokens.accent;
           statusIcon = Icons.verified_rounded;
           statusTitle = 'Previously Verified';
-          statusSubtitle = state.result!.message.isNotEmpty
-              ? state.result!.message
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
               : 'This receipt was already verified for your business. No new record was created.';
           break;
         case VerificationStatus.providerDuplicate:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.warning_amber_rounded;
           statusTitle = 'Provider Duplicate';
-          statusSubtitle = state.result!.message.isNotEmpty
-              ? state.result!.message
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
               : 'The provider recognizes this receipt, but no matching payment record exists for your business.';
           break;
         case VerificationStatus.identityMismatch:
-          statusColor = TwColors.red500;
+          statusColor = AppTokens.error;
           statusIcon = Icons.cancel_rounded;
           statusTitle = 'Details Do Not Match';
-          statusSubtitle = state.result!.message.isNotEmpty
-              ? state.result!.message
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
               : 'The submitted details differ from the original verified payment.';
           break;
         case VerificationStatus.recheckFailed:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.cloud_off_rounded;
           statusTitle = 'Recheck Inconclusive';
-          statusSubtitle = state.result!.message.isNotEmpty
-              ? state.result!.message
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
               : 'The previous payment could not be re-confirmed. Please try again.';
           break;
         case VerificationStatus.needsReview:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.rate_review_rounded;
           statusTitle = 'Needs Review';
-          statusSubtitle = state.result!.message.isNotEmpty
-              ? state.result!.message
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
               : 'This receipt needs manual review. Contact support with your receipt.';
           break;
         case VerificationStatus.failed:
-          statusColor = TwColors.red500;
+          statusColor = AppTokens.error;
           statusIcon = Icons.cancel_rounded;
           statusTitle = 'Verification Failed';
-          statusSubtitle =
-              state.result!.message ??
-              'Unable to verify payment. Please check the details and try again.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'Unable to verify payment. Please check the details and try again.';
           break;
         case VerificationStatus.providerUnavailable:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.cloud_off_rounded;
           statusTitle = 'Provider Unavailable';
-          statusSubtitle =
-              state.result!.message ??
-              'Verification service is temporarily unavailable. Please try again in a few minutes.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'Verification service is temporarily unavailable. Please try again in a few minutes.';
           break;
         case VerificationStatus.quotaExhausted:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.report_problem_rounded;
           statusTitle = 'Verification Quota Exhausted';
-          statusSubtitle =
-              state.result!.message ??
-              'Verification quota exhausted. Please contact your administrator.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'Verification quota exhausted. Please contact your administrator.';
           break;
         case VerificationStatus.providerConfigError:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.settings_suggest_rounded;
           statusTitle = 'Verification Misconfigured';
-          statusSubtitle =
-              state.result!.message ??
-              'Payment verification is temporarily misconfigured. Please contact your administrator.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'Payment verification is temporarily misconfigured. Please contact your administrator.';
           break;
         case VerificationStatus.paymentAccountNotConfigured:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.account_balance_wallet_outlined;
           statusTitle = 'Payment Account Not Configured';
-          statusSubtitle =
-              state.result!.message ??
-              'No receiving account is configured for this payment provider. Add it in settings, or verify against your registered bank account.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'No receiving account is configured for this payment provider. Add it in settings, or verify against your registered bank account.';
           break;
         case VerificationStatus.providerUndetected:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.help_outline_rounded;
           statusTitle = 'Provider Not Detected';
-          statusSubtitle =
-              state.result!.message ??
-              'Could not determine the payment provider from this receipt. Please select the provider and try again.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'Could not determine the payment provider from this receipt. Please select the provider and try again.';
           break;
         case VerificationStatus.unsupportedProvider:
-          statusColor = TwColors.amber500;
+          statusColor = AppTokens.warning;
           statusIcon = Icons.block_rounded;
           statusTitle = 'Unsupported Provider';
-          statusSubtitle =
-              state.result!.message ??
-              'The selected payment provider is not supported.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'The selected payment provider is not supported.';
           break;
         case VerificationStatus.pending:
           // Unknown/unrecognized backend verdicts land here too — they must
           // never be presented as a definitive "Invalid Transaction".
-          statusColor = TwColors.sky500;
+          statusColor = AppTokens.info;
           statusIcon = Icons.hourglass_top_rounded;
           statusTitle = 'Pending Verification';
-          statusSubtitle =
-              state.result!.message ??
-              'Verification result could not be determined. Please check the history tab.';
+          statusSubtitle = result.message.isNotEmpty
+              ? result.message
+              : 'Verification result could not be determined. Please check the history tab.';
           break;
       }
     } else {
-      statusColor = TwColors.slate500;
+      statusColor = AppTokens.inkMuted;
       statusIcon = Icons.info_rounded;
       statusTitle = 'No Result';
       statusSubtitle = '';
@@ -825,118 +787,115 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: TwColors.primaryBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        color: AppTokens.ice50,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.sheetTopRadius),
+        ),
       ),
       padding: EdgeInsets.fromLTRB(
-        24,
-        16,
-        24,
-        24 + MediaQuery.of(context).padding.bottom,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.spaceLg,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.space2xl + MediaQuery.of(context).padding.bottom,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40,
-            height: 4,
+            width: AppTokens.logoIconSize,
+            height: AppTokens.handleHeight,
             decoration: BoxDecoration(
-              color: TwColors.slate600,
-              borderRadius: BorderRadius.circular(2),
+              color: AppTokens.border,
+              borderRadius: BorderRadius.circular(AppTokens.progressStroke),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: AppTokens.space2xl + AppTokens.spaceXs),
 
           if (isLoading)
-            const SvLoader.large()
+            const SvLoader.large(color: AppTokens.inkMuted)
+          else if (result != null &&
+              (result.status == VerificationStatus.verified ||
+                  result.status == VerificationStatus.alreadyVerified ||
+                  result.status == VerificationStatus.previouslyVerified))
+            const VerifiedIcon(size: AppTokens.patternTileWidth)
           else
             Container(
-              width: 74,
-              height: 74,
+              width: AppTokens.patternTileWidth,
+              height: AppTokens.patternTileWidth,
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
+                color: AppTokens.ice100,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: statusColor.withOpacity(0.35),
-                  width: 2,
+                  color: statusColor.withValues(alpha: AppTokens.alphaLow),
+                  width: AppTokens.progressStroke,
                 ),
               ),
-              child: Icon(statusIcon, color: statusColor, size: 36),
+              child: Icon(
+                statusIcon,
+                color: AppTokens.ink,
+                size: AppTokens.handleWidth,
+              ),
             ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceLg),
           Text(
             statusTitle,
-            style: TextStyle(
-              color: statusColor,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
+            style: AppText.authTitle,
+            textAlign: TextAlign.center,
           ),
           if (statusSubtitle.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: AppTokens.titleLanguageGap),
               child: Text(
                 statusSubtitle,
-                style: TextStyle(
-                  color: TwColors.white.withOpacity(0.55),
-                  fontSize: 13,
-                ),
+                style: AppText.authSubtitle,
                 textAlign: TextAlign.center,
               ),
             ),
 
-          if (state.result != null &&
-              (state.result!.transactionId.isNotEmpty ||
-                  state.result!.paymentDate != null ||
-                  state.result!.verifiedAt != null))
+          if (result != null &&
+              (result.transactionId.isNotEmpty ||
+                  result.paymentDate != null ||
+                  result.verifiedAt != null))
             Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: TwColors.slate700, width: 1),
-                ),
+              padding: const EdgeInsets.only(top: AppTokens.spaceXl),
+              child: SvSurfaceCard(
+                padding: const EdgeInsets.all(AppTokens.spaceLg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _DetailRow(
                       label: 'Reference',
-                      value:
-                          state.result!.reference ??
-                          state.result!.transactionId,
+                      value: result.reference ?? result.transactionId,
                     ),
-                    if (state.result!.amount > 0)
+                    if (result.amount > 0)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
                         child: _DetailRow(
                           label: 'Verified Amount',
                           value:
-                              '${state.result!.currency} ${state.result!.amount.toStringAsFixed(2)}',
-                          valueColor: TwColors.brightGreen,
+                              '${result.currency} ${result.amount.toStringAsFixed(2)}',
+                          valueColor: AppTokens.ink,
                         ),
                       ),
-                    if (state.result!.paymentDate != null)
+                    if (result.paymentDate != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
                         child: _DetailRow(
                           label: 'Payment Date',
                           value: DateFormat(
                             'MMM d, yyyy · HH:mm',
-                          ).format(state.result!.paymentDate!.toLocal()),
+                          ).format(result.paymentDate!.toLocal()),
                         ),
                       ),
-                    if (state.result!.verifiedAt != null)
+                    if (result.verifiedAt != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
                         child: _DetailRow(
                           label: 'Verified On',
                           value: DateFormat(
                             'MMM d, yyyy · HH:mm',
-                          ).format(state.result!.verifiedAt!.toLocal()),
+                          ).format(result.verifiedAt!.toLocal()),
                         ),
                       ),
                   ],
@@ -944,27 +903,14 @@ class _VerifyResultSheetState extends ConsumerState<_VerifyResultSheet> {
               ),
             ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: AppTokens.spaceXl),
 
           if (!isLoading)
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: TwColors.brightGreen,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'Scan Again',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ),
+            SvActionButton(
+              label: 'Scan Again',
+              icon: Icons.restart_alt_rounded,
+              tone: SvTone.neutral,
+              onPressed: () => Navigator.pop(context),
             ),
         ],
       ),
@@ -984,22 +930,14 @@ class _DetailRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: TwColors.white.withOpacity(0.45),
-            fontSize: 13,
-          ),
-        ),
+        Text(label, style: AppText.authFieldLabel),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: valueColor ?? TwColors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+            style: AppText.labelLarge.copyWith(
+              color: valueColor ?? AppTokens.ink,
             ),
           ),
         ),

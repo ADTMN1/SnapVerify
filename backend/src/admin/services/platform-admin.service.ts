@@ -238,6 +238,10 @@ export class PlatformAdminService {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('User not found');
 
+    if (data.status && data.status !== 'active') {
+      await this.prisma.refreshToken.deleteMany({ where: { userId: id } });
+    }
+
     return this.prisma.user.update({
       where: { id },
       data: {

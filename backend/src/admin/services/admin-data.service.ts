@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { PaymentProvider } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -17,7 +17,9 @@ export class AdminDataService {
       const any = await this.prisma.userBusinessAssignment.findFirst({
         where: { userId },
       });
-      if (!any) throw new Error('No organization found for this user');
+      if (!any) {
+        throw new ForbiddenException('No organization found for this user');
+      }
       return any.organizationId;
     }
     return assignment.organizationId;

@@ -29,16 +29,18 @@ class AuthRemoteDatasource {
     required bool rememberMe,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'identifier': identifier,
-          'password': password,
-          'rememberMe': rememberMe,
-          if (organizationId != null) 'organizationId': organizationId,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'identifier': identifier,
+              'password': password,
+              'rememberMe': rememberMe,
+              if (organizationId != null) 'organizationId': organizationId,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'loginWithPassword');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -60,20 +62,22 @@ class AuthRemoteDatasource {
     String? country,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': name,
-          'fullName': fullName,
-          'email': email,
-          'password': password,
-          'confirmPassword': confirmPassword,
-          if (type != null) 'type': type,
-          if (city != null) 'city': city,
-          if (country != null) 'country': country,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': name,
+              'fullName': fullName,
+              'email': email,
+              'password': password,
+              'confirmPassword': confirmPassword,
+              if (type != null) 'type': type,
+              if (city != null) 'city': city,
+              if (country != null) 'country': country,
+            }),
+          )
+          .timeout(_timeout);
       // register returns 201
       _throwIfError(response, 'register', expectedStatus: 201);
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -90,14 +94,13 @@ class AuthRemoteDatasource {
     required String otpCode,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/verify-email'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'otpCode': otpCode,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/verify-email'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'otpCode': otpCode}),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'verifyEmail');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -110,11 +113,13 @@ class AuthRemoteDatasource {
 
   Future<Map<String, dynamic>> resendVerification(String email) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/resend-verification'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email}),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/resend-verification'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email}),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'resendVerification');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } on Exception catch (e) {
@@ -129,11 +134,13 @@ class AuthRemoteDatasource {
 
   Future<void> forgotPassword(String email) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/forgot-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email}),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/forgot-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email}),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'forgotPassword');
     } on Exception catch (e) {
       rethrow;
@@ -146,11 +153,13 @@ class AuthRemoteDatasource {
 
   Future<Map<String, dynamic>> refreshToken(String refreshToken) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/refresh-token'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refreshToken': refreshToken}),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/refresh-token'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refreshToken': refreshToken}),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'refreshToken');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -181,20 +190,53 @@ class AuthRemoteDatasource {
     String newPassword,
   ) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/reset-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'otpCode': otpCode,
-          'newPassword': newPassword,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/reset-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': email,
+              'otpCode': otpCode,
+              'newPassword': newPassword,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'resetPassword');
     } on Exception catch (e) {
       rethrow;
     } catch (e) {
       _handleConnectionError(e, 'resetPassword');
+    }
+  }
+
+  // ── Authenticated password change ────────────────────────────────────────
+
+  Future<Map<String, dynamic>> changePassword(
+    String accessToken, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/change-password'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'currentPassword': currentPassword,
+              'newPassword': newPassword,
+            }),
+          )
+          .timeout(_timeout);
+      _throwIfError(response, 'changePassword');
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } on Exception catch (e) {
+      rethrow;
+    } catch (e) {
+      _handleConnectionError(e, 'changePassword');
+      rethrow;
     }
   }
 
@@ -204,14 +246,16 @@ class AuthRemoteDatasource {
   // deep link. Legacy phone lookup still supported. Does NOT require auth.
   Future<List<dynamic>> checkInvitation(String token, {String? phone}) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/check-invitation'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'token': token,
-          if (phone != null) 'phone': phone,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/check-invitation'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'token': token,
+              if (phone != null) 'phone': phone,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'checkInvitation');
       return jsonDecode(response.body) as List<dynamic>;
     } on Exception catch (e) {
@@ -225,13 +269,15 @@ class AuthRemoteDatasource {
   // Authenticated-only legacy lookup. Kept for owners viewing staff.
   Future<List<dynamic>> getInvitations(String phone, String accessToken) async {
     try {
-      final response = await client.get(
-        Uri.parse('${AppConstants.baseUrl}/auth/invitations/$phone'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .get(
+            Uri.parse('${AppConstants.baseUrl}/auth/invitations/$phone'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'getInvitations');
       return jsonDecode(response.body) as List<dynamic>;
     } catch (e) {
@@ -247,14 +293,16 @@ class AuthRemoteDatasource {
     String? token,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/staff-activation-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          if (token != null) 'token': token,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/staff-activation-otp'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': email,
+              if (token != null) 'token': token,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'staffActivationOtp');
     } on Exception catch (e) {
       rethrow;
@@ -271,15 +319,17 @@ class AuthRemoteDatasource {
     required String confirmPassword,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/activate-invitation'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'token': token,
-          'password': password,
-          'confirmPassword': confirmPassword,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/activate-invitation'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'token': token,
+              'password': password,
+              'confirmPassword': confirmPassword,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'activateInvitation');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } on Exception catch (e) {
@@ -294,13 +344,15 @@ class AuthRemoteDatasource {
 
   Future<Map<String, dynamic>> getMe(String accessToken) async {
     try {
-      final response = await client.get(
-        Uri.parse('${AppConstants.baseUrl}/auth/me'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .get(
+            Uri.parse('${AppConstants.baseUrl}/auth/me'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'getMe');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -311,26 +363,29 @@ class AuthRemoteDatasource {
 
   // ── Staff Management ──────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> addStaff(String accessToken, {
+  Future<Map<String, dynamic>> addStaff(
+    String accessToken, {
     required String fullName,
     required String username,
     required String role,
     String? branchId,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/staff'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({
-          'fullName': fullName,
-          'username': username,
-          'role': role.toUpperCase(),
-          if (branchId != null) 'branchId': branchId,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/staff'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'fullName': fullName,
+              'username': username,
+              'role': role.toUpperCase(),
+              if (branchId != null) 'branchId': branchId,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'addStaff', expectedStatus: 201);
       return jsonDecode(response.body) as Map<String, dynamic>;
     } on Exception catch (e) {
@@ -345,13 +400,15 @@ class AuthRemoteDatasource {
 
   Future<List<dynamic>> listInvitations(String accessToken) async {
     try {
-      final response = await client.get(
-        Uri.parse('${AppConstants.baseUrl}/auth/invitations'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .get(
+            Uri.parse('${AppConstants.baseUrl}/auth/invitations'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'listInvitations');
       return jsonDecode(response.body) as List<dynamic>;
     } on Exception catch (e) {
@@ -367,13 +424,17 @@ class AuthRemoteDatasource {
     String invitationId,
   ) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/invitations/$invitationId/revoke'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse(
+              '${AppConstants.baseUrl}/auth/invitations/$invitationId/revoke',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'revokeInvitation');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } on Exception catch (e) {
@@ -389,13 +450,17 @@ class AuthRemoteDatasource {
     String invitationId,
   ) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/invitations/$invitationId/regenerate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse(
+              '${AppConstants.baseUrl}/auth/invitations/$invitationId/regenerate',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'regenerateInvitation');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } on Exception catch (e) {
@@ -409,13 +474,15 @@ class AuthRemoteDatasource {
   Future<List<dynamic>> getStaff(String accessToken) async {
     try {
       debugPrint('[AuthDS] getStaff → ${AppConstants.baseUrl}/auth/staff');
-      final response = await client.get(
-        Uri.parse('${AppConstants.baseUrl}/auth/staff'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .get(
+            Uri.parse('${AppConstants.baseUrl}/auth/staff'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       debugPrint('[AuthDS] getStaff response: ${response.statusCode}');
       _throwIfError(response, 'getStaff');
       return jsonDecode(response.body) as List<dynamic>;
@@ -428,37 +495,43 @@ class AuthRemoteDatasource {
 
   Future<void> removeStaff(String accessToken, String staffId) async {
     try {
-      final response = await client.delete(
-        Uri.parse('${AppConstants.baseUrl}/auth/staff/$staffId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .delete(
+            Uri.parse('${AppConstants.baseUrl}/auth/staff/$staffId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'removeStaff');
     } catch (e) {
       _handleConnectionError(e, 'removeStaff');
     }
   }
 
-  Future<Map<String, dynamic>> updateStaff(String accessToken, String staffId, {
+  Future<Map<String, dynamic>> updateStaff(
+    String accessToken,
+    String staffId, {
     required String fullName,
     required String role,
     String? branchId,
   }) async {
     try {
-      final response = await client.put(
-        Uri.parse('${AppConstants.baseUrl}/auth/staff/$staffId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({
-          'fullName': fullName,
-          'role': role.toUpperCase(),
-          if (branchId != null) 'branchId': branchId,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .put(
+            Uri.parse('${AppConstants.baseUrl}/auth/staff/$staffId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'fullName': fullName,
+              'role': role.toUpperCase(),
+              if (branchId != null) 'branchId': branchId,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'updateStaff');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -469,24 +542,27 @@ class AuthRemoteDatasource {
 
   // ── Branch Management ─────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> addBranch(String accessToken, {
+  Future<Map<String, dynamic>> addBranch(
+    String accessToken, {
     required String name,
     String? phone,
     required String address,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/branches'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({
-          'name': name,
-          if (phone != null) 'phone': phone,
-          'address': address,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/branches'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'name': name,
+              if (phone != null) 'phone': phone,
+              'address': address,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'addBranch', expectedStatus: 201);
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -497,13 +573,15 @@ class AuthRemoteDatasource {
 
   Future<List<dynamic>> getBranches(String accessToken) async {
     try {
-      final response = await client.get(
-        Uri.parse('${AppConstants.baseUrl}/branches'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .get(
+            Uri.parse('${AppConstants.baseUrl}/branches'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'getBranches');
       return jsonDecode(response.body) as List<dynamic>;
     } catch (e) {
@@ -514,37 +592,43 @@ class AuthRemoteDatasource {
 
   Future<void> removeBranch(String accessToken, String branchId) async {
     try {
-      final response = await client.delete(
-        Uri.parse('${AppConstants.baseUrl}/branches/$branchId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .delete(
+            Uri.parse('${AppConstants.baseUrl}/branches/$branchId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'removeBranch');
     } catch (e) {
       _handleConnectionError(e, 'removeBranch');
     }
   }
 
-  Future<Map<String, dynamic>> updateBranch(String accessToken, String branchId, {
+  Future<Map<String, dynamic>> updateBranch(
+    String accessToken,
+    String branchId, {
     required String name,
     String? phone,
     required String address,
   }) async {
     try {
-      final response = await client.put(
-        Uri.parse('${AppConstants.baseUrl}/branches/$branchId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({
-          'name': name,
-          if (phone != null) 'phone': phone,
-          'address': address,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .put(
+            Uri.parse('${AppConstants.baseUrl}/branches/$branchId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'name': name,
+              if (phone != null) 'phone': phone,
+              'address': address,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'updateBranch');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -559,13 +643,17 @@ class AuthRemoteDatasource {
     String accessToken,
   ) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/business-selection-challenge'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse(
+              '${AppConstants.baseUrl}/auth/business-selection-challenge',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'getBusinessSelectionChallenge');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -580,15 +668,17 @@ class AuthRemoteDatasource {
     required bool rememberMe,
   }) async {
     try {
-      final response = await client.post(
-        Uri.parse('${AppConstants.baseUrl}/auth/select-business'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'selectionToken': selectionToken,
-          'organizationId': organizationId,
-          'rememberMe': rememberMe,
-        }),
-      ).timeout(_timeout);
+      final response = await client
+          .post(
+            Uri.parse('${AppConstants.baseUrl}/auth/select-business'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'selectionToken': selectionToken,
+              'organizationId': organizationId,
+              'rememberMe': rememberMe,
+            }),
+          )
+          .timeout(_timeout);
       _throwIfError(response, 'selectBusiness');
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -609,18 +699,23 @@ class AuthRemoteDatasource {
     debugPrint('[AuthDS] $method connection error: $e');
 
     String message;
-    if (e.toString().contains('Connection closed before full header was received')) {
-      message = 'Connection lost. Please check your internet connection and try again.';
+    if (e.toString().contains(
+      'Connection closed before full header was received',
+    )) {
+      message =
+          'Connection lost. Please check your internet connection and try again.';
     } else if (e.toString().contains('Connection refused')) {
-      message = 'Unable to connect to server. Please check your internet connection.';
+      message =
+          'Unable to connect to server. Please check your internet connection.';
     } else if (e.toString().contains('timeout')) {
       message = 'Request timed out. Please check your network connection.';
     } else if (e.toString().contains('No route to host')) {
-      message = 'Unable to reach server. Please check your internet connection.';
+      message =
+          'Unable to reach server. Please check your internet connection.';
     } else {
       message = 'Connection error. Please check your internet and try again.';
     }
-    
+
     throw Exception(message);
   }
 

@@ -27,6 +27,7 @@ export default function AuditLogsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,17 +35,44 @@ export default function AuditLogsPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const res = await adminDataApi.auditLogs({ page, limit: 50, action: actionFilter || undefined, search: search || undefined });
+      const res = await adminDataApi.auditLogs({ page, limit: 50, action: actionFilter || undefined, search: debouncedSearch || undefined });
       setLogs(res.data.data);
       setTotal(res.data.total);
     } catch { setError('Failed to load audit logs'); }
     finally { setLoading(false); }
-  }, [page, actionFilter, search]);
+  }, [page, actionFilter, debouncedSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { const t = setTimeout(() => setPage(1), 400); return () => clearTimeout(t); }, [search]);
 
   const byAction = (action: string) => logs.filter(l => l.action === action).length;
+
+  const exportCsv = () => {
+    const rows = [
+      ['Time', 'User', 'Action', 'IP Address', 'Metadata'],
+      ...logs.map(log => [
+        formatDateTime(log.createdAt),
+        log.user?.fullName ?? 'System',
+        log.action,
+        log.ipAddress ?? '',
+        log.metadata ? JSON.stringify(log.metadata) : '',
+      ]),
+    ];
+    const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `audit-logs-page-${page}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -54,22 +82,22 @@ export default function AuditLogsPage() {
         actions={
           <>
             <Btn variant="secondary" size="sm" onClick={load}><RefreshCw size={14} /></Btn>
-            <Btn variant="secondary" size="sm"><Download size={14} />Export</Btn>
+            <Btn variant="secondary" size="sm" onClick={exportCsv} disabled={logs.length === 0}><Download size={14} />Export page</Btn>
           </>
         }
       />
 
       <div className="flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search by user, action, or IP…" className="flex-1 min-w-48" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by user, action, or IP…" className="flex-1 min-w-48" />
         <Select value={actionFilter} onChange={v => { setActionFilter(v); setPage(1); }} options={ACTION_OPTIONS} placeholder="All Actions" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total Events', value: total, color: '#0ea5e9' },
-          { label: 'Verifications', value: byAction('PAYMENT_VERIFIED') + byAction('PAYMENT_REJECTED'), color: '#B8FF3B' },
-          { label: 'Logins', value: byAction('LOGIN') + byAction('ADMIN_LOGIN'), color: '#a78bfa' },
-          { label: 'Fraud Events', value: byAction('FRAUD_DETECTED'), color: '#ef4444' },
+          { label: 'Verifications (page)', value: byAction('PAYMENT_VERIFIED') + byAction('PAYMENT_REJECTED'), color: '#B8FF3B' },
+          { label: 'Logins (page)', value: byAction('LOGIN') + byAction('ADMIN_LOGIN'), color: '#a78bfa' },
+          { label: 'Fraud Events (page)', value: byAction('FRAUD_DETECTED'), color: '#ef4444' },
         ].map(s => (
           <div key={s.label} className="bg-card rounded-2xl border border-slate-800 p-4">
             <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>

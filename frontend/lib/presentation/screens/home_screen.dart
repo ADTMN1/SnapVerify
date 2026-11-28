@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/tailwind.dart';
 import '../../presentation/providers/auth_provider.dart';
+import '../../theme/app_text.dart';
+import '../../theme/app_tokens.dart';
 import 'home_tab.dart';
 import 'history_tab.dart';
 import 'camera_tab.dart';
@@ -18,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _activeTabIndex = 0;
+  int? _hoveredNavIndex;
   bool _planSheetOpen = false;
 
   @override
@@ -45,7 +47,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     return Scaffold(
-      backgroundColor: TwColors.slate950,
+      backgroundColor: AppTokens.ice50,
       body: SafeArea(
         child: IndexedStack(index: _activeTabIndex, children: children),
       ),
@@ -68,18 +70,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final int accountsIdx = isWaiter ? 2 : 3;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceSm,
+      ),
       decoration: BoxDecoration(
-        color: TwColors.slate900,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        color: AppTokens.ice50,
+        border: const Border(
+          top: BorderSide(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: AppTokens.inkOverlay14,
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           if (!isWaiter) _buildNavItem(0, Icons.home_rounded, 'Home'),
           _buildNavItem(historyIdx, Icons.history_rounded, 'History'),
           _activeTabIndex == cameraIdx
-              ? const SizedBox(width: 48)
+              ? const SizedBox(width: AppTokens.navCameraSize)
               : _buildCameraButton(cameraIdx),
           _buildNavItem(
             accountsIdx,
@@ -107,30 +124,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isActive = _activeTabIndex == index;
-    return GestureDetector(
-      onTap: () => _switchTab(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive
-                ? TwColors.brightGreen
-                : TwColors.white.withOpacity(0.5),
-            size: 28,
+    final isHovered = _hoveredNavIndex == index;
+    final iconColor = isActive ? AppTokens.white : AppTokens.inkMuted;
+    final labelColor = isActive ? AppTokens.ink : AppTokens.inkMuted;
+    final pillColor = isActive
+        ? AppTokens.obsidian950
+        : isHovered
+        ? AppTokens.obsidian800
+        : AppTokens.transparent;
+    return Expanded(
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hoveredNavIndex = index),
+        onExit: (_) => setState(() {
+          if (_hoveredNavIndex == index) _hoveredNavIndex = null;
+        }),
+        child: GestureDetector(
+          onTap: () => _switchTab(index),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: AppTokens.navActivePillWidth,
+                height: AppTokens.navActivePillHeight,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(1),
+                decoration: BoxDecoration(
+                  color: pillColor,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                ),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: AppTokens.navIconSize,
+                ),
+              ),
+              const SizedBox(height: AppTokens.spaceXs),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    (isActive
+                            ? AppText.navLabelActive
+                            : AppText.navLabelInactive)
+                        .copyWith(color: labelColor),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive
-                  ? TwColors.brightGreen
-                  : TwColors.white.withOpacity(0.5),
-              fontSize: 12,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -154,7 +196,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final canOpenCamera = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       useRootNavigator: true,
       isDismissible: true,
       enableDrag: true,
@@ -176,23 +218,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return GestureDetector(
       onTap: () => _handleCameraTap(cameraIdx),
       child: Container(
-        width: 48,
-        height: 48,
+        width: AppTokens.navCameraSize,
+        height: AppTokens.navCameraSize,
         decoration: BoxDecoration(
-          color: TwColors.brightGreen,
+          color: AppTokens.cameraActionBackground,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: TwColors.brightGreen.withOpacity(0.2),
-              blurRadius: 12,
-              spreadRadius: 2,
+              color: AppTokens.cameraActionBackground.withValues(
+                alpha: AppTokens.navGlowAlpha,
+              ),
+              blurRadius: AppTokens.shadowBlurMedium,
+              spreadRadius: AppTokens.shadowSpreadMedium,
             ),
           ],
         ),
         child: Icon(
           Icons.camera_alt_rounded,
-          color: TwColors.slate900,
-          size: 28,
+          color: AppTokens.cameraActionForeground,
+          size: AppTokens.navIconSize,
         ),
       ),
     );

@@ -181,6 +181,7 @@ describe('AuthService — QR staff invitations', () => {
       const result = await service.activateInvitation({
         token: 'tok-abc',
         password: 'Str0ngPass!',
+        confirmPassword: 'Str0ngPass!',
       });
 
       expect(result.message).toMatch(/activated successfully/i);
@@ -216,6 +217,7 @@ describe('AuthService — QR staff invitations', () => {
         service.activateInvitation({
           token: 'tok-abc',
           password: 'Str0ngPass!',
+          confirmPassword: 'Str0ngPass!',
         }),
       ).rejects.toThrow(/expired/i);
     });
@@ -228,6 +230,7 @@ describe('AuthService — QR staff invitations', () => {
         service.activateInvitation({
           token: 'tok-abc',
           password: 'Str0ngPass!',
+          confirmPassword: 'Str0ngPass!',
         }),
       ).rejects.toThrow(/already activated/i);
     });
@@ -240,6 +243,7 @@ describe('AuthService — QR staff invitations', () => {
         service.activateInvitation({
           token: 'tok-abc',
           password: 'Str0ngPass!',
+          confirmPassword: 'Str0ngPass!',
         }),
       ).rejects.toThrow(/revoked/i);
     });
@@ -247,7 +251,11 @@ describe('AuthService — QR staff invitations', () => {
     it('rejects unknown tokens', async () => {
       prisma.invitation.findFirst.mockResolvedValue(null);
       await expect(
-        service.activateInvitation({ token: 'nope', password: 'Str0ngPass!' }),
+        service.activateInvitation({
+          token: 'nope',
+          password: 'Str0ngPass!',
+          confirmPassword: 'Str0ngPass!',
+        }),
       ).rejects.toThrow(/Invalid invitation/i);
     });
 
@@ -260,6 +268,7 @@ describe('AuthService — QR staff invitations', () => {
         service.activateInvitation({
           token: 'tok-abc',
           password: 'Str0ngPass!',
+          confirmPassword: 'Str0ngPass!',
         }),
       ).rejects.toBeInstanceOf(ConflictException);
     });
@@ -324,6 +333,7 @@ describe('AuthService — QR staff invitations', () => {
         username: 'teststaff',
         passwordHash: 'h',
         emailVerified: true,
+        status: 'active',
         userAssignments: [
           {
             organizationId: 'org-1',

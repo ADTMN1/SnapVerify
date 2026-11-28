@@ -12,7 +12,7 @@ class NotificationsRemoteDatasource {
   static const Duration _timeout = Duration(seconds: 30);
 
   NotificationsRemoteDatasource({http.Client? client})
-      : client = client ?? http.Client();
+    : client = client ?? http.Client();
 
   Future<NotificationsData> getNotifications({
     required String accessToken,
@@ -20,13 +20,13 @@ class NotificationsRemoteDatasource {
     final uri = Uri.parse('${AppConstants.baseUrl}/notifications');
     debugPrint('[NotificationsDS] getNotifications → $uri');
 
-    final response = await client.get(
-      uri,
-      headers: {'Authorization': 'Bearer $accessToken'},
-    ).timeout(_timeout);
+    final response = await client
+        .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+        .timeout(_timeout);
 
     debugPrint(
-        '[NotificationsDS] getNotifications HTTP ${response.statusCode}');
+      '[NotificationsDS] getNotifications HTTP ${response.statusCode}',
+    );
     _throwIfError(response);
 
     final decoded = jsonDecode(response.body);
@@ -39,14 +39,10 @@ class NotificationsRemoteDatasource {
   Future<void> markAllRead({required String accessToken}) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/notifications/read');
     final response = await client
-        .post(
-          uri,
-          headers: {'Authorization': 'Bearer $accessToken'},
-        )
+        .post(uri, headers: {'Authorization': 'Bearer $accessToken'})
         .timeout(_timeout);
 
-    debugPrint(
-        '[NotificationsDS] markAllRead HTTP ${response.statusCode}');
+    debugPrint('[NotificationsDS] markAllRead HTTP ${response.statusCode}');
     _throwIfError(response);
   }
 

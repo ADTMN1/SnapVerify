@@ -43,7 +43,8 @@ class SubscriptionPlan {
       maxDevices: json['maxDevices'] != null
           ? int.tryParse(json['maxDevices'].toString())
           : null,
-      features: (json['features'] as List<dynamic>?)
+      features:
+          (json['features'] as List<dynamic>?)
               ?.map((item) => item.toString())
               .toList() ??
           const [],

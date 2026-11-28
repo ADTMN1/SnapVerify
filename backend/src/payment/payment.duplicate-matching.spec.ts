@@ -250,7 +250,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
 
     await expect(
       service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
-    ).rejects.toThrow(/Database error/);
+    ).rejects.toThrow(/Unable to save the payment right now/);
   });
 
   it('does NOT treat an unrelated P2002 (different constraint) as a duplicate payment', async () => {
@@ -267,7 +267,7 @@ describe('Stage 1 — database duplicate protection (unit)', () => {
 
     await expect(
       service.verifyByReference('FT123', 'org-1', 'user-1', undefined, 'CBE'),
-    ).rejects.toThrow(/Database error/);
+    ).rejects.toThrow(/Unable to save the payment right now/);
     // No duplicate outcome was returned and no winner lookup ran.
     expect(mockPrisma.payment.findFirst).toHaveBeenCalledTimes(1);
   });

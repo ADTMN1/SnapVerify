@@ -28,15 +28,15 @@ class ReportSummary {
       summary: ReportTotals.fromJson(
         json['summary'] as Map<String, dynamic>? ?? const {},
       ),
-      byStatus:
-          _rows(json['byStatus'], ReportStatusRow.fromJson),
-      byProvider:
-          _rows(json['byProvider'], ReportProviderRow.fromJson),
+      byStatus: _rows(json['byStatus'], ReportStatusRow.fromJson),
+      byProvider: _rows(json['byProvider'], ReportProviderRow.fromJson),
       byStaff: _rows(json['byStaff'], ReportStaffRow.fromJson),
       daily: _rows(json['daily'], ReportDailyRow.fromJson),
       recent: _rows(json['recent'], ReportPaymentRow.fromJson),
-      highRiskPayments:
-          _rows(json['highRiskPayments'], ReportPaymentRow.fromJson),
+      highRiskPayments: _rows(
+        json['highRiskPayments'],
+        ReportPaymentRow.fromJson,
+      ),
     );
   }
 
@@ -58,9 +58,9 @@ class ReportRange {
   const ReportRange({required this.from, required this.to});
 
   factory ReportRange.fromJson(Map<String, dynamic> json) => ReportRange(
-        from: json['from'] as String? ?? '',
-        to: json['to'] as String? ?? '',
-      );
+    from: json['from'] as String? ?? '',
+    to: json['to'] as String? ?? '',
+  );
 }
 
 class ReportTotals {
@@ -91,18 +91,18 @@ class ReportTotals {
   });
 
   factory ReportTotals.fromJson(Map<String, dynamic> json) => ReportTotals(
-        total: _int(json['total']),
-        verified: _int(json['verified']),
-        failed: _int(json['failed']),
-        rejected: _int(json['rejected']),
-        pending: _int(json['pending']),
-        totalAmount: _double(json['totalAmount']),
-        verifiedAmount: _double(json['verifiedAmount']),
-        averageAmount: _double(json['averageAmount']),
-        highRisk: _int(json['highRisk']),
-        highRiskAmount: _double(json['highRiskAmount']),
-        currency: json['currency'] as String? ?? 'ETB',
-      );
+    total: _int(json['total']),
+    verified: _int(json['verified']),
+    failed: _int(json['failed']),
+    rejected: _int(json['rejected']),
+    pending: _int(json['pending']),
+    totalAmount: _double(json['totalAmount']),
+    verifiedAmount: _double(json['verifiedAmount']),
+    averageAmount: _double(json['averageAmount']),
+    highRisk: _int(json['highRisk']),
+    highRiskAmount: _double(json['highRiskAmount']),
+    currency: json['currency'] as String? ?? 'ETB',
+  );
 
   static int _int(dynamic value) => value is num ? value.toInt() : 0;
   static double _double(dynamic value) => value is num ? value.toDouble() : 0;
@@ -156,13 +156,12 @@ class ReportStaffRow {
     required this.amount,
   });
 
-  factory ReportStaffRow.fromJson(Map<String, dynamic> json) =>
-      ReportStaffRow(
-        userId: json['userId'] as String? ?? '',
-        name: json['name'] as String? ?? 'Unknown',
-        count: ReportTotals._int(json['count']),
-        amount: ReportTotals._double(json['amount']),
-      );
+  factory ReportStaffRow.fromJson(Map<String, dynamic> json) => ReportStaffRow(
+    userId: json['userId'] as String? ?? '',
+    name: json['name'] as String? ?? 'Unknown',
+    count: ReportTotals._int(json['count']),
+    amount: ReportTotals._double(json['amount']),
+  );
 }
 
 class ReportDailyRow {
@@ -180,12 +179,12 @@ class ReportDailyRow {
   });
 
   factory ReportDailyRow.fromJson(Map<String, dynamic> json) => ReportDailyRow(
-        date: json['date'] as String? ?? '',
-        count: ReportTotals._int(json['count']),
-        amount: ReportTotals._double(json['amount']),
-        verifiedCount: ReportTotals._int(json['verifiedCount']),
-        verifiedAmount: ReportTotals._double(json['verifiedAmount']),
-      );
+    date: json['date'] as String? ?? '',
+    count: ReportTotals._int(json['count']),
+    amount: ReportTotals._double(json['amount']),
+    verifiedCount: ReportTotals._int(json['verifiedCount']),
+    verifiedAmount: ReportTotals._double(json['verifiedAmount']),
+  );
 }
 
 class ReportPaymentRow {
@@ -231,7 +230,7 @@ class ReportPaymentRow {
           : null,
       createdAt:
           DateTime.tryParse(json['createdAt'] as String? ?? '') ??
-              DateTime.now(),
+          DateTime.now(),
       verifiedByName: verifiedBy?['name'] as String?,
     );
   }
