@@ -239,9 +239,7 @@ class _ReconnectScreen extends ConsumerWidget {
                     AppTokens.buttonHeight,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      AppTokens.buttonRadius,
-                    ),
+                    borderRadius: BorderRadius.circular(AppTokens.buttonRadius),
                   ),
                 ),
                 onPressed: () =>

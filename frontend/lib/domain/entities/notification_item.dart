@@ -29,7 +29,7 @@ class NotificationItem {
       body: (json['body'] ?? '').toString(),
       createdAt:
           (created is String ? DateTime.tryParse(created) : null)?.toLocal() ??
-              DateTime.now(),
+          DateTime.now(),
       read: json['read'] == true,
       entityId: (json['entityId'] ?? '').toString(),
     );
@@ -71,9 +71,11 @@ class NotificationsData {
     final rawList = json['notifications'];
     final items = rawList is List
         ? rawList
-            .whereType<Map>()
-            .map((e) => NotificationItem.fromJson(Map<String, dynamic>.from(e)))
-            .toList()
+              .whereType<Map>()
+              .map(
+                (e) => NotificationItem.fromJson(Map<String, dynamic>.from(e)),
+              )
+              .toList()
         : <NotificationItem>[];
 
     final rawLastRead = json['lastReadAt'];

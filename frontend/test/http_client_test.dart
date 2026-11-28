@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -169,6 +171,78 @@ void main() {
 
       expect(response.statusCode, 401);
       expect(refreshCalled, isFalse);
+      expect(requestCount, 1);
+    });
+
+    test('multipart request is retried with buffered body on 401', () async {
+      var refreshCalled = false;
+      var requestCount = 0;
+
+      final inner = _MockClient((request) async {
+        requestCount++;
+        if (requestCount == 1) {
+          return http.StreamedResponse(Stream.empty(), 401);
+        }
+        return http.StreamedResponse(Stream.empty(), 200);
+      });
+
+      final client = RefreshingHttpClient(
+        inner: inner,
+        onRefresh: () async {
+          refreshCalled = true;
+          return 'new-token';
+        },
+      );
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.example.com/upload'),
+      );
+      request.fields['receipt'] = 'test';
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          utf8.encode('fake-image-bytes'),
+          filename: 'receipt.jpg',
+        ),
+      );
+
+      final response = await client.send(request);
+
+      expect(response.statusCode, 200);
+      expect(refreshCalled, isTrue);
+      expect(requestCount, 2);
+    });
+
+    test('multipart request returns 401 when refresh returns null', () async {
+      var requestCount = 0;
+
+      final inner = _MockClient((request) async {
+        requestCount++;
+        return http.StreamedResponse(Stream.empty(), 401);
+      });
+
+      final client = RefreshingHttpClient(
+        inner: inner,
+        onRefresh: () async => null,
+      );
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.example.com/upload'),
+      );
+      request.fields['receipt'] = 'test';
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          utf8.encode('fake-image-bytes'),
+          filename: 'receipt.jpg',
+        ),
+      );
+
+      final response = await client.send(request);
+
+      expect(response.statusCode, 401);
       expect(requestCount, 1);
     });
   });

@@ -5,273 +5,273 @@ class AppText {
   AppText._();
 
   static TextStyle get displayLarge => AppTokens.poppins(
-        size: AppTokens.textDisplay,
-        weight: FontWeight.w700,
-        letterSpacing: AppTokens.trackingTight,
-        height: AppTokens.lineHeightTight,
-      );
+    size: AppTokens.textDisplay,
+    weight: FontWeight.w700,
+    letterSpacing: AppTokens.trackingTight,
+    height: AppTokens.lineHeightTight,
+  );
 
   static TextStyle get displayMedium => AppTokens.poppins(
-        size: AppTokens.textHeadline,
-        weight: FontWeight.w700,
-        letterSpacing: AppTokens.trackingTight,
-        height: AppTokens.lineHeightTight,
-      );
+    size: AppTokens.textHeadline,
+    weight: FontWeight.w700,
+    letterSpacing: AppTokens.trackingTight,
+    height: AppTokens.lineHeightTight,
+  );
 
   static TextStyle get headlineLarge => AppTokens.poppins(
-        size: AppTokens.textHeadline,
-        weight: FontWeight.w700,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textHeadline,
+    weight: FontWeight.w700,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get headlineMedium => AppTokens.manrope(
-        size: AppTokens.textSubtitle,
-        weight: FontWeight.w700,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textSubtitle,
+    weight: FontWeight.w700,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get titleLarge => AppTokens.manrope(
-        size: AppTokens.textTitle,
-        weight: FontWeight.w700,
-        height: AppTokens.lineHeightTight,
-      );
+    size: AppTokens.textTitle,
+    weight: FontWeight.w700,
+    height: AppTokens.lineHeightTight,
+  );
 
   static TextStyle get titleMedium => AppTokens.manrope(
-        size: AppTokens.textSubtitle,
-        weight: FontWeight.w600,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textSubtitle,
+    weight: FontWeight.w600,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get titleSmall => AppTokens.manrope(
-        size: AppTokens.textBodyLarge,
-        weight: FontWeight.w600,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textBodyLarge,
+    weight: FontWeight.w600,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get bodyLarge => AppTokens.manrope(
-        size: AppTokens.textBodyLarge,
-        weight: FontWeight.w400,
-        height: AppTokens.lineHeightRelaxed,
-      );
+    size: AppTokens.textBodyLarge,
+    weight: FontWeight.w400,
+    height: AppTokens.lineHeightRelaxed,
+  );
 
   static TextStyle get bodyMedium => AppTokens.manrope(
-        size: AppTokens.textBody,
-        weight: FontWeight.w400,
-        height: AppTokens.lineHeightRelaxed,
-      );
+    size: AppTokens.textBody,
+    weight: FontWeight.w400,
+    height: AppTokens.lineHeightRelaxed,
+  );
 
   static TextStyle get bodySmall => AppTokens.manrope(
-        size: AppTokens.textBodySmall,
-        weight: FontWeight.w400,
-        height: AppTokens.lineHeightRelaxed,
-      );
+    size: AppTokens.textBodySmall,
+    weight: FontWeight.w400,
+    height: AppTokens.lineHeightRelaxed,
+  );
 
   static TextStyle get labelLarge => AppTokens.manrope(
-        size: AppTokens.textBody,
-        weight: FontWeight.w600,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textBody,
+    weight: FontWeight.w600,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get labelMedium => AppTokens.manrope(
-        size: AppTokens.textLabel,
-        weight: FontWeight.w600,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textLabel,
+    weight: FontWeight.w600,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get labelSmall => AppTokens.dmSans(
-        size: AppTokens.textCaption,
-        weight: FontWeight.w500,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textCaption,
+    weight: FontWeight.w500,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get navLabelActive => AppTokens.manrope(
-        size: AppTokens.textCaption,
-        weight: FontWeight.w600,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textCaption,
+    weight: FontWeight.w600,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get navLabelInactive => AppTokens.manrope(
-        size: AppTokens.textCaption,
-        weight: FontWeight.w500,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textCaption,
+    weight: FontWeight.w500,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get caption => AppTokens.dmSans(
-        size: AppTokens.textCaption,
-        weight: FontWeight.w400,
-        height: AppTokens.lineHeightRelaxed,
-      );
+    size: AppTokens.textCaption,
+    weight: FontWeight.w400,
+    height: AppTokens.lineHeightRelaxed,
+  );
 
   static TextStyle get overline => AppTokens.dmSans(
-        size: AppTokens.textOverline,
-        weight: FontWeight.w600,
-        letterSpacing: AppTokens.trackingWide,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textOverline,
+    weight: FontWeight.w600,
+    letterSpacing: AppTokens.trackingWide,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get button => AppTokens.manrope(
-        size: AppTokens.textBody,
-        weight: FontWeight.w700,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.textBody,
+    weight: FontWeight.w700,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get authTitle => AppTokens.manrope(
-        size: AppTokens.titleSize,
-        weight: FontWeight.w700,
-        color: AppTokens.ink,
-        height: AppTokens.lineHeightTight,
-      );
+    size: AppTokens.titleSize,
+    weight: FontWeight.w700,
+    color: AppTokens.ink,
+    height: AppTokens.lineHeightTight,
+  );
 
   static TextStyle get authSubtitle => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w400,
-        color: AppTokens.inkMuted,
-        height: AppTokens.lineHeightRelaxed,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w400,
+    color: AppTokens.inkMuted,
+    height: AppTokens.lineHeightRelaxed,
+  );
 
   static TextStyle get authLabel => AppTokens.manrope(
-        size: AppTokens.labelSize,
-        weight: FontWeight.w600,
-        color: AppTokens.ink,
-        height: AppTokens.lineHeightNormal,
-      );
+    size: AppTokens.labelSize,
+    weight: FontWeight.w600,
+    color: AppTokens.ink,
+    height: AppTokens.lineHeightNormal,
+  );
 
   static TextStyle get authInput => AppTokens.dmSans(
-        size: AppTokens.inputTextSize,
-        weight: FontWeight.w400,
-        color: AppTokens.ink,
-      );
+    size: AppTokens.inputTextSize,
+    weight: FontWeight.w400,
+    color: AppTokens.ink,
+  );
 
   static TextStyle get authHint => AppTokens.dmSans(
-        size: AppTokens.inputTextSize,
-        weight: FontWeight.w400,
-        color: AppTokens.hintInkMuted,
-      );
+    size: AppTokens.inputTextSize,
+    weight: FontWeight.w400,
+    color: Colors.black54,
+  );
 
   static TextStyle get authHelper => AppTokens.dmSans(
-        size: AppTokens.helperSize,
-        weight: FontWeight.w400,
-        color: AppTokens.inkMuted,
-      );
+    size: AppTokens.helperSize,
+    weight: FontWeight.w400,
+    color: AppTokens.inkMuted,
+  );
 
   static TextStyle get authError => AppTokens.dmSans(
-        size: AppTokens.errorTextSize,
-        weight: FontWeight.w500,
-        color: AppTokens.danger,
-      );
+    size: AppTokens.errorTextSize,
+    weight: FontWeight.w500,
+    color: AppTokens.danger,
+  );
 
   static TextStyle get authFieldLabel => AppTokens.dmSans(
-        size: AppTokens.labelSize,
-        weight: FontWeight.w600,
-        color: AppTokens.inkMuted,
-      );
+    size: AppTokens.labelSize,
+    weight: FontWeight.w600,
+    color: AppTokens.inkMuted,
+  );
 
   static TextStyle get authToggle => AppTokens.manrope(
-        size: AppTokens.toggleTextSize,
-        weight: FontWeight.w600,
-      );
+    size: AppTokens.toggleTextSize,
+    weight: FontWeight.w600,
+  );
 
   static TextStyle get authToggleSelected => AppTokens.manrope(
-        size: AppTokens.toggleTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.white,
-      );
+    size: AppTokens.toggleTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.white,
+  );
 
   static TextStyle get authToggleUnselected => AppTokens.manrope(
-        size: AppTokens.toggleTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.inkMuted,
-      );
+    size: AppTokens.toggleTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.inkMuted,
+  );
 
   static TextStyle get authLanguageSelected => AppTokens.manrope(
-        size: AppTokens.languageTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.white,
-      );
+    size: AppTokens.languageTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.white,
+  );
 
   static TextStyle get authLanguageUnselected => AppTokens.manrope(
-        size: AppTokens.languageTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.inkMuted,
-      );
+    size: AppTokens.languageTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.inkMuted,
+  );
 
   static TextStyle get authLink => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w500,
-        color: AppTokens.ink,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w500,
+    color: AppTokens.ink,
+  );
 
   static TextStyle get authLinkMuted => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w500,
-        color: AppTokens.inkMuted,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w500,
+    color: AppTokens.inkMuted,
+  );
 
   static TextStyle get authBottomPrompt => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w400,
-        color: AppTokens.inkMuted,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w400,
+    color: AppTokens.inkMuted,
+  );
 
   static TextStyle get authBottomAction => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.ink,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.ink,
+  );
 
   static TextStyle get authOptionTitle => AppTokens.manrope(
-        size: AppTokens.toggleTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.ink,
-      );
+    size: AppTokens.toggleTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.ink,
+  );
 
   static TextStyle get authOptionSelected => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.ink,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.ink,
+  );
 
   static TextStyle get authOptionUnselected => AppTokens.dmSans(
-        size: AppTokens.footerTextSize,
-        weight: FontWeight.w400,
-        color: AppTokens.ink,
-      );
+    size: AppTokens.footerTextSize,
+    weight: FontWeight.w400,
+    color: AppTokens.ink,
+  );
 
   static TextStyle get authButton => AppTokens.manrope(
-        size: AppTokens.buttonTextSize,
-        weight: FontWeight.w700,
-        color: AppTokens.white,
-      );
+    size: AppTokens.buttonTextSize,
+    weight: FontWeight.w700,
+    color: AppTokens.white,
+  );
 
   static TextStyle get authErrorRetry => AppTokens.dmSans(
-        size: AppTokens.errorRetryTextSize,
-        weight: FontWeight.w600,
-        color: AppTokens.danger,
-      ).copyWith(decoration: TextDecoration.underline);
+    size: AppTokens.errorRetryTextSize,
+    weight: FontWeight.w600,
+    color: AppTokens.danger,
+  ).copyWith(decoration: TextDecoration.underline);
 
   static TextStyle get splashTitle => AppTokens.manrope(
-        size: AppTokens.titleSize,
-        weight: FontWeight.w600,
-        color: AppTokens.white,
-      );
+    size: AppTokens.titleSize,
+    weight: FontWeight.w600,
+    color: AppTokens.white,
+  );
 
   static TextStyle get reconnectTitle => AppTokens.manrope(
-        size: AppTokens.textSubtitle,
-        weight: FontWeight.w600,
-        color: AppTokens.white,
-      );
+    size: AppTokens.textSubtitle,
+    weight: FontWeight.w600,
+    color: AppTokens.white,
+  );
 
   static TextStyle get reconnectBody => AppTokens.dmSans(
-        size: AppTokens.textBodySmall,
-        weight: FontWeight.w400,
-        color: AppTokens.white.withValues(alpha: AppTokens.alphaSecondary),
-      );
+    size: AppTokens.textBodySmall,
+    weight: FontWeight.w400,
+    color: AppTokens.white.withValues(alpha: AppTokens.alphaSecondary),
+  );
 
-  static TextStyle onDark(TextStyle style) => style.apply(
-        color: AppTokens.textOnDark,
-      );
+  static TextStyle onDark(TextStyle style) =>
+      style.apply(color: AppTokens.textOnDark);
 
-  static TextTheme get textTheme => TextTheme(
+  static TextTheme get textTheme =>
+      TextTheme(
         displayLarge: displayLarge,
         displayMedium: displayMedium,
         headlineLarge: headlineLarge,

@@ -41,8 +41,10 @@ class PaymentRemoteDatasource {
       quality: 75,
       format: CompressFormat.jpeg,
     );
-    debugPrint('[PaymentDS] compressed size: ${compressed.length} bytes '
-        '(${((1 - compressed.length / bytes.length) * 100).toStringAsFixed(0)}% smaller)');
+    debugPrint(
+      '[PaymentDS] compressed size: ${compressed.length} bytes '
+      '(${((1 - compressed.length / bytes.length) * 100).toStringAsFixed(0)}% smaller)',
+    );
     return Uint8List.fromList(compressed);
   }
 
@@ -64,24 +66,28 @@ class PaymentRemoteDatasource {
 
     final request = http.MultipartRequest('POST', uri)
       ..headers['Authorization'] = 'Bearer $accessToken'
-      ..files.add(http.MultipartFile.fromBytes(
-        'image',
-        compressed,
-        filename: 'capture.jpg',
-      ));
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          compressed,
+          filename: 'capture.jpg',
+        ),
+      );
     if (ocrText != null && ocrText.trim().isNotEmpty) {
       request.fields['receiptText'] = ocrText;
     }
 
     http.Response response;
     try {
-      final streamed = await client.send(request).timeout(
-        _timeout,
-        onTimeout: () => throw Exception(
-          'Timed out after ${_timeout.inSeconds}s — '
-          'receipt verification is taking too long. Please try again.',
-        ),
-      );
+      final streamed = await client
+          .send(request)
+          .timeout(
+            _timeout,
+            onTimeout: () => throw Exception(
+              'Timed out after ${_timeout.inSeconds}s — '
+              'receipt verification is taking too long. Please try again.',
+            ),
+          );
       response = await http.Response.fromStream(streamed);
     } catch (e) {
       debugPrint('[PaymentDS] verifyByImage network/timeout error: $e');
@@ -94,7 +100,8 @@ class PaymentRemoteDatasource {
 
     try {
       return VerificationResult.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>);
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
     } catch (e) {
       debugPrint('[PaymentDS] verifyByImage parse error: $e');
       throw Exception('Could not parse response: $e');
@@ -110,29 +117,34 @@ class PaymentRemoteDatasource {
     String? suffix,
   }) async {
     final uri = Uri.parse('${AppConstants.baseUrl}/payments/verify');
-    debugPrint('[PaymentDS] verifyByReference → $uri '
-        'ref=${OcrParser.maskReference(referenceNumber)}'
-        '${provider != null ? ' provider=$provider' : ''}');
+    debugPrint(
+      '[PaymentDS] verifyByReference → $uri '
+      'ref=${OcrParser.maskReference(referenceNumber)}'
+      '${provider != null ? ' provider=$provider' : ''}',
+    );
 
     http.Response response;
     try {
-      response = await client.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({
-          'referenceNumber': referenceNumber,
-          if (amount != null) 'amount': amount,
-          if (provider != null) 'provider': provider,
-          if (suffix != null) 'suffix': suffix,
-        }),
-      ).timeout(
-        _timeout,
-        onTimeout: () => throw Exception(
-            'Timed out after ${_timeout.inSeconds}s. Please try again.'),
-      );
+      response = await client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'referenceNumber': referenceNumber,
+              if (amount != null) 'amount': amount,
+              if (provider != null) 'provider': provider,
+              if (suffix != null) 'suffix': suffix,
+            }),
+          )
+          .timeout(
+            _timeout,
+            onTimeout: () => throw Exception(
+              'Timed out after ${_timeout.inSeconds}s. Please try again.',
+            ),
+          );
     } catch (e) {
       debugPrint('[PaymentDS] verifyByReference error: $e');
       rethrow;
@@ -144,7 +156,8 @@ class PaymentRemoteDatasource {
 
     try {
       return VerificationResult.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>);
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
     } catch (e) {
       debugPrint('[PaymentDS] verifyByReference parse error: $e');
       throw Exception('Could not parse response: $e');
@@ -159,15 +172,12 @@ class PaymentRemoteDatasource {
     debugPrint('[PaymentDS] getVerificationHistory → $uri');
 
     final response = await client
-        .get(
-          uri,
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
-        )
+        .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
         .timeout(_timeout);
 
-    debugPrint('[PaymentDS] getVerificationHistory HTTP ${response.statusCode}');
+    debugPrint(
+      '[PaymentDS] getVerificationHistory HTTP ${response.statusCode}',
+    );
     _throwIfError(response);
 
     try {
@@ -192,12 +202,9 @@ class PaymentRemoteDatasource {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts');
     debugPrint('[PaymentDS] getPaymentAccounts → $uri');
 
-    final response = await client.get(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $accessToken',
-      },
-    ).timeout(_timeout);
+    final response = await client
+        .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+        .timeout(_timeout);
 
     _throwIfError(response);
 
@@ -218,17 +225,19 @@ class PaymentRemoteDatasource {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts');
     debugPrint('[PaymentDS] createPaymentAccount → $uri');
 
-    final response = await client.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      },
-      body: jsonEncode({
-        'provider': provider,
-        if (accountNumber != null) 'accountNumber': accountNumber,
-      }),
-    ).timeout(_timeout);
+    final response = await client
+        .post(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $accessToken',
+          },
+          body: jsonEncode({
+            'provider': provider,
+            if (accountNumber != null) 'accountNumber': accountNumber,
+          }),
+        )
+        .timeout(_timeout);
 
     _throwIfError(response);
 
@@ -248,16 +257,18 @@ class PaymentRemoteDatasource {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts/$provider');
     debugPrint('[PaymentDS] updatePaymentAccount → $uri');
 
-    final response = await client.put(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      },
-      body: jsonEncode({
-        if (accountNumber != null) 'accountNumber': accountNumber,
-      }),
-    ).timeout(_timeout);
+    final response = await client
+        .put(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $accessToken',
+          },
+          body: jsonEncode({
+            if (accountNumber != null) 'accountNumber': accountNumber,
+          }),
+        )
+        .timeout(_timeout);
 
     _throwIfError(response);
 
@@ -276,12 +287,9 @@ class PaymentRemoteDatasource {
     final uri = Uri.parse('${AppConstants.baseUrl}/payment-accounts/$provider');
     debugPrint('[PaymentDS] deletePaymentAccount → $uri');
 
-    final response = await client.delete(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $accessToken',
-      },
-    ).timeout(_timeout);
+    final response = await client
+        .delete(uri, headers: {'Authorization': 'Bearer $accessToken'})
+        .timeout(_timeout);
 
     _throwIfError(response);
   }

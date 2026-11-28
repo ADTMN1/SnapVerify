@@ -190,6 +190,8 @@ export class AdminAuthService {
       data: { passwordHash: newPasswordHash },
     });
 
+    await this.adminJwtService.revokeAllTokens(adminId);
+
     // Log this action
     await this.prisma.activityLog.create({
       data: {

@@ -139,14 +139,14 @@ export function collectProductionConfigErrors(
 /**
  * `ConfigModule.forRoot({ validate })` entry point.
  *
- * Only enforces strict rules for `NODE_ENV=production`; every other
- * environment is returned untouched.
+ * Enforces strict rules for deployed environments (`production` and `staging`);
+ * local development and test environments are returned untouched.
  */
 export function validateEnvironment(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const nodeEnv = value(config, 'NODE_ENV') || 'development';
-  if (nodeEnv !== 'production') return config;
+  if (nodeEnv !== 'production' && nodeEnv !== 'staging') return config;
 
   const errors = collectProductionConfigErrors(config);
   if (errors.length > 0) {

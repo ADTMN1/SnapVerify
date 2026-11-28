@@ -4,6 +4,7 @@ import { PageHeader, Btn } from '../components/layout/PageHeader';
 import { PageLoader } from '../components/ui/LoadingSkeleton';
 import { formatDate, formatCurrency } from '../utils';
 import { adminDataApi } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 import type { Subscription, PlatformPaymentAccount } from '../types';
 
 const PLANS = [
@@ -15,6 +16,8 @@ const PLANS = [
 ];
 
 export default function SubscriptionPage() {
+  const { role } = useAuth();
+  const canManagePlatformAccount = role === 'SUPER_ADMIN';
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<PlatformPaymentAccount | null>(null);
@@ -41,7 +44,10 @@ export default function SubscriptionPage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); loadAccount(); }, [load, loadAccount]);
+  useEffect(() => {
+    load();
+    if (canManagePlatformAccount) loadAccount();
+  }, [load, loadAccount, canManagePlatformAccount]);
 
   const saveAccount = async () => {
     if (!accountNumber.trim()) {
@@ -112,51 +118,53 @@ export default function SubscriptionPage() {
         </div>
       )}
 
-      <div className="bg-card rounded-2xl border border-slate-800 p-6">
-        <div className="flex items-center gap-2 mb-2">
-          <CreditCard size={18} className="text-[#B8FF3B]" />
-          <h3 className="text-white font-bold text-base">Telebirr Subscription Account</h3>
+      {canManagePlatformAccount && (
+        <div className="bg-card rounded-2xl border border-slate-800 p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <CreditCard size={18} className="text-[#B8FF3B]" />
+            <h3 className="text-white font-bold text-base">Telebirr Subscription Account</h3>
+          </div>
+          <p className="text-slate-400 text-sm">
+            This is SnapVerify's own account for subscription payments. Owners see it when they upgrade.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <label className="block">
+              <span className="text-slate-400 text-xs">Account number</span>
+              <input
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="09XXXXXXXX or 2519XXXXXXXX"
+                className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2.5 text-white text-sm outline-none focus:border-[#B8FF3B]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-slate-400 text-xs">Account name (optional)</span>
+              <input
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                placeholder="SnapVerify"
+                className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2.5 text-white text-sm outline-none focus:border-[#B8FF3B]"
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 mt-4">
+            <button
+              type="button"
+              onClick={saveAccount}
+              disabled={savingAccount}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#B8FF3B] text-slate-900 disabled:opacity-50"
+            >
+              {savingAccount ? 'Saving…' : 'Save account'}
+            </button>
+            {account?.isActive && (
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-semibold">
+                Active
+              </span>
+            )}
+            {accountMessage && <span className="text-slate-400 text-xs">{accountMessage}</span>}
+          </div>
         </div>
-        <p className="text-slate-400 text-sm">
-          This is SnapVerify's own account for subscription payments. Owners see it when they upgrade.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <label className="block">
-            <span className="text-slate-400 text-xs">Account number</span>
-            <input
-              value={accountNumber}
-              onChange={(e) => setAccountNumber(e.target.value)}
-              placeholder="09XXXXXXXX or 2519XXXXXXXX"
-              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2.5 text-white text-sm outline-none focus:border-[#B8FF3B]"
-            />
-          </label>
-          <label className="block">
-            <span className="text-slate-400 text-xs">Account name (optional)</span>
-            <input
-              value={accountName}
-              onChange={(e) => setAccountName(e.target.value)}
-              placeholder="SnapVerify"
-              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 px-3 py-2.5 text-white text-sm outline-none focus:border-[#B8FF3B]"
-            />
-          </label>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 mt-4">
-          <button
-            type="button"
-            onClick={saveAccount}
-            disabled={savingAccount}
-            className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#B8FF3B] text-slate-900 disabled:opacity-50"
-          >
-            {savingAccount ? 'Saving…' : 'Save account'}
-          </button>
-          {account?.isActive && (
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-semibold">
-              Active
-            </span>
-          )}
-          {accountMessage && <span className="text-slate-400 text-xs">{accountMessage}</span>}
-        </div>
-      </div>
+      )}
 
       <div>
         <h3 className="text-white font-semibold text-sm mb-4">Available Plans</h3>

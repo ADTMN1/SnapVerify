@@ -11,6 +11,10 @@ import 'package:http/http.dart' as http;
 /// If the refresh fails or returns null, the original 401 response is returned
 /// so the caller can handle session expiry. The request is retried at most once
 /// — a second 401 is returned as-is.
+///
+/// Request bodies (including multipart uploads) are buffered before the first
+/// send so they can be re-sent after a token refresh without re-consuming
+/// file streams.
 class RefreshingHttpClient extends http.BaseClient {
   final http.Client _inner;
   final Future<String?> Function() _onRefresh;
@@ -18,11 +22,17 @@ class RefreshingHttpClient extends http.BaseClient {
   RefreshingHttpClient({
     required http.Client inner,
     required Future<String?> Function() onRefresh,
-  })  : _inner = inner,
-        _onRefresh = onRefresh;
+  }) : _inner = inner,
+       _onRefresh = onRefresh;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // Buffer body bytes so retryable requests (e.g. multipart uploads) can
+    // be re-sent after a token refresh without re-consuming file streams.
+    if (request is http.Request) {
+      await request.finalize();
+    }
+
     final response = await _inner.send(request);
 
     if (response.statusCode != 401 ||
@@ -42,8 +52,6 @@ class RefreshingHttpClient extends http.BaseClient {
     try {
       return await _inner.send(request);
     } catch (_) {
-      // Request body may already be consumed (e.g. multipart uploads).
-      // Return the original 401 so the caller can handle session expiry.
       return response;
     }
   }

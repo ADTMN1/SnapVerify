@@ -38,6 +38,13 @@ abstract class AuthRepository {
   /// Password recovery (email OTP)
   Future<void> resetPassword(String email, String otpCode, String newPassword);
 
+  /// Authenticated password change for the signed-in user.
+  Future<Map<String, dynamic>> changePassword(
+    String accessToken, {
+    required String currentPassword,
+    required String newPassword,
+  });
+
   /// Invitation Management
   /// Pre-login public check — validates an invitation token from the QR
   /// deep link. Legacy phone lookup is still supported.
@@ -60,32 +67,44 @@ abstract class AuthRepository {
   Future<Map<String, dynamic>> getMe(String accessToken);
 
   /// Staff Management
-  Future<Map<String, dynamic>> addStaff(String accessToken, {
+  Future<Map<String, dynamic>> addStaff(
+    String accessToken, {
     required String fullName,
     required String username,
     required String role,
     String? branchId,
   });
   Future<List<dynamic>> listInvitations(String accessToken);
-  Future<Map<String, dynamic>> revokeInvitation(String accessToken, String invitationId);
-  Future<Map<String, dynamic>> regenerateInvitation(String accessToken, String invitationId);
+  Future<Map<String, dynamic>> revokeInvitation(
+    String accessToken,
+    String invitationId,
+  );
+  Future<Map<String, dynamic>> regenerateInvitation(
+    String accessToken,
+    String invitationId,
+  );
   Future<List<dynamic>> getStaff(String accessToken);
   Future<void> removeStaff(String accessToken, String staffId);
-  Future<Map<String, dynamic>> updateStaff(String accessToken, String staffId, {
+  Future<Map<String, dynamic>> updateStaff(
+    String accessToken,
+    String staffId, {
     required String fullName,
     required String role,
     String? branchId,
   });
 
   /// Branch Management
-  Future<Map<String, dynamic>> addBranch(String accessToken, {
+  Future<Map<String, dynamic>> addBranch(
+    String accessToken, {
     required String name,
     String? phone,
     required String address,
   });
   Future<List<dynamic>> getBranches(String accessToken);
   Future<void> removeBranch(String accessToken, String branchId);
-  Future<Map<String, dynamic>> updateBranch(String accessToken, String branchId, {
+  Future<Map<String, dynamic>> updateBranch(
+    String accessToken,
+    String branchId, {
     required String name,
     String? phone,
     required String address,

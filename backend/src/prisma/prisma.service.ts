@@ -16,7 +16,7 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
 
   /** Upper bound for the readiness probe so /health cannot hang. */
-  private static readonly HEALTH_TIMEOUT_MS = 8000;
+  private static readonly HEALTH_TIMEOUT_MS = 4000;
 
   constructor() {
     // Strip sslmode from the connection string — we pass ssl config directly

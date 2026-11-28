@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Plus, Edit } from 'lucide-react';
+import axios from 'axios';
+import { RefreshCw, Plus, Edit, Eye, EyeOff } from 'lucide-react';
 import { PageHeader, Btn } from '../components/layout/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
-import { Modal, FormInput, FormSelect } from '../components/ui/Overlays';
+import { Modal, FormInput, FormSelect, ConfirmDialog } from '../components/ui/Overlays';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
 import { platformAdminApi } from '../services/api';
 import type { SubscriptionPlan, TableColumn } from '../types';
@@ -42,13 +43,22 @@ function formFromPlan(plan?: SubscriptionPlan): PlanForm {
   return { name: plan.name, price: String(plan.price), durationMode: 'days', durationValue: String(plan.durationDays) };
 }
 
+function apiMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError<{ message?: string }>(err)) {
+    return err.response?.data?.message ?? fallback;
+  }
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 export default function PlatformPlansPage() {
   const [rows, setRows] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<SubscriptionPlan | null>(null);
+  const [visibilityTarget, setVisibilityTarget] = useState<SubscriptionPlan | null>(null);
   const [saving, setSaving] = useState(false);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [formError, setFormError] = useState('');
   const [form, setForm] = useState<PlanForm>(formFromPlan());
 
@@ -61,7 +71,7 @@ export default function PlatformPlansPage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   function openAdd() {
     setEditing(null);
@@ -112,9 +122,26 @@ export default function PlatformPlansPage() {
       }
       setOpen(false);
       await load();
-    } catch (err: any) {
-      setFormError(err?.response?.data?.message ?? 'Failed to save plan');
+    } catch (err) {
+      setFormError(apiMessage(err, 'Failed to save plan'));
     } finally { setSaving(false); }
+  }
+
+  async function handleVisibilityChange() {
+    if (!visibilityTarget) return;
+    const nextIsActive = !visibilityTarget.isActive;
+    setError('');
+    setTogglingVisibility(true);
+    try {
+      await platformAdminApi.updatePlan(visibilityTarget.id, { isActive: nextIsActive });
+      setVisibilityTarget(null);
+      await load();
+    } catch (err) {
+      setError(apiMessage(err, nextIsActive ? 'Failed to restore plan' : 'Failed to hide plan'));
+      setVisibilityTarget(null);
+    } finally {
+      setTogglingVisibility(false);
+    }
   }
 
   const columns: TableColumn<SubscriptionPlan>[] = [
@@ -128,7 +155,30 @@ export default function PlatformPlansPage() {
     },
     {
       key: 'id', label: '', render: (_v, r) => (
-        <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"><Edit size={14} /></button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => openEdit(r)}
+            disabled={togglingVisibility}
+            aria-label={`Edit ${r.name}`}
+            title="Edit plan"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Edit size={14} />
+          </button>
+          <button
+            onClick={() => setVisibilityTarget(r)}
+            disabled={togglingVisibility}
+            aria-label={r.isActive ? `Hide ${r.name}` : `Restore ${r.name}`}
+            title={r.isActive ? 'Hide plan' : 'Restore plan'}
+            className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              r.isActive
+                ? 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
+                : 'text-[#B8FF3B] hover:bg-slate-800'
+            }`}
+          >
+            {r.isActive ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
       ),
     },
   ];
@@ -137,7 +187,7 @@ export default function PlatformPlansPage() {
     <div className="p-4 md:p-6 space-y-6">
       <PageHeader
         title="Subscription Plans"
-        subtitle="Edit plan names, prices, and durations — changes reflect in the SnapVerify app"
+        subtitle={loading ? 'Loading plans…' : `${rows.filter(p => p.isActive).length} visible · ${rows.filter(p => !p.isActive).length} hidden — changes reflect in the SnapVerify app`}
         actions={
           <>
             <Btn variant="secondary" size="sm" onClick={load}><RefreshCw size={14} /></Btn>
@@ -184,6 +234,21 @@ export default function PlatformPlansPage() {
           )}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!visibilityTarget}
+        onClose={() => setVisibilityTarget(null)}
+        onConfirm={handleVisibilityChange}
+        loading={togglingVisibility}
+        title={visibilityTarget?.isActive ? 'Hide Plan' : 'Restore Plan'}
+        message={
+          visibilityTarget?.isActive
+            ? `Hide "${visibilityTarget?.name}"? Customers will no longer see it or start new purchases. Existing subscriptions and payment records are not deleted.`
+            : `Restore "${visibilityTarget?.name}"? Customers will see it again and will be able to purchase it.`
+        }
+        confirmLabel={visibilityTarget?.isActive ? 'Hide' : 'Restore'}
+        danger={!!visibilityTarget?.isActive}
+      />
     </div>
   );
 }

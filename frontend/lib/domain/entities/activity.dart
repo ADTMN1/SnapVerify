@@ -12,7 +12,7 @@ enum ActivityType {
   deleteBranch,
   generateQR,
   regenerateQR,
-  exportReport
+  exportReport,
 }
 
 class ActivityLog {

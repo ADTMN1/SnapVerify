@@ -88,11 +88,19 @@ export class PaymentController {
     FileInterceptor('image', {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
-          throw new BadRequestException('Please upload an image file.');
-        } else {
-          cb(null, true);
+        const allowed =
+          file.mimetype.startsWith('image/') ||
+          file.mimetype === 'application/pdf';
+        if (!allowed) {
+          cb(
+            new BadRequestException(
+              'Please upload an image or PDF receipt.',
+            ),
+            false,
+          );
+          return;
         }
+        cb(null, true);
       },
     }),
   )

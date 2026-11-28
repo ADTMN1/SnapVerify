@@ -4,7 +4,11 @@ import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import { ExecutionContext } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { resolveAllowedOrigins, resolveCorsConfig } from './main';
+import {
+  configureTrustProxy,
+  resolveAllowedOrigins,
+  resolveCorsConfig,
+} from './main';
 
 describe('CORS configuration', () => {
   it('rejects wildcard origins', () => {
@@ -19,18 +23,38 @@ describe('CORS configuration', () => {
     );
   });
 
+  it('rejects plaintext HTTP origins in deployed environments', () => {
+    expect(() =>
+      resolveAllowedOrigins('http://app.example.com', 'production'),
+    ).toThrow(/HTTPS/);
+    expect(() =>
+      resolveAllowedOrigins('http://staging.example.com', 'staging'),
+    ).toThrow(/HTTPS/);
+    expect(
+      resolveAllowedOrigins('http://localhost:3000', 'development'),
+    ).toEqual(['http://localhost:3000']);
+  });
+
   it('parses explicit allow-list and keeps credentials off by default', () => {
     expect(
       resolveAllowedOrigins(
-        'https://app.example.com, http://localhost:3000',
+        'https://app.example.com, https://admin.example.com',
         'production',
       ),
-    ).toEqual(['https://app.example.com', 'http://localhost:3000']);
+    ).toEqual(['https://app.example.com', 'https://admin.example.com']);
     const cfg = resolveCorsConfig({
       NODE_ENV: 'production',
       ALLOWED_ORIGINS: 'https://app.example.com',
     });
     expect(cfg.credentials).toBe(false);
+  });
+});
+
+describe('proxy configuration', () => {
+  it('trusts exactly one proxy hop', () => {
+    const app = { set: jest.fn() };
+    configureTrustProxy(app as any);
+    expect(app.set).toHaveBeenCalledWith('trust proxy', 1);
   });
 });
 

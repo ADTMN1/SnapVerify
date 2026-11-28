@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { lookup } from 'dns/promises';
 import { isIP } from 'net';
@@ -18,20 +19,20 @@ interface CorsConfig {
  *
  * Security rules:
  *   - A wildcard ("*") origin is NEVER permitted.
- *   - In production the allow-list must be explicitly configured.
- *   - Non-production may run without an allow-list (CORS disabled) to avoid
+ *   - In deployed environments the allow-list must be explicitly configured.
+ *   - Local development may run without an allow-list (CORS disabled) to avoid
  *     blocking local tooling, but any configured list is still validated.
  */
 export function resolveAllowedOrigins(
   raw: string | undefined = process.env.ALLOWED_ORIGINS,
   nodeEnv: string = process.env.NODE_ENV ?? 'development',
 ): string[] | false {
-  const isProduction = nodeEnv === 'production';
+  const isStrict = nodeEnv === 'production' || nodeEnv === 'staging';
 
   if (!raw || raw.trim().length === 0) {
-    if (isProduction) {
+    if (isStrict) {
       throw new Error(
-        'FATAL: ALLOWED_ORIGINS is not configured. CORS must be explicitly restricted in production. Set a comma-separated list of trusted origins.',
+        'FATAL: ALLOWED_ORIGINS is not configured. CORS must be explicitly restricted in deployed environments. Set a comma-separated list of trusted origins.',
       );
     }
     return false;
@@ -43,18 +44,21 @@ export function resolveAllowedOrigins(
     .filter((o) => o.length > 0);
 
   if (origins.length === 0) {
-    if (isProduction) {
+    if (isStrict) {
       throw new Error(
-        'FATAL: ALLOWED_ORIGINS resolved to an empty list. CORS must be explicitly restricted in production.',
+        'FATAL: ALLOWED_ORIGINS resolved to an empty list. CORS must be explicitly restricted in deployed environments.',
       );
     }
     return false;
   }
 
-  const invalid = origins.filter((o) => o === '*' || !/^https?:\/\//i.test(o));
+  const originPattern = isStrict ? /^https:\/\//i : /^https?:\/\//i;
+  const invalid = origins.filter((o) => o === '*' || !originPattern.test(o));
   if (invalid.length > 0) {
     throw new Error(
-      'FATAL: ALLOWED_ORIGINS contains invalid entries. Use an explicit comma-separated list of http(s) origins only; wildcard origins are not permitted.',
+      isStrict
+        ? 'FATAL: ALLOWED_ORIGINS contains invalid entries. Deployed environments require explicit HTTPS origins; wildcard origins are not permitted.'
+        : 'FATAL: ALLOWED_ORIGINS contains invalid entries. Use an explicit comma-separated list of http(s) origins only; wildcard origins are not permitted.',
     );
   }
 
@@ -99,9 +103,14 @@ async function pinDatabaseIpv4() {
   }
 }
 
+export function configureTrustProxy(app: NestExpressApplication) {
+  app.set('trust proxy', 1);
+}
+
 async function bootstrap() {
   await pinDatabaseIpv4();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureTrustProxy(app);
   app.use(helmet());
 
   app.enableCors(resolveCorsConfig());

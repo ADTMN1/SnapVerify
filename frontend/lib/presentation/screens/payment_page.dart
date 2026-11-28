@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../core/tailwind.dart';
+import '../../core/utils/toast_service.dart';
 import '../../domain/entities/subscription_checkout.dart';
+import '../../theme/app_text.dart';
+import '../../theme/app_tokens.dart';
 import '../providers/subscription_provider.dart';
-import '../widgets/sv_loader.dart';
+import '../widgets/sv_app_shell.dart';
 
 class PaymentPage extends ConsumerStatefulWidget {
   const PaymentPage({super.key});
@@ -25,141 +27,109 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
     final checkoutState = ref.watch(subscriptionCheckoutProvider);
     final checkout = checkoutState.checkout;
 
-    return Scaffold(
-      backgroundColor: TwColors.primaryBg,
-      appBar: AppBar(
-        title: const Text(
-          'Payment',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-        ),
-        centerTitle: true,
-        backgroundColor: TwColors.primaryBg,
-        foregroundColor: TwColors.white,
-        elevation: 0,
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: ColoredBox(color: TwColors.slate700),
-        ),
-      ),
-      body: checkout == null
+    return SvAppShell(
+      title: 'Payment',
+      subtitle: checkout == null
+          ? null
+          : '${checkout.amount} ${checkout.currency}',
+      onBack: () => Navigator.of(context).pop(),
+      scrollable: checkout != null,
+      child: checkout == null
           ? const Center(
-              child: Text(
-                'No payment selected',
-                style: TextStyle(color: TwColors.slate400),
+              child: SvEmptyState(
+                icon: Icons.payments_rounded,
+                title: 'No payment selected',
               ),
             )
-          : SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _PaymentCard(checkout: checkout),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Pay the amount above to the account shown, then upload a screenshot of the receipt.',
-                      style: TextStyle(
-                        color: TwColors.slate400,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      onTap: checkoutState.isLoading ? null : _pickScreenshot,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 18,
-                        ),
-                        decoration: BoxDecoration(
-                          color: TwColors.cardBg,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: TwColors.slate700),
-                        ),
-                        child: Row(
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _PaymentCard(checkout: checkout),
+                const SizedBox(height: AppTokens.spaceLg),
+                Text(
+                  'Pay the amount above to the account shown, then upload a screenshot of the receipt.',
+                  style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
+                ),
+                const SizedBox(height: AppTokens.spaceMd),
+                SvSurfaceCard(
+                  onTap: checkoutState.isLoading ? null : _pickScreenshot,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.spaceLg,
+                    vertical: AppTokens.inputPaddingH,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.image_outlined, color: AppTokens.ink),
+                      const SizedBox(width: AppTokens.spaceMd),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.image_outlined,
-                              color: TwColors.slate400,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _screenshot == null
-                                        ? 'Upload screenshot'
-                                        : 'Screenshot selected',
-                                    style: const TextStyle(
-                                      color: TwColors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    _screenshot == null
-                                        ? 'Choose the payment receipt from your gallery'
-                                        : _screenshot!.name,
-                                    style: const TextStyle(
-                                      color: TwColors.slate400,
-                                      fontSize: 11.5,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
+                            Text(
+                              _screenshot == null
+                                  ? 'Upload screenshot'
+                                  : 'Screenshot selected',
+                              style: AppText.labelLarge.copyWith(
+                                color: AppTokens.ink,
                               ),
                             ),
-                            const Icon(
-                              Icons.upload_file,
-                              color: TwColors.slate400,
-                              size: 18,
+                            const SizedBox(height: AppTokens.spaceXs),
+                            Text(
+                              _screenshot == null
+                                  ? 'Choose the payment receipt from your gallery'
+                                  : _screenshot!.name,
+                              style: AppText.caption.copyWith(
+                                color: AppTokens.inkMuted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    if (checkoutState.error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        checkoutState.error!,
-                        style: const TextStyle(
-                          color: TwColors.red400,
-                          fontSize: 13,
-                        ),
+                      const Icon(
+                        Icons.upload_file,
+                        color: AppTokens.ink,
+                        size: AppTokens.componentIconMd,
                       ),
                     ],
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed:
-                            checkoutState.isLoading || _screenshotBytes == null
-                            ? null
-                            : _verify,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: TwColors.brightGreen,
-                          foregroundColor: TwColors.slate900,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                if (checkoutState.error != null) ...[
+                  const SizedBox(height: AppTokens.spaceMd),
+                  SvSurfaceCard(
+                    color: AppTokens.dangerBg,
+                    borderColor: AppTokens.danger,
+                    padding: const EdgeInsets.all(AppTokens.errorPadding),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: AppTokens.errorStrong,
+                          size: AppTokens.componentIconMd,
+                        ),
+                        const SizedBox(width: AppTokens.spaceMd),
+                        Expanded(
+                          child: Text(
+                            checkoutState.error!,
+                            style: AppText.bodySmall.copyWith(
+                              color: AppTokens.danger,
+                            ),
                           ),
                         ),
-                        child: checkoutState.isLoading
-                            ? const SvLoader.button()
-                            : const Text(
-                                'Verify & activate',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
+                ],
+                const SizedBox(height: AppTokens.spaceXl),
+                SvActionButton(
+                  label: 'Verify & activate',
+                  onPressed: checkoutState.isLoading || _screenshotBytes == null
+                      ? null
+                      : _verify,
+                  loading: checkoutState.isLoading,
                 ),
-              ),
+              ],
             ),
     );
   }
@@ -188,12 +158,8 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
 
       if (!mounted) return;
       if (text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not read the receipt. Please choose a clearer screenshot.',
-            ),
-          ),
+        ToastService.showError(
+          'Could not read the receipt. Please choose a clearer screenshot.',
         );
         return;
       }
@@ -205,8 +171,8 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not read the screenshot: $e')),
+      ToastService.showError(
+        'Could not read the screenshot. Please try again.',
       );
     }
   }
@@ -235,32 +201,30 @@ class _PaymentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: TwColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700),
-      ),
+    return SvSurfaceCard(
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _PaymentRow(label: 'Plan', value: _labelForPlan(checkout.planName)),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppTokens.spaceMd),
           _PaymentRow(
             label: 'Amount',
             value: '${checkout.amount} ${checkout.currency}',
           ),
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
-            child: Divider(color: TwColors.slate700, height: 1),
+            padding: EdgeInsets.symmetric(vertical: AppTokens.badgePaddingH),
+            child: Divider(
+              color: AppTokens.ice200,
+              height: AppTokens.dividerHeight,
+            ),
           ),
           _PaymentRow(
             label: 'Telebirr account',
             value: checkout.payToAccountNumber,
           ),
           if (checkout.payToAccountName != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTokens.spaceMd),
             _PaymentRow(
               label: 'Account name',
               value: checkout.payToAccountName!,
@@ -310,18 +274,14 @@ class _PaymentRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(color: TwColors.slate400, fontSize: 12.5),
+          style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: AppTokens.spaceLg),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.end,
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppText.labelLarge.copyWith(color: AppTokens.ink),
           ),
         ),
       ],

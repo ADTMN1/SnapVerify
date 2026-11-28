@@ -19,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _activeTabIndex = 0;
+  int? _hoveredNavIndex;
   bool _planSheetOpen = false;
 
   @override
@@ -46,7 +47,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTokens.obsidian950,
+      backgroundColor: AppTokens.ice50,
       body: SafeArea(
         child: IndexedStack(index: _activeTabIndex, children: children),
       ),
@@ -70,17 +71,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.space2xl,
-        vertical: AppTokens.spaceLg,
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceSm,
       ),
       decoration: BoxDecoration(
-        color: AppTokens.obsidian900,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppTokens.navBarRadius),
+        color: AppTokens.ice50,
+        border: const Border(
+          top: BorderSide(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: AppTokens.inkOverlay14,
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           if (!isWaiter) _buildNavItem(0, Icons.home_rounded, 'Home'),
           _buildNavItem(historyIdx, Icons.history_rounded, 'History'),
@@ -113,25 +124,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isActive = _activeTabIndex == index;
-    final navColor = isActive
-        ? AppTokens.accent
-        : AppTokens.white.withValues(alpha: AppTokens.alphaSecondary);
-    return GestureDetector(
-      onTap: () => _switchTab(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: navColor, size: AppTokens.navIconSize),
-          const SizedBox(height: AppTokens.spaceXs),
-          Text(
-            label,
-            style:
-                (isActive
-                        ? AppText.navLabelActive
-                        : AppText.navLabelInactive)
-                    .copyWith(color: navColor),
+    final isHovered = _hoveredNavIndex == index;
+    final iconColor = isActive ? AppTokens.white : AppTokens.inkMuted;
+    final labelColor = isActive ? AppTokens.ink : AppTokens.inkMuted;
+    final pillColor = isActive
+        ? AppTokens.obsidian950
+        : isHovered
+        ? AppTokens.obsidian800
+        : AppTokens.transparent;
+    return Expanded(
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hoveredNavIndex = index),
+        onExit: (_) => setState(() {
+          if (_hoveredNavIndex == index) _hoveredNavIndex = null;
+        }),
+        child: GestureDetector(
+          onTap: () => _switchTab(index),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: AppTokens.navActivePillWidth,
+                height: AppTokens.navActivePillHeight,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(1),
+                decoration: BoxDecoration(
+                  color: pillColor,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                ),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: AppTokens.navIconSize,
+                ),
+              ),
+              const SizedBox(height: AppTokens.spaceXs),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    (isActive
+                            ? AppText.navLabelActive
+                            : AppText.navLabelInactive)
+                        .copyWith(color: labelColor),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -180,11 +221,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         width: AppTokens.navCameraSize,
         height: AppTokens.navCameraSize,
         decoration: BoxDecoration(
-          color: AppTokens.accent,
+          color: AppTokens.cameraActionBackground,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: AppTokens.accent.withValues(alpha: AppTokens.navGlowAlpha),
+              color: AppTokens.cameraActionBackground.withValues(
+                alpha: AppTokens.navGlowAlpha,
+              ),
               blurRadius: AppTokens.shadowBlurMedium,
               spreadRadius: AppTokens.shadowSpreadMedium,
             ),
@@ -192,7 +235,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         child: Icon(
           Icons.camera_alt_rounded,
-          color: AppTokens.obsidian900,
+          color: AppTokens.cameraActionForeground,
           size: AppTokens.navIconSize,
         ),
       ),

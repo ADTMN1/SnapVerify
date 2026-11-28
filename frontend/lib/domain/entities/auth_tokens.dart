@@ -27,10 +27,9 @@ class AuthTokens {
       // Pad to a multiple of 4 for standard base64
       payload += '=' * ((4 - payload.length % 4) % 4);
       final decoded = String.fromCharCodes(
-        Uri.decodeFull(payload
-                .replaceAll('-', '+')
-                .replaceAll('_', '/'))
-            .codeUnits,
+        Uri.decodeFull(
+          payload.replaceAll('-', '+').replaceAll('_', '/'),
+        ).codeUnits,
       );
       // Simple regex parse — avoids importing a JSON library for this tiny job
       final expMatch = RegExp(r'"exp":(\d+)').firstMatch(decoded);

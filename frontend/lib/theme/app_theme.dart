@@ -73,7 +73,10 @@ class AppTheme {
         RoundedRectangleBorder(borderRadius: AppTokens.buttonBorderRadius),
       ),
       side: WidgetStatePropertyAll<BorderSide>(
-        BorderSide(color: AppTokens.obsidian700, width: AppTokens.inputBorderWidth),
+        BorderSide(
+          color: AppTokens.obsidian700,
+          width: AppTokens.inputBorderWidth,
+        ),
       ),
       elevation: WidgetStatePropertyAll<double>(AppTokens.cardElevation),
     );
@@ -140,7 +143,9 @@ class AppTheme {
           height: AppTokens.lineHeightRelaxed,
         ),
         labelStyle: AppText.labelMedium.copyWith(color: AppTokens.ice400),
-        floatingLabelStyle: AppText.labelSmall.copyWith(color: AppTokens.accent),
+        floatingLabelStyle: AppText.labelSmall.copyWith(
+          color: AppTokens.accent,
+        ),
         errorStyle: AppTokens.dmSans(
           size: AppTokens.helperSize,
           weight: FontWeight.w500,
@@ -177,17 +182,21 @@ class AppTheme {
         height: AppTokens.tapTarget + AppTokens.space2xl,
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: AppTokens.accent,
-        linearTrackColor: AppTokens.obsidian700,
-        circularTrackColor: AppTokens.obsidian700,
+        color: AppTokens.inkMuted,
+        linearTrackColor: AppTokens.ice100,
+        circularTrackColor: AppTokens.ice100,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppTokens.obsidian800,
-        contentTextStyle: AppText.onDark(AppText.bodySmall),
+        backgroundColor: AppTokens.white,
+        contentTextStyle: AppText.bodySmall.copyWith(color: AppTokens.ink),
         behavior: SnackBarBehavior.floating,
-        elevation: AppTokens.menuElevation,
+        elevation: AppTokens.dialogElevation,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          side: BorderSide(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
       ),
       dividerTheme: DividerThemeData(

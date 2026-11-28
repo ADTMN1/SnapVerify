@@ -128,4 +128,26 @@ describe('ReportsService', () => {
     expect(result.summary.verifiedAmount).toBe(0);
     expect(result.byStatus).toEqual([]);
   });
+
+  it('uses one inclusive UTC day for a same-day range', async () => {
+    findMany.mockResolvedValue([]);
+    const result = await service.getSummary({
+      organizationId: 'org-1',
+      role: 'OWNER',
+      from: '2026-11-26',
+      to: '2026-11-26',
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          createdAt: {
+            gte: new Date('2026-11-26T00:00:00.000Z'),
+            lt: new Date('2026-11-27T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    expect(result.range).toEqual({ from: '2026-11-26', to: '2026-11-26' });
+  });
 });

@@ -285,6 +285,12 @@ export class AuthService {
       });
     }
 
+    if (user.status !== 'active') {
+      throw new UnauthorizedException(
+        'This account is not active. Please contact support.',
+      );
+    }
+
     const activeAssignments = user.userAssignments.filter(
       (a) => a.status === 'active',
     );
@@ -678,15 +684,15 @@ export class AuthService {
   // ── Check Invitation (PUBLIC — staff joining via QR deep link) ────────────
   // Validates the invitation token (from the QR deep link), with a legacy
   // phone-only fallback. Returns the matching valid invitation(s).
-  async checkInvitation(token?: string, phone?: string) {
+  async checkInvitation(token: string) {
     const now = new Date();
 
     try {
       await this.prisma.invitation.deleteMany({
         where: {
+          token,
           status: 'PENDING',
           expiresAt: { lt: now },
-          ...(token ? { token } : {}),
         },
       });
     } catch (_) {
@@ -695,18 +701,16 @@ export class AuthService {
 
     const invitations = await this.prisma.invitation.findMany({
       where: {
+        token,
         status: 'PENDING',
         expiresAt: { gt: now },
-        ...(token ? { token } : { ...(phone ? { phone } : {}) }),
       },
       include: { organization: true, branch: true },
     });
 
     if (invitations.length === 0) {
       throw new BadRequestException(
-        token
-          ? 'Invalid invitation (wrong or already used/expired token)'
-          : 'No pending invitations found',
+        'Invalid invitation (wrong or already used/expired token)',
       );
     }
 
@@ -753,7 +757,15 @@ export class AuthService {
   }
 
   // ── Activate Invitation (QR flow: validate token → staff sets password) ───
-  async activateInvitation(dto: { token: string; password: string }) {
+  async activateInvitation(dto: {
+    token: string;
+    password: string;
+    confirmPassword: string;
+  }) {
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Passwords do not match.');
+    }
+
     const now = new Date();
 
     // Single-use activation: the updateMany guard below fails if two devices
@@ -929,8 +941,15 @@ export class AuthService {
     organizationId: string,
     fullName: string,
     role: Role,
+    callerRole: string,
     branchId?: string,
   ) {
+    if (role === Role.OWNER && callerRole !== Role.OWNER) {
+      throw new BadRequestException(
+        'Only an owner can assign the OWNER role.',
+      );
+    }
+
     const assignment = await this.prisma.userBusinessAssignment.findFirst({
       where: { id: staffAssignmentId, organizationId },
       include: { user: true },
@@ -973,6 +992,10 @@ export class AuthService {
         branch: { select: { id: true, name: true } },
       },
     });
+
+    if (assignment.role !== role) {
+      await this.jwtService.logoutAll(assignment.userId);
+    }
 
     this.logger.log(
       `Staff updated: id=${staffAssignmentId} role=${role} branch=${branchId || 'none'}`,

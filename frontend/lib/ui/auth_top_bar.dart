@@ -56,7 +56,7 @@ class AuthTopBar extends StatelessWidget {
                   width: AppTokens.authTopBarLogoSize,
                   height: AppTokens.authTopBarLogoSize,
                   decoration: BoxDecoration(
-                    color: AppTokens.white,
+                    color: AppTokens.obsidian950,
                     borderRadius: BorderRadius.circular(AppTokens.radiusLogo),
                   ),
                   child: Center(

@@ -20,7 +20,6 @@ class AuthFieldShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showRing = focused && !hasError;
     final borderColor = hasError
         ? AppTokens.danger
         : focused
@@ -38,7 +37,7 @@ class AuthFieldShell extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: AppTokens.inputHeight),
       padding: const EdgeInsets.all(AppTokens.focusRingWidth),
       decoration: BoxDecoration(
-        color: showRing ? AppTokens.inkOverlay14 : AppTokens.transparent,
+        color: AppTokens.transparent,
         borderRadius: BorderRadius.circular(AppTokens.inputRadius),
       ),
       child: Stack(
@@ -52,7 +51,7 @@ class AuthFieldShell extends StatelessWidget {
               minHeight: AppTokens.inputHeight - AppTokens.focusRingWidth * 2,
             ),
             decoration: BoxDecoration(
-              color: AppTokens.white,
+              color: AppTokens.transparent,
               borderRadius: BorderRadius.circular(AppTokens.inputRadius),
               border: Border.all(color: borderColor, width: borderWidth),
             ),
@@ -74,10 +73,7 @@ class AuthFieldShell extends StatelessWidget {
                 horizontal: AppTokens.labelNotchPaddingH,
               ),
               color: AppTokens.ice50,
-              child: Text(
-                label,
-                style: AppText.authFieldLabel,
-              ),
+              child: Text(label, style: AppText.authFieldLabel),
             ),
           ),
         ],

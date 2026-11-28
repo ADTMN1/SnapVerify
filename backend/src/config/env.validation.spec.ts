@@ -29,6 +29,12 @@ describe('validateEnvironment', () => {
     expect(() => validateEnvironment({})).not.toThrow();
   });
 
+  it('enforces the same rules in staging', () => {
+    const staging = { ...VALID_PROD, NODE_ENV: 'staging' };
+    delete (staging as Record<string, string>).DATABASE_URL;
+    expect(() => validateEnvironment(staging)).toThrow(/DATABASE_URL is required/);
+  });
+
   it('accepts a complete production environment', () => {
     const result = validateEnvironment({ ...VALID_PROD });
     expect(result.CHECK_ET_TIMEOUT_MS).toBe('45000');

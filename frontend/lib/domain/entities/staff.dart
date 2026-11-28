@@ -1,4 +1,5 @@
 enum StaffStatus { active, suspended, offline, online }
+
 enum StaffRole { owner, manager, cashier, waiter, supervisor, accountant }
 
 class StaffPerformance {

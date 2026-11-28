@@ -4,19 +4,18 @@ import '../../data/datasources/notifications_remote_datasource.dart';
 import '../../domain/entities/notification_item.dart';
 import 'auth_provider.dart';
 
-final notificationsDatasourceProvider =
-    Provider<NotificationsRemoteDatasource>((ref) {
-  return NotificationsRemoteDatasource(client: ref.watch(httpClientProvider));
-});
+final notificationsDatasourceProvider = Provider<NotificationsRemoteDatasource>(
+  (ref) {
+    return NotificationsRemoteDatasource(client: ref.watch(httpClientProvider));
+  },
+);
 
 /// Notification feed for the current user.
 ///
 /// Watches the current access token so a cached "not authenticated" error is
 /// discarded as soon as a session is restored or the user logs in again.
 final notificationsProvider = FutureProvider<NotificationsData>((ref) async {
-  ref.watch(
-    authNotifierProvider.select((state) => state.tokens?.accessToken),
-  );
+  ref.watch(authNotifierProvider.select((state) => state.tokens?.accessToken));
 
   final token = await ref
       .read(authNotifierProvider.notifier)

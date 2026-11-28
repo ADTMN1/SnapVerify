@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../tailwind.dart';
+import '../../theme/app_text.dart';
+import '../../theme/app_tokens.dart';
 
 class ToastService {
   static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
@@ -8,18 +9,16 @@ class ToastService {
   static void showSuccess(String message) {
     _showToast(
       message,
-      TwColors.brightGreen,
-      Colors.black,
+      AppTokens.successStrong,
       Icons.check_circle_outline,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(seconds: 3),
     );
   }
 
   static void showError(String message) {
     _showToast(
       message,
-      TwColors.red500,
-      Colors.white,
+      AppTokens.errorStrong,
       Icons.error_outline,
       duration: const Duration(seconds: 4),
     );
@@ -28,18 +27,25 @@ class ToastService {
   static void showWarning(String message) {
     _showToast(
       message,
-      TwColors.amber500,
-      Colors.white,
+      AppTokens.warningStrong,
       Icons.warning_amber_outlined,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 4),
     );
   }
 
   static void showInfo(String message) {
     _showToast(
       message,
-      TwColors.sky500,
-      Colors.white,
+      AppTokens.infoStrong,
+      Icons.info_outline,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
+  static void showNeutral(String message) {
+    _showToast(
+      message,
+      AppTokens.inkMuted,
       Icons.info_outline,
       duration: const Duration(seconds: 3),
     );
@@ -47,54 +53,49 @@ class ToastService {
 
   static void _showToast(
     String message,
-    Color backgroundColor,
-    Color textColor,
+    Color iconColor,
     IconData icon, {
     required Duration duration,
   }) {
     scaffoldMessengerKey.currentState?.clearSnackBars();
-    
+    final displayMessage = message
+        .replaceFirst(RegExp(r'^Exception:\s*'), '')
+        .replaceFirst(RegExp(r'^Error:\s*'), '');
+
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(icon, color: textColor, size: 20),
-            const SizedBox(width: 12),
+            Icon(icon, color: iconColor, size: AppTokens.componentIconMd),
+            const SizedBox(width: AppTokens.spaceMd),
             Expanded(
               child: Text(
-                message,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  height: 1.4,
-                ),
+                displayMessage,
+                style: AppText.bodySmall.copyWith(color: AppTokens.ink),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        backgroundColor: backgroundColor,
+        backgroundColor: AppTokens.white,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          side: BorderSide(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
-        margin: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          bottom: 16,
-          top: 16,
-        ),
+        margin: const EdgeInsets.all(AppTokens.spaceLg),
         duration: duration,
-        elevation: 8,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        elevation: AppTokens.dialogElevation,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceLg,
+          vertical: AppTokens.spaceMd,
+        ),
         dismissDirection: DismissDirection.horizontal,
       ),
     );
-  }
-
-  static BuildContext? _findContext() {
-    return scaffoldMessengerKey.currentContext;
   }
 }

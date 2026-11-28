@@ -35,7 +35,7 @@ class SubscriptionCheckout {
       status: json['status']?.toString() ?? 'PENDING',
       expiresAt: json['expiresAt'] != null
           ? DateTime.tryParse(json['expiresAt'].toString()) ??
-              DateTime.now().add(const Duration(minutes: 30))
+                DateTime.now().add(const Duration(minutes: 30))
           : DateTime.now().add(const Duration(minutes: 30)),
       payToAccountNumber: payTo['accountNumber']?.toString() ?? '',
       payToAccountName: payTo['accountName']?.toString(),

@@ -77,7 +77,7 @@ class LanguageNotifier extends StateNotifier<AppLanguage> {
     final userId = _ref.read(currentUserIdProvider);
     final stored =
         (userId == null ? null : prefs.getString(userPreferencesKey(userId))) ??
-            prefs.getString(defaultPreferencesKey);
+        prefs.getString(defaultPreferencesKey);
     _apply(AppLanguage.fromCode(stored) ?? AppLanguage.english);
   }
 
@@ -107,8 +107,7 @@ final currentUserIdProvider = Provider<String?>(
   (ref) => ref.watch(authNotifierProvider.select((state) => state.user?.id)),
 );
 
-final languageProvider =
-    StateNotifierProvider<LanguageNotifier, AppLanguage>(
+final languageProvider = StateNotifierProvider<LanguageNotifier, AppLanguage>(
   (ref) => LanguageNotifier(ref),
 );
 
