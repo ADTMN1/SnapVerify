@@ -75,10 +75,7 @@ class _AuthDropdownFieldState extends State<AuthDropdownField> {
           if (hasError)
             Padding(
               padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
-              child: Text(
-                widget.error!,
-                style: AppText.authError,
-              ),
+              child: Text(widget.error!, style: AppText.authError),
             ),
         ],
       ),

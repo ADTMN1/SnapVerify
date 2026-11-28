@@ -14,14 +14,14 @@ class SvLoader extends StatelessWidget {
     : _variant = _SvLoaderVariant.page,
       _size = AppTokens.loaderPageSize,
       _strokeWidth = AppTokens.loaderPageStroke,
-      _color = AppTokens.accent,
+      _color = AppTokens.inkMuted,
       _backgroundColor = null;
 
   const SvLoader.page({super.key, Color? color, Color? backgroundColor})
     : _variant = _SvLoaderVariant.page,
       _size = AppTokens.loaderPageSize,
       _strokeWidth = AppTokens.loaderPageStroke,
-      _color = color ?? AppTokens.accent,
+      _color = color ?? AppTokens.inkMuted,
       _backgroundColor = backgroundColor;
 
   const SvLoader.button({super.key, Color? color})
@@ -35,14 +35,14 @@ class SvLoader extends StatelessWidget {
     : _variant = _SvLoaderVariant.inline,
       _size = AppTokens.loaderInlineSize,
       _strokeWidth = AppTokens.loaderInlineStroke,
-      _color = color ?? AppTokens.accent,
+      _color = color ?? AppTokens.inkMuted,
       _backgroundColor = null;
 
   const SvLoader.large({super.key, Color? color})
     : _variant = _SvLoaderVariant.large,
       _size = AppTokens.loaderLargeSize,
       _strokeWidth = AppTokens.loaderLargeStroke,
-      _color = color ?? AppTokens.accent,
+      _color = color ?? AppTokens.inkMuted,
       _backgroundColor = null;
 
   Color? get _trackColor {

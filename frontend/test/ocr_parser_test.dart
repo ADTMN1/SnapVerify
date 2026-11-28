@@ -120,4 +120,54 @@ Ibrahi
       isNull,
     );
   });
+
+  test('labeled token scan rejects date-like references (DD/MM/YYYY)', () {
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: 15/11/2026'),
+      isNull,
+    );
+  });
+
+  test('labeled token scan rejects date-like references (DD-MM-YYYY)', () {
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: 15-11-2026'),
+      isNull,
+    );
+  });
+
+  test('labeled token scan rejects time-like references (HH:mm:ss)', () {
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: 23:02:24'),
+      isNull,
+    );
+  });
+
+  test('labeled token scan rejects time-like references (HH:mm)', () {
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: 17:05'),
+      isNull,
+    );
+  });
+
+  test('labeled token scan rejects decimal amounts', () {
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: 500.00'),
+      isNull,
+    );
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: 1,200.00'),
+      isNull,
+    );
+  });
+
+  test('labeled token scan still accepts valid alphanumeric references', () {
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: FT25115A1234'),
+      'FT25115A1234',
+    );
+    expect(
+      OcrParser.extractLabeledReference('Transaction Number: DJV9JIVHMR'),
+      'DJV9JIVHMR',
+    );
+  });
 }

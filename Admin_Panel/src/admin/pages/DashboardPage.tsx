@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const [providerStats, setProviderStats] = useState<{ provider: string; count: number }[]>([]);
   const [branchPerf, setBranchPerf] = useState<{ branchName: string; verificationRate: number; revenue: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -42,8 +43,11 @@ export default function DashboardPage() {
       setVerifyTrend(vt.data);
       setProviderStats(ps.data);
       setBranchPerf(bp.data);
+      setLoadError(null);
     } catch (e) {
-      console.error('Dashboard load failed:', e);
+      const err = e as { response?: { data?: { message?: string | string[] } } };
+      const msg = err.response?.data?.message;
+      setLoadError(Array.isArray(msg) ? msg.join(', ') : msg ?? 'Dashboard data could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -77,8 +81,10 @@ export default function DashboardPage() {
         <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-10" style={{ background: 'radial-gradient(circle,#B8FF3B,transparent)', transform: 'translate(30%,-30%)' }} />
         <div className="relative">
           <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full bg-[#B8FF3B] animate-pulse" />
-            <span className="text-[#B8FF3B] text-xs font-semibold">System Operational</span>
+            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: loadError ? '#ef4444' : '#B8FF3B' }} />
+            <span className="text-xs font-semibold" style={{ color: loadError ? '#ef4444' : '#B8FF3B' }}>
+              {loadError ? 'Dashboard data unavailable' : loading ? 'Checking…' : 'Dashboard reachable'}
+            </span>
           </div>
           <h2 className="text-white text-2xl font-black tracking-tight mb-1">Snap<span className="text-[#B8FF3B]">Verify</span> Dashboard</h2>
           <p className="text-slate-400 text-sm">Real-time payment verification & fraud prevention</p>
@@ -96,6 +102,14 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {loadError && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 flex flex-wrap items-center gap-3">
+          <AlertTriangle size={18} className="text-red-400" />
+          <p className="text-red-200 text-sm flex-1">{loadError}</p>
+          <button onClick={load} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-colors">Retry</button>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

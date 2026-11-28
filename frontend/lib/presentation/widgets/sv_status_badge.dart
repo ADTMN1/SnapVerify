@@ -53,8 +53,7 @@ class SVStatusBadge extends StatelessWidget {
       isSmall ? AppTokens.badgeSmallPaddingH : AppTokens.badgePaddingH;
   double get _fontSize =>
       isSmall ? AppTokens.badgeSmallFontSize : AppTokens.badgeFontSize;
-  FontWeight get _fontWeight =>
-      isSmall ? FontWeight.w500 : FontWeight.w600;
+  FontWeight get _fontWeight => isSmall ? FontWeight.w500 : FontWeight.w600;
 
   @override
   Widget build(BuildContext context) {

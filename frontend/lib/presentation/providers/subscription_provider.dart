@@ -8,7 +8,8 @@ import 'auth_provider.dart';
 
 final subscriptionRemoteDatasourceProvider =
     Provider<SubscriptionRemoteDatasource>(
-      (ref) => SubscriptionRemoteDatasource(client: ref.watch(httpClientProvider)),
+      (ref) =>
+          SubscriptionRemoteDatasource(client: ref.watch(httpClientProvider)),
     );
 
 class SubscriptionCheckoutState {

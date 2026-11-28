@@ -3,13 +3,13 @@ enum PaymentProvider { CBE, TELEBIRR, DASHEN, ABYSSINIA, CBEBIRR, M_PESA }
 /// Human-readable label for a provider (used in selection UI and logs).
 extension PaymentProviderLabel on PaymentProvider {
   String get label => switch (this) {
-        PaymentProvider.CBE => 'CBE',
-        PaymentProvider.TELEBIRR => 'Telebirr',
-        PaymentProvider.DASHEN => 'Dashen',
-        PaymentProvider.ABYSSINIA => 'Abyssinia',
-        PaymentProvider.CBEBIRR => 'CBE Birr',
-        PaymentProvider.M_PESA => 'M-Pesa',
-      };
+    PaymentProvider.CBE => 'CBE',
+    PaymentProvider.TELEBIRR => 'Telebirr',
+    PaymentProvider.DASHEN => 'Dashen',
+    PaymentProvider.ABYSSINIA => 'Abyssinia',
+    PaymentProvider.CBEBIRR => 'CBE Birr',
+    PaymentProvider.M_PESA => 'M-Pesa',
+  };
 }
 
 /// Map an OCR-extracted provider label (e.g. "Telebirr", "CBE Birr",
@@ -19,10 +19,10 @@ extension PaymentProviderLabel on PaymentProvider {
 /// explicit user selection instead of guessing. CBE Birr (CBEBIRR) is kept
 /// distinct from CBE and Telebirr.
 PaymentProvider? paymentProviderFromOcrLabel(String? label) {
-  final normalized = label
-      ?.trim()
-      .toLowerCase()
-      .replaceAll(RegExp(r'[\s_-]+'), '');
+  final normalized = label?.trim().toLowerCase().replaceAll(
+    RegExp(r'[\s_-]+'),
+    '',
+  );
   switch (normalized) {
     case 'telebirr':
       return PaymentProvider.TELEBIRR;

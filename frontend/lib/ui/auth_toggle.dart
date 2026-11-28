@@ -37,7 +37,9 @@ class AuthSegmentedToggle extends StatelessWidget {
                 child: GestureDetector(
                   onTap: item.onTap,
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: AppTokens.motionFast),
+                    duration: const Duration(
+                      milliseconds: AppTokens.motionFast,
+                    ),
                     curve: AppTokens.curveStandard,
                     height: AppTokens.toggleButtonHeight,
                     alignment: Alignment.center,

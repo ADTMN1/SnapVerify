@@ -28,14 +28,26 @@ class SVButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final buttonHeight = height ?? AppTokens.buttonHeight;
     return SizedBox(
       width: isFullWidth ? double.infinity : null,
-      height: height,
+      height: buttonHeight,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.all(_backgroundColor),
           foregroundColor: WidgetStateProperty.all(_foregroundColor),
+          minimumSize: WidgetStateProperty.all(
+            Size(isFullWidth ? double.infinity : 0, buttonHeight),
+          ),
+          padding: WidgetStateProperty.all(
+            EdgeInsets.symmetric(
+              horizontal: isFullWidth ? AppTokens.spaceXl : AppTokens.spaceLg,
+              vertical: buttonHeight <= AppTokens.buttonHeightSmall
+                  ? AppTokens.spaceXs
+                  : AppTokens.spaceMd,
+            ),
+          ),
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(borderRadius),
@@ -74,7 +86,7 @@ class SVButton extends StatelessWidget {
       case SVButtonType.primary:
         return AppTokens.accent;
       case SVButtonType.secondary:
-        return AppTokens.obsidian700;
+        return AppTokens.obsidian950;
       case SVButtonType.outline:
       case SVButtonType.ghost:
         return AppTokens.transparent;

@@ -1,10 +1,4 @@
-enum SubscriptionStatus {
-  active,
-  inactive,
-  cancelled,
-  expired,
-  unknown,
-}
+enum SubscriptionStatus { active, inactive, cancelled, expired, unknown }
 
 class Subscription {
   final String id;
@@ -80,9 +74,11 @@ class Subscription {
       default:
         return planName
             .split(RegExp(r'[_\s]+'))
-            .map((word) => word.isEmpty
-                ? word
-                : word[0].toUpperCase() + word.substring(1).toLowerCase())
+            .map(
+              (word) => word.isEmpty
+                  ? word
+                  : word[0].toUpperCase() + word.substring(1).toLowerCase(),
+            )
             .join(' ');
     }
   }

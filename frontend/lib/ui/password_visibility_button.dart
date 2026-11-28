@@ -26,9 +26,7 @@ class PasswordVisibilityButton extends StatelessWidget {
         ),
         padding: EdgeInsets.zero,
         icon: Icon(
-          obscure
-              ? Icons.visibility_off_outlined
-              : Icons.visibility_outlined,
+          obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
           size: AppTokens.eyeIconSize,
           color: AppTokens.inkMuted,
         ),

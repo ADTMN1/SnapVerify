@@ -130,6 +130,19 @@ class AuthRepositoryImpl implements AuthRepository {
     return remoteDatasource.resetPassword(email, otpCode, newPassword);
   }
 
+  @override
+  Future<Map<String, dynamic>> changePassword(
+    String accessToken, {
+    required String currentPassword,
+    required String newPassword,
+  }) {
+    return remoteDatasource.changePassword(
+      accessToken,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+  }
+
   // ── Invitation Management ─────────────────────────────────────────────────
 
   @override
@@ -169,7 +182,8 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── Staff Management ──────────────────────────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> addStaff(String accessToken, {
+  Future<Map<String, dynamic>> addStaff(
+    String accessToken, {
     required String fullName,
     required String username,
     required String role,
@@ -190,12 +204,18 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> revokeInvitation(String accessToken, String invitationId) {
+  Future<Map<String, dynamic>> revokeInvitation(
+    String accessToken,
+    String invitationId,
+  ) {
     return remoteDatasource.revokeInvitation(accessToken, invitationId);
   }
 
   @override
-  Future<Map<String, dynamic>> regenerateInvitation(String accessToken, String invitationId) {
+  Future<Map<String, dynamic>> regenerateInvitation(
+    String accessToken,
+    String invitationId,
+  ) {
     return remoteDatasource.regenerateInvitation(accessToken, invitationId);
   }
 
@@ -210,7 +230,9 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> updateStaff(String accessToken, String staffId, {
+  Future<Map<String, dynamic>> updateStaff(
+    String accessToken,
+    String staffId, {
     required String fullName,
     required String role,
     String? branchId,
@@ -227,7 +249,8 @@ class AuthRepositoryImpl implements AuthRepository {
   // ── Branch Management ─────────────────────────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> addBranch(String accessToken, {
+  Future<Map<String, dynamic>> addBranch(
+    String accessToken, {
     required String name,
     String? phone,
     required String address,
@@ -251,7 +274,9 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> updateBranch(String accessToken, String branchId, {
+  Future<Map<String, dynamic>> updateBranch(
+    String accessToken,
+    String branchId, {
     required String name,
     String? phone,
     required String address,
@@ -375,11 +400,11 @@ class AuthRepositoryImpl implements AuthRepository {
   AuthTokens _tokensFromMap(Map<String, dynamic> data) {
     final accessToken = data['accessToken']?.toString();
     final refreshToken = data['refreshToken']?.toString();
-    
+
     if (accessToken == null || refreshToken == null) {
       throw Exception('Missing access or refresh token in response');
     }
-    
+
     final role = JwtUtils.extractRole(accessToken) ?? 'CASHIER';
     final orgId = JwtUtils.extractOrganizationId(accessToken) ?? '';
 

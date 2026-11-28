@@ -240,15 +240,21 @@ export class JwtService {
       );
     }
 
-    // Use the organizationId and role stored on the token record (set at login)
-    const organizationId = token.organizationId;
-    const role = token.role;
+    if (token.user.status !== 'active') {
+      await this.prisma.refreshToken.delete({ where: { id: token.id } });
+      throw new UnauthorizedException(
+        'Your account is not active. Please log in again.',
+      );
+    }
 
-    // Verify the assignment still exists (user may have been removed from org)
+    const organizationId = token.organizationId;
+
+    // Verify the assignment still exists and use its current role, so a demoted
+    // user cannot rotate an old token back into their previous privileges.
     const assignment = token.user.userAssignments.find(
       (a) => a.organizationId === organizationId,
     );
-    if (!assignment) {
+    if (!assignment || assignment.status !== 'active') {
       await this.prisma.refreshToken.delete({ where: { id: token.id } });
       throw new UnauthorizedException(
         'Your session is no longer valid. Please log in again.',
@@ -261,7 +267,7 @@ export class JwtService {
     const tokens = await this.generateTokens(
       token.userId,
       organizationId,
-      role,
+      assignment.role,
       assignment.branchId ?? undefined,
       deviceInfo,
       ipAddress,

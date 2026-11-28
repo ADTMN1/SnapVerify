@@ -13,11 +13,11 @@ class SVCard extends StatelessWidget {
   const SVCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(AppTokens.space2xl),
+    this.padding = const EdgeInsets.all(AppTokens.spaceLg),
     this.margin,
     this.onTap,
-    this.hasShadow = true,
-    this.borderRadius = AppTokens.radius2xl,
+    this.hasShadow = false,
+    this.borderRadius = AppTokens.radiusMd,
     this.backgroundColor,
   });
 
@@ -26,8 +26,12 @@ class SVCard extends StatelessWidget {
     return Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: backgroundColor ?? AppTokens.obsidian800,
+        color: backgroundColor ?? AppTokens.ice50,
         borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
         boxShadow: hasShadow ? const [AppTokens.cardShadow] : null,
       ),
       child: onTap != null
@@ -60,7 +64,7 @@ class SVStatCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
-    this.iconColor = AppTokens.accent,
+    this.iconColor = AppTokens.ink,
     this.backgroundColor,
     this.change,
     this.isPositive = true,
@@ -69,7 +73,9 @@ class SVStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final changeColor = isPositive ? AppTokens.success : AppTokens.error;
+    final changeColor = isPositive
+        ? AppTokens.successStrong
+        : AppTokens.errorStrong;
     return SVCard(
       onTap: onTap,
       backgroundColor: backgroundColor,
@@ -134,9 +140,7 @@ class SVStatCard extends StatelessWidget {
             style: AppTokens.dmSans(
               size: AppTokens.statTitleSize,
               weight: FontWeight.w500,
-              color: AppTokens.white.withValues(
-                alpha: AppTokens.alphaPrimaryMuted,
-              ),
+              color: AppTokens.inkMuted,
             ),
           ),
           const SizedBox(height: AppTokens.statTitleGap),
@@ -145,7 +149,7 @@ class SVStatCard extends StatelessWidget {
             style: AppTokens.manrope(
               size: AppTokens.statValueSize,
               weight: FontWeight.w700,
-              color: AppTokens.white,
+              color: AppTokens.ink,
             ),
           ),
         ],

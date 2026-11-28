@@ -15,6 +15,7 @@ import {
 import { AdminDataService } from '../services/admin-data.service';
 import { AdminJwtAuthGuard } from '../guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from '../guards/admin-roles.guard';
+import { AdminRoles } from '../decorators/admin-roles.decorator';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
 import { UpdateSubscriptionAccountDto } from '../dto/update-subscription-account.dto';
 
@@ -100,11 +101,13 @@ export class AdminDataController {
   }
 
   @Get('subscription-account')
+  @AdminRoles('SUPER_ADMIN')
   getSubscriptionAccount() {
     return this.dataService.getSubscriptionAccount();
   }
 
   @Put('subscription-account')
+  @AdminRoles('SUPER_ADMIN')
   updateSubscriptionAccount(@Body() dto: UpdateSubscriptionAccountDto) {
     return this.dataService.updateSubscriptionAccount(dto);
   }

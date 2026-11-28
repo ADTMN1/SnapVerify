@@ -25,10 +25,10 @@ class AppTokens {
   static const Color whiteOverlay = Color(0x14FFFFFF);
   static const Color transparent = Color(0x00000000);
 
-  static const Color headerBase = Color(0xFF050D18);
-  static const Color headerFacetA = Color(0xFF0D1926);
-  static const Color headerFacetB = Color(0xFF0A1421);
-  static const Color headerFacetC = Color(0xFF07101B);
+  static const Color headerBase = Color(0xFF101214);
+  static const Color headerFacetA = Color(0xFF1B1E23);
+  static const Color headerFacetB = Color(0xFF14171D);
+  static const Color headerFacetC = Color(0xFF0B0D10);
 
   static const Color bgDark = Color(0xFF06182C);
   static const Color bgCard = Color(0xFFFFFFFF);
@@ -36,6 +36,10 @@ class AppTokens {
   static const Color surfaceDark = Color(0xFF102A43);
   static const Color primary = Color(0xFF2D7FF9);
   static const Color accent = Color(0xFFB8FF3B);
+  static const Color cameraActionBackground = accent;
+  static const Color cameraActionForeground = ink;
+  static const Color cameraActionDisabledBackground = surfaceLight;
+  static const Color cameraActionDisabledForeground = inkMuted;
   static const Color teal = Color(0xFF00C2A8);
   static const Color orange = Color(0xFFFFA63B);
   static const Color purple = Color(0xFF8B5CF6);
@@ -43,6 +47,13 @@ class AppTokens {
   static const Color success = accent;
   static const Color warning = orange;
   static const Color info = teal;
+  static const Color successStrong = Color(0xFF0B7A55);
+  static const Color warningStrong = Color(0xFF9A5B00);
+  static const Color errorStrong = Color(0xFFB42318);
+  static const Color infoStrong = Color(0xFF0E6FB8);
+  static const Color successSurface = Color(0xFFE7F7F0);
+  static const Color warningSurface = Color(0xFFFFF4E5);
+  static const Color infoSurface = Color(0xFFE9F3FF);
   static const Color text = Color(0xFF0A1A2F);
   static const Color textSecondary = Color(0xFF64748B);
   static const Color textOnDark = Color(0xFFE6F1FF);
@@ -149,9 +160,9 @@ class AppTokens {
   static const double logoSourceSize = 1024;
   static const double logoOffset = 270;
   static const double logoBracketStroke = 20;
-  static const double logoCircleStroke = 18;
+  static const double logoCircleStroke = 20;
   static const double logoCircleRadius = 116;
-  static const double logoCheckStroke = 20;
+  static const double logoCheckStroke = 26;
 
   static const double titleSize = 28;
   static const double titleLanguageGap = 6;
@@ -181,6 +192,8 @@ class AppTokens {
 
   static const double buttonGap = 20;
   static const double buttonHeight = 56;
+  static const double buttonHeightCompact = 48;
+  static const double buttonHeightSmall = 36;
   static const double buttonRadius = radiusButton;
   static const double buttonTextSize = 15;
   static const double progressSize = 18;
@@ -189,6 +202,13 @@ class AppTokens {
   static const double bottomGap = 20;
   static const double footerTextSize = 14;
   static const double tapTarget = 44;
+
+  static const double navBarRadius = 32;
+  static const double navIconSize = 28;
+  static const double navActivePillWidth = 44;
+  static const double navActivePillHeight = 44;
+  static const double navCameraSize = tapTarget + spaceXs;
+  static const double navGlowAlpha = 0.2;
 
   static const double errorRadius = radiusMd;
   static const double errorPadding = 12;

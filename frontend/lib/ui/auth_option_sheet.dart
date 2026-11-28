@@ -37,9 +37,7 @@ class AuthOptionSheet<T extends Object> extends StatelessWidget {
               height: AppTokens.handleHeight,
               decoration: BoxDecoration(
                 color: AppTokens.ice200,
-                borderRadius: BorderRadius.circular(
-                  AppTokens.handleHeight / 2,
-                ),
+                borderRadius: BorderRadius.circular(AppTokens.handleHeight / 2),
               ),
             ),
           ),
@@ -99,14 +97,14 @@ class AuthOptionSheet<T extends Object> extends StatelessWidget {
                           ),
                           Radio<T>(
                             value: option,
-                            fillColor: WidgetStateProperty.resolveWith<Color>(
-                              (states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return AppTokens.obsidian950;
-                                }
-                                return AppTokens.ice400;
-                              },
-                            ),
+                            fillColor: WidgetStateProperty.resolveWith<Color>((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.selected)) {
+                                return AppTokens.obsidian950;
+                              }
+                              return AppTokens.ice400;
+                            }),
                             visualDensity: VisualDensity.compact,
                             materialTapTargetSize:
                                 MaterialTapTargetSize.shrinkWrap,

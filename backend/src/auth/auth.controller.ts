@@ -27,6 +27,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   StaffActivationOtpDto,
+  CheckInvitationDto,
   ActivateInvitationDto,
 } from './dto/email-auth.dto';
 import { LoginDto } from './dto/login.dto';
@@ -46,7 +47,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  @Throttle({ default: { limit: 10, ttl: AUTH_THROTTLE_TTL_MS } })
   async login(@Body() dto: LoginDto, @Request() req: { ip: string }) {
     return this.authService.login(
       dto.identifier,
@@ -110,10 +111,8 @@ export class AuthController {
   @Post('check-invitation')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 6, ttl: AUTH_THROTTLE_TTL_MS } })
-  async checkInvitationPublic(
-    @Body() body: { token?: string; phone?: string },
-  ) {
-    return this.authService.checkInvitation(body.token, body.phone);
+  async checkInvitationPublic(@Body() dto: CheckInvitationDto) {
+    return this.authService.checkInvitation(dto.token);
   }
 
   @Public()
@@ -286,6 +285,7 @@ export class AuthController {
       req.user.organizationId,
       dto.fullName,
       dto.role,
+      req.user.role,
       dto.branchId ?? undefined,
     );
   }
