@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   UseGuards,
   HttpCode,
@@ -9,6 +10,9 @@ import {
   Req,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { AUTH_THROTTLE_TTL_MS } from '../../config/throttling.config';
+import { Public } from '../../auth/decorators/public.decorator';
 import type { Request } from 'express';
 import type { AdminAuthContext } from '../interfaces/admin-jwt-payload.interface';
 import { AdminAuthService } from '../services/admin-auth.service';
@@ -19,6 +23,9 @@ import {
   AdminChangePasswordDto,
   AdminRefreshTokenDto,
   AdminLogoutDto,
+  AdminForgotPasswordDto,
+  AdminResetPasswordDto,
+  AdminUpdateProfileDto,
 } from '../dto/admin-login.dto';
 
 @Controller('api/admin/auth')
@@ -29,6 +36,7 @@ export class AdminAuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: AUTH_THROTTLE_TTL_MS } })
   async login(@Body() dto: AdminLoginDto, @Req() req: Request) {
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('user-agent');
@@ -41,8 +49,29 @@ export class AdminAuthController {
     );
   }
 
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: AUTH_THROTTLE_TTL_MS } })
+  async forgotPassword(@Body() dto: AdminForgotPasswordDto) {
+    return this.adminAuthService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: AUTH_THROTTLE_TTL_MS } })
+  async resetPassword(@Body() dto: AdminResetPasswordDto) {
+    return this.adminAuthService.resetPassword(
+      dto.email,
+      dto.otpCode,
+      dto.newPassword,
+    );
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: AUTH_THROTTLE_TTL_MS } })
   async refresh(@Body() dto: AdminRefreshTokenDto, @Req() req: Request) {
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('user-agent');
@@ -75,10 +104,7 @@ export class AdminAuthController {
   @Post('logout-all')
   @UseGuards(AdminJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logoutAll(
-    @CurrentAdmin() admin: any,
-    @Req() req: Request,
-  ) {
+  async logoutAll(@CurrentAdmin() admin: any, @Req() req: Request) {
     const ipAddress = req.ip || req.socket.remoteAddress;
     return this.adminAuthService.logoutAll(admin.sub, ipAddress);
   }
@@ -97,6 +123,20 @@ export class AdminAuthController {
       dto.currentPassword,
       dto.newPassword,
       ipAddress,
+    );
+  }
+
+  @Patch('profile')
+  @UseGuards(AdminJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @Body() dto: AdminUpdateProfileDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminAuthService.updateProfile(
+      admin.sub,
+      dto.currentPassword,
+      dto.newEmail,
     );
   }
 }

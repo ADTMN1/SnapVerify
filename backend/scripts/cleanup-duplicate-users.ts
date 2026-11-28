@@ -13,7 +13,7 @@ async function main() {
   console.log(`\n=== Current users with phone: ${phone} ===`);
   const users = await prisma.user.findMany({
     where: { phone },
-    include: { organization: true },
+    include: { userAssignments: { include: { organization: true } } },
     orderBy: { createdAt: 'asc' }
   });
 
@@ -22,8 +22,12 @@ async function main() {
   users.forEach((user, index) => {
     console.log(`${index + 1}. User ID: ${user.id}`);
     console.log(`   Full Name: ${user.fullName || '(not set)'}`);
-    console.log(`   Role: ${user.role}`);
-    console.log(`   Organization: ${user.organization?.name || '(unnamed)'} (${user.organizationId})`);
+    console.log(`   Roles: ${user.userAssignments.map((a) => a.role).join(', ') || '(none)'}`);
+    console.log(
+      `   Organizations: ${user.userAssignments
+        .map((a) => `${a.organization.name || '(unnamed)'} (${a.organizationId})`)
+        .join(', ') || '(none)'}`,
+    );
     console.log(`   Created: ${user.createdAt}`);
     console.log(`   Password Hash: ${user.passwordHash ? 'SET' : 'NOT SET'}`);
     console.log('');
@@ -35,46 +39,57 @@ async function main() {
 
   console.log(`\n=== Keeping ===`);
   console.log(`User ID: ${userToKeep.id}`);
-  console.log(`Organization: ${userToKeep.organization?.name || '(unnamed)'}`);
+  console.log(
+    `Organizations: ${userToKeep.userAssignments
+      .map((a) => `${a.organization.name || '(unnamed)'} (${a.organizationId})`)
+      .join(', ') || '(none)'}`,
+  );
   console.log(`Full Name: ${userToKeep.fullName || '(not set)'}`);
 
   console.log(`\n=== Deleting ${usersToDelete.length} duplicate(s) ===`);
   
   for (const user of usersToDelete) {
-    console.log(`\nDeleting user: ${user.id} (${user.organization?.name || '(unnamed)'})`);
-    
-    // Delete related records first (if any)
-    // Note: Adjust this based on your actual schema relationships
-    
+    console.log(
+      `\nDeleting user: ${user.id} (${user.userAssignments
+        .map((a) => a.organization.name || '(unnamed)')
+        .join(', ') || '(no organization)'})`,
+    );
+
     await prisma.user.delete({
       where: { id: user.id }
     });
-    
+
     console.log(`✓ Deleted user ${user.id}`);
-    
-    // Optionally delete the organization if it has no other users
-    const orgUsers = await prisma.user.findMany({
-      where: { organizationId: user.organizationId }
-    });
-    
-    if (orgUsers.length === 0 && user.organizationId) {
-      console.log(`  → Organization ${user.organizationId} has no more users, deleting...`);
-      await prisma.organization.delete({
-        where: { id: user.organizationId }
+
+    for (const assignment of user.userAssignments) {
+      const orgId = assignment.organizationId;
+      const orgUsers = await prisma.userBusinessAssignment.findMany({
+        where: { organizationId: orgId },
+        select: { userId: true },
       });
-      console.log(`  ✓ Deleted organization ${user.organizationId}`);
+
+      if (orgUsers.length === 0) {
+        console.log(`  → Organization ${orgId} has no more users, deleting...`);
+        await prisma.organization.delete({
+          where: { id: orgId }
+        });
+        console.log(`  ✓ Deleted organization ${orgId}`);
+      }
     }
   }
 
   console.log(`\n=== Verification ===`);
   const remainingUsers = await prisma.user.findMany({
     where: { phone },
-    include: { organization: true }
+    include: { userAssignments: { include: { organization: true } } }
   });
   
   console.log(`Remaining users with phone ${phone}: ${remainingUsers.length}`);
   remainingUsers.forEach(user => {
-    console.log(`- ${user.organization?.name || '(unnamed)'} (${user.id})`);
+    const orgs = user.userAssignments
+      .map((a) => a.organization.name || '(unnamed)')
+      .join(', ') || '(no organization)';
+    console.log(`- ${orgs} (${user.id})`);
   });
 
   await prisma.$disconnect();

@@ -1,9 +1,25 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import * as crypto from 'crypto';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+
+export const OTP_PURPOSES = {
+  REGISTER: 'register',
+  STAFF_ACTIVATION: 'staff_activation',
+  PASSWORD_RESET: 'password_reset',
+} as const;
+
+export type OtpPurpose = (typeof OTP_PURPOSES)[keyof typeof OTP_PURPOSES];
+
+const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds between sends
+const MAX_SENDS_PER_WINDOW = 3;
+const SEND_WINDOW_MS = 10 * 60 * 1000;
+const MAX_ATTEMPTS = 5;
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
 
 @Injectable()
 export class OtpService {
@@ -11,214 +27,123 @@ export class OtpService {
 
   constructor(
     private prisma: PrismaService,
-    private configService: ConfigService,
-    private httpService: HttpService,
+    private emailService: EmailService,
   ) {}
 
-  private formatPhoneNumber(phone: string): string {
-    let formatted = phone.replace(/\s+/g, '').replace(/^\+/, '');
-    if (formatted.startsWith('09')) {
-      formatted = '251' + formatted.slice(1);
-    } else if (formatted.startsWith('9')) {
-      formatted = '251' + formatted;
-    }
-    return formatted;
-  }
-
   private hashOtp(otp: string): string {
+    // Codes are never stored as plaintext — SHA-256 hex digest.
     return crypto.createHash('sha256').update(otp).digest('hex');
   }
 
-  private async sendAfroMessageSms(phone: string, text: string): Promise<void> {
-    const apiToken = this.configService.get<string>('AFROMESSAGE_API_TOKEN');
-    const baseUrl = this.configService.get<string>('AFROMESSAGE_BASE_URL') || 'https://api.afromessage.com';
+  /**
+   * Generate a 6-digit OTP for `email`, store it hashed, and email it.
+   * Enforces resend cooldown + per-window send limits.
+   */
+  async generateOtp(email: string, purpose: OtpPurpose): Promise<void> {
+    const normalized = normalizeEmail(email);
 
-    if (!apiToken || apiToken === 'your-afromessage-api-token') {
-      this.logger.warn('AFROMESSAGE_API_TOKEN not set or is placeholder, skipping SMS send');
-      return;
-    }
-
-    this.logger.log(`Attempting to send SMS via AfroMessage to ${phone}`);
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${baseUrl}/api/send`,
-          { to: phone, message: text },
-          {
-            headers: {
-              Authorization: `Bearer ${apiToken}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
-      );
-      this.logger.log(
-        `SMS sent successfully to ${phone}, response: ${JSON.stringify(response.data)}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send SMS via AfroMessage to ${phone}:`,
-        error.response?.data || error.message,
-      );
-      this.logger.warn(
-        'Skipping SMS due to failure, OTP is still logged to console',
-      );
-    }
-  }
-
-  private async sendSmsEthiopia(phone: string, text: string): Promise<void> {
-    const apiKey = this.configService.get<string>('SMSETHIOPIA_API_KEY');
-    const baseUrl = 'https://smsethiopia.et/api/sms/send';
-
-    if (!apiKey) {
-      this.logger.warn('SMSETHIOPIA_API_KEY not set, skipping SMS send');
-      return;
-    }
-
-    this.logger.log(`Attempting to send SMS via SMSEthiopia to ${phone}`);
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          baseUrl,
-          { msisdn: phone, text },
-          { headers: { KEY: apiKey } },
-        ),
-      );
-      this.logger.log(
-        `SMS sent successfully to ${phone}, response: ${JSON.stringify(response.data)}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send SMS via SMSEthiopia to ${phone}:`,
-        error.response?.data || error.message,
-      );
-      this.logger.warn(
-        'Skipping SMS due to failure, OTP is still logged to console',
-      );
-    }
-  }
-
-  private async sendSms(phone: string, text: string): Promise<void> {
-    const hasAfroMessage = !!this.configService.get<string>(
-      'AFROMESSAGE_API_TOKEN',
-    );
-    if (hasAfroMessage) {
-      await this.sendAfroMessageSms(phone, text);
-    } else {
-      await this.sendSmsEthiopia(phone, text);
-    }
-  }
-
-  async generateOtp(phone: string): Promise<string> {
-    const formattedPhone = this.formatPhoneNumber(phone);
-
-    const sixtySecondsAgo = new Date(Date.now() - 60 * 1000);
-    const recentOtp = await this.prisma.otpCode.findFirst({
+    // Resend cooldown: one send per 60s per email+purpose
+    const recent = await this.prisma.emailOtp.findFirst({
       where: {
-        phone: formattedPhone,
-        createdAt: { gte: sixtySecondsAgo },
+        email: normalized,
+        purpose,
+        createdAt: { gte: new Date(Date.now() - RESEND_COOLDOWN_MS) },
       },
     });
-
-    if (recentOtp) {
+    if (recent) {
       throw new BadRequestException(
-        'Please wait 60 seconds before requesting another OTP.',
+        'Please wait 60 seconds before requesting another code.',
       );
     }
 
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    const recentOtpCount = await this.prisma.otpCode.count({
+    // Max 3 sends per 10-minute window per email+purpose
+    const windowCount = await this.prisma.emailOtp.count({
       where: {
-        phone: formattedPhone,
-        createdAt: { gte: tenMinutesAgo },
+        email: normalized,
+        purpose,
+        createdAt: { gte: new Date(Date.now() - SEND_WINDOW_MS) },
       },
     });
-
-    if (recentOtpCount >= 3) {
+    if (windowCount >= MAX_SENDS_PER_WINDOW) {
       throw new BadRequestException(
-        'Too many OTP requests. Please try again later.',
+        'Too many verification codes requested. Please try again later.',
       );
     }
 
-    await this.prisma.otpCode.deleteMany({ where: { phone: formattedPhone } });
+    // Single active code per email+purpose: invalidate older unconsumed ones
+    await this.prisma.emailOtp.deleteMany({
+      where: { email: normalized, purpose, consumedAt: null },
+    });
 
     const code = crypto.randomInt(100000, 999999).toString();
-    const otpHash = this.hashOtp(code);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await this.prisma.otpCode.create({
-      data: { phone: formattedPhone, otpHash, expiresAt },
+    await this.prisma.emailOtp.create({
+      data: {
+        email: normalized,
+        purpose,
+        otpHash: this.hashOtp(code),
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      },
     });
 
-    await this.sendSms(formattedPhone, `Your SnapVerify OTP code is ${code}`);
-    this.logger.debug(`[DEV ONLY] OTP for ${formattedPhone}: ${code}`);
-    return code;
+    await this.emailService.sendOtpEmail(normalized, code, purpose);
+    this.logger.debug(`[DEV ONLY] OTP generated for ${normalized} (${purpose})`);
   }
 
-  async verifyOtp(phone: string, code: string): Promise<boolean> {
-    const formattedPhone = this.formatPhoneNumber(phone);
+  /**
+   * Verify an OTP. Throws BadRequestException on any failure.
+   * `consume: false` checks validity without consuming the code (used for
+   * multi-step flows where a later step consumes it).
+   */
+  async verifyOtp(
+    email: string,
+    code: string,
+    purpose: OtpPurpose,
+    consume = true,
+  ): Promise<void> {
+    const normalized = normalizeEmail(email);
 
-    const otp = await this.prisma.otpCode.findFirst({
+    const otp = await this.prisma.emailOtp.findFirst({
       where: {
-        phone: formattedPhone,
-        isUsed: false,
+        email: normalized,
+        purpose,
+        consumedAt: null,
         expiresAt: { gt: new Date() },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     if (!otp) {
-      throw new BadRequestException('OTP expired or not found');
+      throw new BadRequestException(
+        'Verification code expired or not found. Please request a new one.',
+      );
     }
 
-    if (otp.attempts >= 5) {
+    if (otp.attempts >= MAX_ATTEMPTS) {
       throw new BadRequestException(
-        'Too many invalid attempts. Please request a new OTP.',
+        'Too many incorrect attempts. Please request a new code.',
       );
     }
 
     if (otp.otpHash !== this.hashOtp(code)) {
-      await this.prisma.otpCode.update({
+      await this.prisma.emailOtp.update({
         where: { id: otp.id },
         data: { attempts: { increment: 1 } },
       });
-      throw new BadRequestException('Invalid OTP');
+      throw new BadRequestException('Incorrect verification code');
     }
 
-    await this.prisma.otpCode.delete({ where: { id: otp.id } });
-    return true;
-  }
-
-  async sendInvitationSms(
-    phone: string,
-    role: string,
-    organizationName?: string,
-  ): Promise<void> {
-    const formattedPhone = this.formatPhoneNumber(phone);
-    const message = organizationName
-      ? `You have been invited to join ${organizationName} as ${role} on SnapVerify. Please verify your phone number to complete registration.`
-      : `You have been invited to join as ${role} on SnapVerify. Please verify your phone number to complete registration.`;
-
-    await this.sendSms(formattedPhone, message);
-  }
-
-  async checkAfroMessageBalance(): Promise<any> {
-    const apiToken = this.configService.get<string>('AFROMESSAGE_API_TOKEN');
-    const baseUrl =
-      this.configService.get<string>('AFROMESSAGE_BASE_URL') ||
-      'https://api.afromessage.com';
-
-    if (!apiToken) {
-      throw new BadRequestException('AFROMESSAGE_API_TOKEN not configured');
+    if (consume) {
+      // Single-use: consume atomically so a code can never verify twice.
+      const result = await this.prisma.emailOtp.updateMany({
+        where: { id: otp.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      if (result.count === 0) {
+        throw new BadRequestException(
+          'Verification code already used. Please request a new one.',
+        );
+      }
     }
-
-    const response = await firstValueFrom(
-      this.httpService.get(`${baseUrl}/api/balance`, {
-        headers: { Authorization: `Bearer ${apiToken}` },
-      }),
-    );
-    return response.data;
   }
 }

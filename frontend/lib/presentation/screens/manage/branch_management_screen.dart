@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/tailwind.dart';
+import '../../../core/utils/toast_service.dart';
+import '../../../theme/app_text.dart';
+import '../../../theme/app_tokens.dart';
 import '../../providers/auth_provider.dart';
-import '../../widgets/sv_status_badge.dart';
+import '../../widgets/sv_app_shell.dart';
+import '../../widgets/sv_loader.dart';
 
 class BranchManagementScreen extends ConsumerStatefulWidget {
   const BranchManagementScreen({super.key});
 
   @override
-  ConsumerState<BranchManagementScreen> createState() => _BranchManagementScreenState();
+  ConsumerState<BranchManagementScreen> createState() =>
+      _BranchManagementScreenState();
 }
 
-class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen> {
+class _BranchManagementScreenState
+    extends ConsumerState<BranchManagementScreen> {
   List<dynamic> _branches = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -22,93 +28,187 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
   }
 
   Future<void> _loadBranches() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        final branches = await ref.read(authRepositoryProvider).getBranches(authState.tokens!.accessToken);
-        setState(() {
-          _branches = branches;
-        });
+        final branches = await ref
+            .read(authRepositoryProvider)
+            .getBranches(
+              (await ref
+                  .read(authNotifierProvider.notifier)
+                  .ensureFreshAccessToken())!,
+            );
+        if (mounted) {
+          setState(() {
+            _branches = branches;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
-      // Handle error
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      debugPrint('Error loading branches: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = 'Failed to load branches. Check your connection and try again.';
+        });
+        ToastService.showError(_loadError!);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
+      backgroundColor: AppTokens.ice50,
       body: SafeArea(
+        top: true,
+        bottom: false,
+        left: false,
+        right: false,
         child: Column(
           children: [
-            _buildHeader(),
+            SvDashboardHeader(
+              title: 'Branch Management',
+              titleSize: AppTokens.textSubtitle,
+              onBack: () => Navigator.of(context).pop(),
+              actions: [
+                SvDashboardHeaderButton(
+                  icon: Icons.refresh_rounded,
+                  tooltip: 'Refresh',
+                  enabled: !_isLoading,
+                  onTap: _loadBranches,
+                ),
+              ],
+            ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (ref.watch(authNotifierProvider).role.canAddBranch)
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => _showAddBranchSheet(context),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            width: double.infinity,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: TwColors.brightGreen,
-                              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                color: AppTokens.ice50,
+                child: RefreshIndicator(
+                  onRefresh: _loadBranches,
+                  color: AppTokens.inkMuted,
+                  backgroundColor: AppTokens.white,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: AppTokens.formMaxWidth,
+                      ),
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.fromLTRB(
+                          AppTokens.sheetHorizontalPadding,
+                          AppTokens.spaceLg,
+                          AppTokens.sheetHorizontalPadding,
+                          AppTokens.space3xl + bottomInset,
+                        ),
+                        children: [
+                          if (ref.watch(authNotifierProvider).role.canAddBranch)
+                            SvActionButton(
+                              label: 'Add New Branch',
+                              icon: Icons.add_rounded,
+                              tone: SvTone.neutral,
+                              onPressed: () => _showAddBranchSheet(context),
                             ),
-                            child: const Center(
+                          const SizedBox(height: AppTokens.spaceXl),
+                          SvSectionLabel(
+                            'Branches',
+                            trailing: SvStatusPill(
+                              '${_branches.length}',
+                              tone: SvTone.neutral,
+                              small: true,
+                            ),
+                          ),
+                          const SizedBox(height: AppTokens.spaceMd),
+                          if (_isLoading)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: AppTokens.space3xl,
+                                ),
+                                child: SvLoader.page(color: AppTokens.inkMuted),
+                              ),
+                            )
+                          else if (_loadError != null)
+                            SvSurfaceCard(
+                              color: AppTokens.dangerBg,
+                              borderColor: AppTokens.danger,
+                              padding: const EdgeInsets.all(AppTokens.errorPadding),
                               child: Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    Icons.add_rounded,
-                                    color: TwColors.slate900,
-                                    size: 22,
+                                  const Icon(
+                                    Icons.error_outline_rounded,
+                                    color: AppTokens.ink,
+                                    size: AppTokens.componentIconMd,
                                   ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Add New Branch',
-                                    style: TextStyle(
-                                      color: TwColors.slate900,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
+                                  const SizedBox(width: AppTokens.spaceMd),
+                                  Expanded(
+                                    child: Text(
+                                      _loadError!,
+                                      style: AppText.bodySmall.copyWith(
+                                        color: AppTokens.danger,
+                                      ),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _loadError = null;
+                                      });
+                                      _loadBranches();
+                                    },
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppTokens.errorStrong,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: AppTokens.spaceSm,
+                                      ),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      textStyle: AppText.labelLarge,
+                                    ),
+                                    child: Text(
+                                      'Retry',
+                                      style: AppText.labelLarge.copyWith(
+                                        color: AppTokens.errorStrong,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
+                            )
+                          else if (_branches.isEmpty)
+                            SvEmptyState(
+                              icon: Icons.storefront_outlined,
+                              title: 'No branches added yet',
+                              subtitle:
+                                  'Pull down to refresh or add your first branch',
+                              action: SvActionButton(
+                                label: 'Refresh',
+                                icon: Icons.refresh_rounded,
+                                onPressed: _loadBranches,
+                                tone: SvTone.neutral,
+                                fullWidth: false,
+                              ),
+                            )
+                          else
+                            ..._branches.map(
+                              (branch) => _buildBranchCard(branch),
                             ),
-                          ),
-                        ),
+                        ],
                       ),
-                    const SizedBox(height: 20),
-                    if (_isLoading)
-                      const Center(child: CircularProgressIndicator(color: TwColors.brightGreen))
-                    else if (_branches.isEmpty)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40),
-                          child: Text(
-                            'No branches added yet',
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._branches.map((branch) => _buildBranchCard(branch)),
-                  ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -118,224 +218,153 @@ class _BranchManagementScreenState extends ConsumerState<BranchManagementScreen>
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: TwColors.slate800,
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: TwColors.slate800,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: TwColors.slate700,
-                  width: 1,
-                ),
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: TwColors.white,
-                size: 18,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Text(
-              'Branch Management',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBranchCard(dynamic branch) {
     final authState = ref.watch(authNotifierProvider);
-    final canEdit = authState.role.canEditPaymentAccount;
+    final canEdit = authState.role.canEditBranch;
     final canRemove = authState.role.canRemoveBranch;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: TwColors.slate800,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.slate700, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  branch['name'] ?? 'Unnamed',
-                  style: const TextStyle(
-                    color: TwColors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+      child: SvSurfaceCard(
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              branch['name'] ?? 'Unnamed',
+              style: AppText.titleSmall.copyWith(color: AppTokens.ink),
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: AppTokens.spaceSm),
+            SvDetailRow(
+              icon: Icons.location_on_outlined,
+              label: 'Address',
+              value: branch['address']?.toString() ?? 'No address',
+            ),
+            if (branch['phone'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: AppTokens.spaceSm),
+                child: SvDetailRow(
+                  icon: Icons.phone_outlined,
+                  label: 'Phone',
+                  value: branch['phone']!.toString(),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _InfoRow(
-            icon: Icons.location_on_outlined,
-            value: branch['address'] ?? 'No address',
-          ),
-          if (branch['phone'] != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _InfoRow(
-                icon: Icons.phone_outlined,
-                value: branch['phone']!,
-              ),
-            ),
-          if (canEdit || canRemove)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  if (canEdit)
-                    Expanded(
-                      child: _ActionBtn(
-                        icon: Icons.edit_outlined,
+            if (canEdit || canRemove)
+              Padding(
+                padding: const EdgeInsets.only(top: AppTokens.spaceMd),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (canEdit)
+                      SvActionButton(
                         label: 'Edit',
-                        onTap: () {},
+                        icon: Icons.edit_outlined,
+                        onPressed: () => _showEditBranchSheet(context, branch),
+                        tone: SvTone.neutral,
+                        fullWidth: false,
+                        height: AppTokens.buttonHeightSmall,
                       ),
-                    ),
-                  if (canEdit && canRemove) const SizedBox(width: 8),
-                  if (canRemove)
-                    Expanded(
-                      child: _ActionBtn(
-                        icon: Icons.delete_outline,
+                    if (canEdit && canRemove)
+                      const SizedBox(width: AppTokens.spaceSm),
+                    if (canRemove)
+                      SvActionButton(
                         label: 'Remove',
-                        onTap: () => _removeBranch(branch['id']),
+                        icon: Icons.delete_outline,
+                        onPressed: () => _removeBranch(branch['id']),
+                        tone: SvTone.neutral,
+                        fullWidth: false,
+                        height: AppTokens.buttonHeightSmall,
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _removeBranch(String branchId) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTokens.ice50,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          side: BorderSide(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
+        ),
+        title: Text(
+          'Remove Branch',
+          style: AppText.titleMedium.copyWith(color: AppTokens.ink),
+        ),
+        content: Text(
+          'Are you sure you want to remove this branch? This action cannot be undone.',
+          style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancel',
+              style: AppText.labelLarge.copyWith(color: AppTokens.inkMuted),
+            ),
+          ),
+          SvActionButton(
+            label: 'Remove',
+            onPressed: () => Navigator.pop(context, true),
+            tone: SvTone.neutral,
+            fullWidth: false,
+            height: AppTokens.tapTarget,
+          ),
+        ],
+      ),
+    );
+
+    // If not confirmed, return early
+    if (confirmed != true) return;
+
     try {
       final authState = ref.read(authNotifierProvider);
       if (authState.tokens?.accessToken != null) {
-        await ref.read(authRepositoryProvider).removeBranch(
-          authState.tokens!.accessToken,
-          branchId,
-        );
+        await ref
+            .read(authRepositoryProvider)
+            .removeBranch(authState.tokens!.accessToken, branchId);
         _loadBranches();
+
+        // Show success message
+        if (mounted) {
+          ToastService.showSuccess('Branch removed successfully');
+        }
       }
     } catch (e) {
-      // Handle error
+      // Show error message
+      if (mounted) {
+        ToastService.showError('Error: ${e.toString()}');
+      }
     }
+  }
+
+  void _showEditBranchSheet(BuildContext context, dynamic branch) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTokens.transparent,
+      builder: (context) =>
+          _EditBranchSheet(branch: branch, onBranchUpdated: _loadBranches),
+    );
   }
 
   void _showAddBranchSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTokens.transparent,
       builder: (context) => _AddBranchSheet(onBranchAdded: _loadBranches),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String value;
-
-  const _InfoRow({required this.icon, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 16,
-          color: TwColors.white.withOpacity(0.6),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              color: TwColors.white.withOpacity(0.8),
-              fontSize: 12,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ActionBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _ActionBtn({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: TwColors.slate700,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: TwColors.white.withOpacity(0.8),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: TwColors.white.withOpacity(0.7),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -377,19 +406,27 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
       try {
         final authState = ref.read(authNotifierProvider);
         if (authState.tokens?.accessToken != null) {
-          await ref.read(authRepositoryProvider).addBranch(
-            authState.tokens!.accessToken,
-            name: _nameCtrl.text.trim(),
-            phone: _phoneCtrl.text.trim().isNotEmpty ? _phoneCtrl.text.trim() : null,
-            address: _addressCtrl.text.trim(),
-          );
+          await ref
+              .read(authRepositoryProvider)
+              .addBranch(
+                authState.tokens!.accessToken,
+                name: _nameCtrl.text.trim(),
+                phone: _phoneCtrl.text.trim().isNotEmpty
+                    ? _phoneCtrl.text.trim()
+                    : null,
+                address: _addressCtrl.text.trim(),
+              );
           if (mounted) {
             Navigator.pop(context);
             widget.onBranchAdded();
           }
         }
       } catch (e) {
-        // Show error
+        if (mounted) {
+          ToastService.showError(
+            e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''),
+          );
+        }
       } finally {
         if (mounted) {
           setState(() {
@@ -406,122 +443,102 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: TwColors.primaryBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        color: AppTokens.ice50,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.sheetTopRadius),
+        ),
       ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomInset),
+      padding: EdgeInsets.fromLTRB(
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.togglePadding,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetBottomPadding + bottomInset,
+      ),
       child: Form(
         key: _formKey,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Center(
                 child: Container(
-                  width: 40,
-                  height: 4,
+                  width: AppTokens.handleWidth,
+                  height: AppTokens.handleHeight,
                   decoration: BoxDecoration(
-                    color: TwColors.slate600,
-                    borderRadius: BorderRadius.circular(2),
+                    color: AppTokens.ice200,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusXs),
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Add New Branch',
-                    style: TextStyle(
-                      color: TwColors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
+              const SizedBox(height: AppTokens.spaceXl),
+              Center(
+                child: Text(
+                  'Add New Branch',
+                  textAlign: TextAlign.center,
+                  style: AppTokens.poppins(
+                    size: AppTokens.textSubtitle,
+                    weight: FontWeight.w800,
+                    color: AppTokens.ink,
+                    letterSpacing: AppTokens.trackingTight,
                   ),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: TwColors.slate800,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: TwColors.slate700, width: 1),
-                      ),
-                      child: const Icon(Icons.close_rounded, color: TwColors.white, size: 18),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _BranchFormField(
-                controller: _nameCtrl,
-                label: 'Branch Name',
-                hint: 'e.g. Bole Main Branch',
-                icon: Icons.storefront_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 14),
-              _BranchFormField(
-                controller: _phoneCtrl,
-                label: 'Phone',
-                hint: '+251 9XX XXX XXX',
-                icon: Icons.phone_rounded,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 14),
-              _BranchFormField(
-                controller: _addressCtrl,
-                label: 'Address',
-                hint: 'e.g. Bole Road, Addis Ababa',
-                icon: Icons.location_on_rounded,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 14),
-              _BranchFormField(
-                controller: _managerCtrl,
-                label: 'Manager Name (Optional)',
-                hint: 'e.g. David Mekonnen',
-                icon: Icons.manage_accounts_rounded,
-              ),
-              const SizedBox(height: 14),
-              _BranchFormField(
-                controller: _hoursCtrl,
-                label: 'Working Hours',
-                hint: 'Mon-Sat: 8:00 AM - 10:00 PM',
-                icon: Icons.schedule_rounded,
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: TwColors.brightGreen,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-                        )
-                      : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add_business_rounded, size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              'Add Branch',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
                 ),
+              ),
+              const SizedBox(height: AppTokens.space2xl),
+              SvSurfaceCard(
+                padding: const EdgeInsets.all(AppTokens.spaceLg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SvFormField(
+                      controller: _nameCtrl,
+                      label: 'Branch Name',
+                      hint: 'e.g. Bole Main Branch',
+                      prefixIcon: Icons.storefront_rounded,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: AppTokens.fieldGap),
+                    SvFormField(
+                      controller: _phoneCtrl,
+                      label: 'Phone',
+                      hint: '+251 9XX XXX XXX',
+                      prefixIcon: Icons.phone_rounded,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: AppTokens.fieldGap),
+                    SvFormField(
+                      controller: _addressCtrl,
+                      label: 'Address',
+                      hint: 'e.g. Bole Road, Addis Ababa',
+                      prefixIcon: Icons.location_on_rounded,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: AppTokens.fieldGap),
+                    SvFormField(
+                      controller: _managerCtrl,
+                      label: 'Manager Name (Optional)',
+                      hint: 'e.g. Abebe Bekele',
+                      prefixIcon: Icons.manage_accounts_rounded,
+                    ),
+                    const SizedBox(height: AppTokens.fieldGap),
+                    SvFormField(
+                      controller: _hoursCtrl,
+                      label: 'Working Hours',
+                      hint: 'Mon-Sat: 8:00 AM - 10:00 PM',
+                      prefixIcon: Icons.schedule_rounded,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppTokens.space3xl),
+              SvActionButton(
+                label: 'Add Branch',
+                icon: Icons.add_business_rounded,
+                tone: SvTone.neutral,
+                onPressed: _isSubmitting ? null : _submit,
+                loading: _isSubmitting,
               ),
             ],
           ),
@@ -531,73 +548,172 @@ class _AddBranchSheetState extends ConsumerState<_AddBranchSheet> {
   }
 }
 
-class _BranchFormField extends StatelessWidget {
-  final TextEditingController controller;
-  final String label;
-  final String hint;
-  final IconData icon;
-  final TextInputType? keyboardType;
-  final String? Function(String?)? validator;
+class _EditBranchSheet extends ConsumerStatefulWidget {
+  final dynamic branch;
+  final VoidCallback onBranchUpdated;
 
-  const _BranchFormField({
-    required this.controller,
-    required this.label,
-    required this.hint,
-    required this.icon,
-    this.keyboardType,
-    this.validator,
-  });
+  const _EditBranchSheet({required this.branch, required this.onBranchUpdated});
+
+  @override
+  ConsumerState<_EditBranchSheet> createState() => _EditBranchSheetState();
+}
+
+class _EditBranchSheetState extends ConsumerState<_EditBranchSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _addressCtrl;
+
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.branch['name'] ?? '');
+    _phoneCtrl = TextEditingController(text: widget.branch['phone'] ?? '');
+    _addressCtrl = TextEditingController(text: widget.branch['address'] ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _addressCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isSubmitting = true;
+      });
+      try {
+        final authState = ref.read(authNotifierProvider);
+        if (authState.tokens?.accessToken != null) {
+          await ref
+              .read(authRepositoryProvider)
+              .updateBranch(
+                authState.tokens!.accessToken,
+                widget.branch['id'],
+                name: _nameCtrl.text.trim(),
+                phone: _phoneCtrl.text.trim().isNotEmpty
+                    ? _phoneCtrl.text.trim()
+                    : null,
+                address: _addressCtrl.text.trim(),
+              );
+          if (mounted) {
+            Navigator.pop(context);
+            widget.onBranchUpdated();
+            ToastService.showSuccess('Branch updated successfully');
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ToastService.showError('Error: ${e.toString()}');
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+          });
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: TwColors.white.withOpacity(0.65),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTokens.ice50,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.sheetTopRadius),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.togglePadding,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetBottomPadding + bottomInset,
+      ),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: AppTokens.handleWidth,
+                  height: AppTokens.handleHeight,
+                  decoration: BoxDecoration(
+                    color: AppTokens.ice200,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusXs),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppTokens.spaceXl),
+              Center(
+                child: Text(
+                  'Edit Branch',
+                  textAlign: TextAlign.center,
+                  style: AppTokens.poppins(
+                    size: AppTokens.textSubtitle,
+                    weight: FontWeight.w800,
+                    color: AppTokens.ink,
+                    letterSpacing: AppTokens.trackingTight,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppTokens.space2xl),
+              SvSurfaceCard(
+                padding: const EdgeInsets.all(AppTokens.spaceLg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SvFormField(
+                      controller: _nameCtrl,
+                      label: 'Branch Name',
+                      hint: 'e.g. Bole Main Branch',
+                      prefixIcon: Icons.storefront_rounded,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: AppTokens.fieldGap),
+                    SvFormField(
+                      controller: _phoneCtrl,
+                      label: 'Phone',
+                      hint: '+251 9XX XXX XXX',
+                      prefixIcon: Icons.phone_rounded,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: AppTokens.fieldGap),
+                    SvFormField(
+                      controller: _addressCtrl,
+                      label: 'Address',
+                      hint: 'e.g. Bole Road, Addis Ababa',
+                      prefixIcon: Icons.location_on_rounded,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppTokens.space3xl),
+              SvActionButton(
+                label: 'Update Branch',
+                icon: Icons.check_rounded,
+                tone: SvTone.neutral,
+                onPressed: _isSubmitting ? null : _submit,
+                loading: _isSubmitting,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 7),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          validator: validator,
-          style: const TextStyle(color: TwColors.white, fontSize: 14, fontWeight: FontWeight.w500),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: TwColors.white.withOpacity(0.3), fontSize: 14),
-            prefixIcon: Icon(icon, color: TwColors.white.withOpacity(0.4), size: 18),
-            filled: true,
-            fillColor: TwColors.slate800,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: TwColors.slate700, width: 1),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: TwColors.slate700, width: 1),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.red500, width: 1),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: TwColors.red500, width: 1.5),
-            ),
-            errorStyle: const TextStyle(color: TwColors.red500, fontSize: 11),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

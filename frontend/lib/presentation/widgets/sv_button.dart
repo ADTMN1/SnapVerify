@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
+import 'sv_loader.dart';
 
 enum SVButtonType { primary, secondary, outline, danger, ghost }
 
@@ -21,21 +22,33 @@ class SVButton extends StatelessWidget {
     this.isLoading = false,
     this.isFullWidth = true,
     this.icon,
-    this.height = 56,
-    this.borderRadius = 16,
+    this.height = AppTokens.buttonHeight,
+    this.borderRadius = AppTokens.buttonRadius,
   });
 
   @override
   Widget build(BuildContext context) {
+    final buttonHeight = height ?? AppTokens.buttonHeight;
     return SizedBox(
       width: isFullWidth ? double.infinity : null,
-      height: height,
+      height: buttonHeight,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ButtonStyle(
-          backgroundColor: MaterialStatePropertyAll(_backgroundColor),
-          foregroundColor: MaterialStatePropertyAll(_foregroundColor),
-          shape: MaterialStatePropertyAll(
+          backgroundColor: WidgetStateProperty.all(_backgroundColor),
+          foregroundColor: WidgetStateProperty.all(_foregroundColor),
+          minimumSize: WidgetStateProperty.all(
+            Size(isFullWidth ? double.infinity : 0, buttonHeight),
+          ),
+          padding: WidgetStateProperty.all(
+            EdgeInsets.symmetric(
+              horizontal: isFullWidth ? AppTokens.spaceXl : AppTokens.spaceLg,
+              vertical: buttonHeight <= AppTokens.buttonHeightSmall
+                  ? AppTokens.spaceXs
+                  : AppTokens.spaceMd,
+            ),
+          ),
+          shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(borderRadius),
               side: _borderSide,
@@ -45,29 +58,21 @@ class SVButton extends StatelessWidget {
         child: isLoading
             ? Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _foregroundColor,
-                    ),
-                  ),
-                ],
+                children: [SvLoader.button(color: _foregroundColor)],
               )
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[
-                    Icon(icon, size: 20),
-                    const SizedBox(width: 8),
+                    Icon(icon, size: AppTokens.componentIconMd),
+                    const SizedBox(width: AppTokens.spaceSm),
                   ],
                   Text(
                     text,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    style: AppTokens.manrope(
+                      size: AppTokens.textBodyLarge,
+                      weight: FontWeight.w600,
+                      color: _foregroundColor,
                     ),
                   ),
                 ],
@@ -79,30 +84,26 @@ class SVButton extends StatelessWidget {
   Color get _backgroundColor {
     switch (type) {
       case SVButtonType.primary:
-        return TwColors.brightGreen;
+        return AppTokens.accent;
       case SVButtonType.secondary:
-        return TwColors.slate700;
+        return AppTokens.obsidian950;
       case SVButtonType.outline:
-        return Colors.transparent;
-      case SVButtonType.danger:
-        return TwColors.red500;
       case SVButtonType.ghost:
-        return Colors.transparent;
+        return AppTokens.transparent;
+      case SVButtonType.danger:
+        return AppTokens.error;
     }
   }
 
   Color get _foregroundColor {
     switch (type) {
       case SVButtonType.primary:
-        return TwColors.slate900;
+        return AppTokens.obsidian950;
       case SVButtonType.secondary:
-        return TwColors.white;
       case SVButtonType.outline:
-        return TwColors.white;
       case SVButtonType.danger:
-        return TwColors.white;
       case SVButtonType.ghost:
-        return TwColors.white;
+        return AppTokens.white;
     }
   }
 
@@ -110,8 +111,8 @@ class SVButton extends StatelessWidget {
     switch (type) {
       case SVButtonType.outline:
         return BorderSide(
-          color: TwColors.white.withOpacity(0.2),
-          width: 1.5,
+          color: AppTokens.white.withValues(alpha: AppTokens.alphaStrong),
+          width: AppTokens.componentBorderWidthStrong,
         );
       default:
         return BorderSide.none;

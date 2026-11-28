@@ -1,8 +1,9 @@
 class User {
   final String id;
   final String? fullName;
-  final String phone;
+  final String? phone;
   final String? email;
+  final bool emailVerified;
   final String status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -10,8 +11,9 @@ class User {
   User({
     required this.id,
     this.fullName,
-    required this.phone,
+    this.phone,
     this.email,
+    this.emailVerified = false,
     this.status = "active",
     required this.createdAt,
     required this.updatedAt,
@@ -20,13 +22,18 @@ class User {
   // Factory to create from JSON
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as String,
-      fullName: json['fullName'] as String?,
-      phone: json['phone'] as String,
-      email: json['email'] as String?,
-      status: json['status'] as String? ?? "active",
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      id: json['id']?.toString() ?? '',
+      fullName: json['fullName']?.toString(),
+      phone: json['phone']?.toString(),
+      email: json['email']?.toString(),
+      emailVerified: json['emailVerified'] == true,
+      status: json['status']?.toString() ?? "active",
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'].toString())
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'].toString())
+          : DateTime.now(),
     );
   }
 }

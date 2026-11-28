@@ -54,8 +54,10 @@ export function VerificationTimeline({ logs }: { logs: VerificationLog[] }) {
     <div className="flex flex-col">
       {logs.map((log, i) => {
         const ok = log.action === 'VERIFIED';
-        const color = ok ? '#B8FF3B' : '#ef4444';
-        const Icon = ok ? CheckCircle : XCircle;
+        const isRecheck = log.action === 'RECHECKED';
+        const isWarning = ['RECHECK_MISMATCH', 'RECHECK_FAILED', 'PROVIDER_DUPLICATE'].includes(log.action);
+        const color = ok ? '#B8FF3B' : isRecheck ? '#0ea5e9' : isWarning ? '#f59e0b' : '#ef4444';
+        const Icon = ok ? CheckCircle : isRecheck ? Shield : isWarning ? AlertTriangle : XCircle;
         return (
           <div key={log.id} className="flex gap-3 relative">
             {i < logs.length - 1 && <div className="absolute left-4 top-8 bottom-0 w-px bg-slate-800" />}
@@ -63,7 +65,7 @@ export function VerificationTimeline({ logs }: { logs: VerificationLog[] }) {
               <Icon size={14} style={{ color }} />
             </div>
             <div className="flex-1 pb-4">
-              <p className="text-white text-sm font-medium">{log.action}</p>
+              <p className="text-white text-sm font-medium">{formatAction(log.action)}</p>
               {log.reason && <p className="text-slate-400 text-xs mt-0.5">{log.reason}</p>}
               {log.matchedProvider && <p className="text-slate-500 text-xs">Provider: {log.matchedProvider}</p>}
               <time className="text-slate-600 text-xs">{formatDateTime(log.createdAt)}</time>

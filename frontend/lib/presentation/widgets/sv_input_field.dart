@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/tailwind.dart';
+import '../../theme/app_tokens.dart';
 
 class SVInputField extends StatelessWidget {
   final TextEditingController? controller;
@@ -47,21 +47,23 @@ class SVInputField extends StatelessWidget {
         if (label != null) ...[
           Text(
             label!,
-            style: TextStyle(
-              color: TwColors.white.withOpacity(0.7),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+            style: AppTokens.dmSans(
+              size: AppTokens.textBodySmall,
+              weight: FontWeight.w500,
+              color: AppTokens.white.withValues(
+                alpha: AppTokens.alphaPrimaryMuted,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTokens.formLabelGap),
         ],
         Container(
           decoration: BoxDecoration(
-            color: enabled ? TwColors.slate700 : TwColors.slate800,
-            borderRadius: BorderRadius.circular(16),
+            color: enabled ? AppTokens.obsidian700 : AppTokens.obsidian800,
+            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
             border: Border.all(
-              color: TwColors.white.withOpacity(0.08),
-              width: 1,
+              color: AppTokens.white.withValues(alpha: AppTokens.alphaSubtle),
+              width: AppTokens.componentBorderWidth,
             ),
           ),
           child: TextFormField(
@@ -77,28 +79,37 @@ class SVInputField extends StatelessWidget {
             onTap: onTap,
             onChanged: onChanged,
             validator: validator,
-            style: TextStyle(
-              color: enabled ? TwColors.white : TwColors.white.withOpacity(0.5),
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+            style: AppTokens.dmSans(
+              size: AppTokens.textBodyLarge,
+              weight: FontWeight.w500,
+              color: enabled
+                  ? AppTokens.textOnDark
+                  : AppTokens.textOnDark.withValues(
+                      alpha: AppTokens.alphaSecondary,
+                    ),
             ),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 16,
+                horizontal: AppTokens.formPaddingH,
+                vertical: AppTokens.formPaddingV,
               ),
               prefixIcon: prefixIcon != null
                   ? Icon(
                       prefixIcon,
-                      color: TwColors.white.withOpacity(0.6),
-                      size: 22,
+                      color: AppTokens.textOnDark.withValues(
+                        alpha: AppTokens.alphaTertiary,
+                      ),
+                      size: AppTokens.formPrefixIconSize,
                     )
                   : null,
               suffixIcon: suffixIcon,
               hintText: hint,
-              hintStyle: TextStyle(
-                color: TwColors.white.withOpacity(0.4),
-                fontSize: 16,
+              hintStyle: AppTokens.dmSans(
+                size: AppTokens.formHintSize,
+                weight: FontWeight.w400,
+                color: AppTokens.textOnDark.withValues(
+                  alpha: AppTokens.alphaMuted,
+                ),
               ),
               border: InputBorder.none,
               counterText: '',

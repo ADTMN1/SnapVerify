@@ -84,3 +84,31 @@
   .border-primary { border-color: var(--color-primary-border); }
   .glow-primary { box-shadow: 0 0 20px rgba(184,255,59,0.15); }
 }
+
+/* ── Light theme ───────────────────────────────────────────────────────────
+   Toggled by adding the `light` class to <html>. Surfaces flip to light and
+   the slate scale is inverted so existing utilities stay readable. */
+.light {
+  --color-bg: #eef2f7;
+  --color-card: #ffffff;
+  --color-card-2: #e2e8f0;
+
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #94a3b8;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #f1f5f9;
+  --color-slate-950: #f8fafc;
+}
+
+.light body { color: #0f172a; }
+.light .text-white { color: #0f172a; }
+.light .text-slate-900 { color: #0f172a; }
+.light .bg-slate-700 { background-color: #e2e8f0; }
+.light .hover\:text-white:hover { color: #0f172a; }
+.light .hover\:bg-slate-800:hover { background-color: #e2e8f0; }

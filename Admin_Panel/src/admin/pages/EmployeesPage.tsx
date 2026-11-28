@@ -17,7 +17,7 @@ export default function EmployeesPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserBusinessAssignment | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ fullName: '', phone: '', role: 'CASHIER', password: '' });
+  const [form, setForm] = useState({ fullName: '', username: '', role: 'CASHIER', branchId: undefined as string | undefined });
   const [formError, setFormError] = useState('');
 
   const load = useCallback(async () => {
@@ -37,15 +37,19 @@ export default function EmployeesPage() {
 
   async function handleAdd() {
     setFormError('');
-    if (!form.fullName || !form.phone || !form.password) {
-      setFormError('Full name, phone, and password are required');
+    if (!form.fullName || !form.username || !form.role) {
+      setFormError('Full name, username, and role are required.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9._-]{3,30}$/.test(form.username)) {
+      setFormError('Username must be 3-30 characters: letters, numbers, dots, dashes or underscores.');
       return;
     }
     setSaving(true);
     try {
-      await staffApi.add(form);
+      await staffApi.add({ fullName: form.fullName, username: form.username, role: form.role, branchId: form.branchId });
       setAddOpen(false);
-      setForm({ fullName: '', phone: '', role: 'CASHIER', password: '' });
+      setForm({ fullName: '', username: '', role: 'CASHIER', branchId: undefined });
       await load();
     } catch (err: any) {
       setFormError(err?.response?.data?.message ?? 'Failed to add staff');
@@ -160,13 +164,12 @@ export default function EmployeesPage() {
         <div className="space-y-4">
           {formError && <p className="text-red-400 text-sm p-3 rounded-xl bg-red-500/10">{formError}</p>}
           <FormInput label="Full Name" value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} placeholder="Abebe Kebede" />
-          <FormInput label="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="0911234567" />
+          <FormInput label="Username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="abebe.kebede" />
           <FormSelect label="Role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
             <option value="CASHIER">Cashier</option>
             <option value="WAITER">Waiter</option>
             <option value="MANAGER">Manager</option>
           </FormSelect>
-          <FormInput label="Password" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Min 6 characters" />
         </div>
       </Modal>
 

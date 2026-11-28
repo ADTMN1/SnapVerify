@@ -1,0 +1,83 @@
+# Render Blueprint for the SnapVerify backend — STAGING.
+#
+# This file deploys a SEPARATE staging service (snapverify-backend-staging)
+# backed by a SEPARATE staging PostgreSQL database. It must NEVER share the
+# production database, production secrets, or production URLs.
+#
+# Deploy via Render Dashboard → New → Blueprint, selecting this file.
+# All sensitive variables use `sync: false` — Render prompts for their values
+# in the dashboard and keeps them out of the repository.
+#
+# IMPORTANT:
+# - Do NOT connect this service to the production DATABASE_URL.
+# - Do NOT copy production secrets (JWT_*, ACCOUNT_HASH_SECRET, CHECK_ET_API_KEY, etc.).
+# - Do NOT enable autoDeploy — staging must be deployed deliberately.
+# - DATABASE_URL must point to a separate staging PostgreSQL database.
+
+services:
+  - type: web
+    name: snapverify-backend-staging
+    runtime: node
+    rootDir: backend
+    region: frankfurt
+    plan: starter
+    numInstances: 1
+    autoDeploy: false
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: node dist/main
+    healthCheckPath: /health
+    envVars:
+      # ── Runtime ──────────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: staging
+      - key: NODE_VERSION
+        value: "22"
+
+      # ── Database (SEPARATE staging database — NOT production) ────────────
+      # Provision a separate PostgreSQL database for staging. The connection
+      # string must differ from the production DATABASE_URL. Use the shared
+      # session pooler (port 5432) and database name "postgres".
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Auth (staging-only secrets — NEVER copy from production) ─────────
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: ACCOUNT_HASH_SECRET
+        sync: false
+
+      # ── CORS: staging frontend origins only ──────────────────────────────
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # ── Email delivery (staging/test only) ───────────────────────────────
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+      # ── Public URLs (must be HTTPS, must point to staging) ───────────────
+      - key: APP_URL
+        sync: false
+      - key: QR_PUBLIC_BASE_URL
+        sync: false
+
+      # ── Payment verification (Check.et — staging/test credentials) ───────
+      - key: CHECK_ET_BASE_URL
+        value: https://api.check.et
+      - key: CHECK_ET_API_KEY
+        sync: false
+      - key: CHECK_ET_TIMEOUT_MS
+        value: "45000"
+
+      # ── Admin-console JWT secrets (staging-only, distinct from prod) ─────
+      - key: JWT_ADMIN_ACCESS_SECRET
+        sync: false
+      - key: JWT_ADMIN_REFRESH_SECRET
+        sync: false
+
+      # ── Optional ─────────────────────────────────────────────────────────
+      - key: BREVO_SMS_SENDER
+        value: SnapVerify-Staging
