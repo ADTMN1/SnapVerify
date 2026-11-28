@@ -12,8 +12,9 @@ class TwColors {
   static const slate800 = Color(0xFF1e293b);
   static const slate900 = Color(0xFF0f172a);
   static const slate950 = Color(0xFF020617);
-  static const primaryBg = Color(0xFF050D18);
-  static const cardBg = Color(0xFF0D1926);
+  static const primaryBg = Color(0xFF101214);
+  static const cardBg = Color(0xFF1B1E23);
+  static const inputBg = Color(0x00000000);
 
   static const lime400 = Color(0xFFa3e635);
   static const lime500 = Color(0xFF84cc16);
@@ -80,7 +81,8 @@ class TwColors {
 }
 
 class Tw {
-  static Widget column(List<Widget> children, {
+  static Widget column(
+    List<Widget> children, {
     MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start,
     CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.center,
   }) {
@@ -91,7 +93,8 @@ class Tw {
     );
   }
 
-  static Widget row(List<Widget> children, {
+  static Widget row(
+    List<Widget> children, {
     MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start,
     CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.center,
   }) {
@@ -104,9 +107,16 @@ class Tw {
 }
 
 extension PaddingExtension on Widget {
-  Widget px(double value) => Padding(padding: EdgeInsets.symmetric(horizontal: value), child: this);
-  Widget py(double value) => Padding(padding: EdgeInsets.symmetric(vertical: value), child: this);
-  Widget p(double value) => Padding(padding: EdgeInsets.all(value), child: this);
+  Widget px(double value) => Padding(
+    padding: EdgeInsets.symmetric(horizontal: value),
+    child: this,
+  );
+  Widget py(double value) => Padding(
+    padding: EdgeInsets.symmetric(vertical: value),
+    child: this,
+  );
+  Widget p(double value) =>
+      Padding(padding: EdgeInsets.all(value), child: this);
 }
 
 extension LayoutExtension on Widget {

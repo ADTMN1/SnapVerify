@@ -92,6 +92,12 @@ export class StaffActivationOtpDto {
   token?: string;
 }
 
+export class CheckInvitationDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Invitation token is required.' })
+  token: string;
+}
+
 export class ActivateInvitationDto {
   // QR invitation token scanned by the staff member.
   @IsString()

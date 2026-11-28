@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
 
 class AppLogoPainter extends CustomPainter {
-  const AppLogoPainter();
+  const AppLogoPainter({this.color = AppTokens.white});
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -12,24 +14,29 @@ class AppLogoPainter extends CustomPainter {
     canvas.scale(scale);
     canvas.translate(-AppTokens.logoOffset, -AppTokens.logoOffset);
 
-    final stroke = Paint()
+    final brackets = Paint()
       ..style = PaintingStyle.stroke
-      ..color = AppTokens.obsidian950
+      ..color = color
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = AppTokens.logoBracketStroke;
+    canvas.drawPath(_bracketsPath(), brackets);
+
+    final accent = Paint()
+      ..style = PaintingStyle.stroke
+      ..color = color
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    stroke.strokeWidth = AppTokens.logoBracketStroke;
-    canvas.drawPath(_bracketsPath(), stroke);
-
-    stroke.strokeWidth = AppTokens.logoCircleStroke;
+    accent.strokeWidth = AppTokens.logoCircleStroke;
     canvas.drawCircle(
       const Offset(AppTokens.logoSourceSize / 2, AppTokens.logoSourceSize / 2),
       AppTokens.logoCircleRadius,
-      stroke,
+      accent,
     );
 
-    stroke.strokeWidth = AppTokens.logoCheckStroke;
-    canvas.drawPath(_checkPath(), stroke);
+    accent.strokeWidth = AppTokens.logoCheckStroke;
+    canvas.drawPath(_checkPath(), accent);
     canvas.restore();
   }
 
@@ -82,5 +89,7 @@ class AppLogoPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant AppLogoPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
 }

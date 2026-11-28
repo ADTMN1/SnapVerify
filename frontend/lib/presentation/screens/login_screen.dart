@@ -346,7 +346,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final notifier = ref.read(authNotifierProvider.notifier);
     final result = await notifier.resendVerification(_registeredEmail);
     if (result['alreadyVerified'] == true && mounted) {
-      ToastService.showError(
+      ToastService.showInfo(
         'This email is already verified. Please log in instead.',
       );
       if (mounted) _setMode(false);
@@ -455,20 +455,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildLogo() {
     return Semantics(
       label: 'App logo',
-      child: Container(
-        width: AppTokens.logoTileSize,
-        height: AppTokens.logoTileSize,
-        decoration: BoxDecoration(
-          color: AppTokens.white,
-          borderRadius: BorderRadius.circular(AppTokens.logoTileRadius),
-        ),
-        child: Center(
-          child: SizedBox(
-            width: AppTokens.logoIconSize,
-            height: AppTokens.logoIconSize,
-            child: const CustomPaint(painter: _AppLogoPainter()),
-          ),
-        ),
+      child: SizedBox(
+        width: AppTokens.logoTileSize + AppTokens.spaceXs,
+        height: AppTokens.logoTileSize + AppTokens.spaceXs,
+        child: const CustomPaint(painter: _AppLogoPainter()),
       ),
     );
   }
@@ -603,11 +593,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } else {
       title = AppLocalizations.of(context)!.signIn;
     }
-    return Text(
-      title,
-      textAlign: TextAlign.center,
-      style: AppText.authTitle,
-    );
+    return Text(title, textAlign: TextAlign.center, style: AppText.authTitle);
   }
 
   Widget _buildToggle() {
@@ -787,7 +773,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Align(
           alignment: Alignment.centerRight,
           child: AuthTextLink(
-            label: _canResendOtp ? 'Resend code' : 'Resend code ($_resendTimer)',
+            label: _canResendOtp
+                ? 'Resend code'
+                : 'Resend code ($_resendTimer)',
             onPressed: _resendOtp,
             enabled: _canResendOtp,
           ),
@@ -991,10 +979,7 @@ class _DropdownBox extends AuthDropdownField {
 }
 
 class _EyeButton extends PasswordVisibilityButton {
-  const _EyeButton({
-    required super.obscure,
-    required super.onTap,
-  });
+  const _EyeButton({required super.obscure, required super.onTap});
 }
 
 class _HeaderPatternPainter extends AppHeaderPatternPainter {
@@ -1002,5 +987,5 @@ class _HeaderPatternPainter extends AppHeaderPatternPainter {
 }
 
 class _AppLogoPainter extends AppLogoPainter {
-  const _AppLogoPainter() : super();
+  const _AppLogoPainter() : super(color: AppTokens.white);
 }

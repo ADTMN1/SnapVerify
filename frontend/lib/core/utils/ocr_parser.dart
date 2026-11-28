@@ -8,7 +8,8 @@ class ExtractedTransaction {
   final double? amount;
   final String? provider; // Telebirr, CBE, Dashen, Abyssinia, CBEBirr, M-Pesa
   final DateTime? dateTime;
-  final String? suffix; // For FT references (8 digits for CBE, 5 digits for Abyssinia
+  final String?
+  suffix; // For FT references (8 digits for CBE, 5 digits for Abyssinia
 
   ExtractedTransaction({
     required this.referenceId,
@@ -24,7 +25,8 @@ class OcrParser {
   /// reference style (FT/TB/DEL/other) and length, never the full value.
   static String maskReference(String? reference) {
     if (reference == null || reference.isEmpty) return 'null';
-    final style = RegExp(r'^[A-Z]{2,3}').firstMatch(reference)?.group(0) ?? 'REF';
+    final style =
+        RegExp(r'^[A-Z]{2,3}').firstMatch(reference)?.group(0) ?? 'REF';
     return '$style-****(${reference.length} chars)';
   }
 
@@ -41,25 +43,31 @@ class OcrParser {
     'Abyssinia Bank',
   ];
 
-  static ExtractedTransaction? extractTransaction(RecognizedText recognizedText) {
+  static ExtractedTransaction? extractTransaction(
+    RecognizedText recognizedText,
+  ) {
     final allText = recognizedText.text;
     debugPrint('[OcrParser] Full text extracted: ${allText.length} chars');
 
     // Extract reference ID and suffix
-    Map<String, String?>? referenceAndSuffix = _extractReferenceAndSuffix(recognizedText);
-    
+    Map<String, String?>? referenceAndSuffix = _extractReferenceAndSuffix(
+      recognizedText,
+    );
+
     // If V1 didn't find FT reference with suffix, try V2 with multi-line search
-    if (referenceAndSuffix != null && 
-        referenceAndSuffix['referenceId']?.startsWith('FT') == true && 
+    if (referenceAndSuffix != null &&
+        referenceAndSuffix['referenceId']?.startsWith('FT') == true &&
         referenceAndSuffix['suffix'] == null) {
-      debugPrint('[OcrParser] FT reference found but no suffix, trying V2 multi-line extraction...');
+      debugPrint(
+        '[OcrParser] FT reference found but no suffix, trying V2 multi-line extraction...',
+      );
       final v2Result = _extractReferenceAndSuffixV2(recognizedText);
       if (v2Result != null && v2Result['suffix'] != null) {
         debugPrint('[OcrParser] ✓ V2 found suffix: ${v2Result['suffix']}');
         referenceAndSuffix = v2Result;
       }
     }
-    
+
     final referenceId = referenceAndSuffix?['referenceId'];
     final suffix = referenceAndSuffix?['suffix'];
     if (referenceId == null) {
@@ -70,7 +78,9 @@ class OcrParser {
     final provider = _extractProvider(recognizedText);
     final dateTime = _extractDateTime(recognizedText);
 
-    debugPrint('[OcrParser] Extracted: ref=$referenceId, suffix=$suffix, amount=$amount, provider=$provider');
+    debugPrint(
+      '[OcrParser] Extracted: ref=$referenceId, suffix=$suffix, amount=$amount, provider=$provider',
+    );
 
     return ExtractedTransaction(
       referenceId: referenceId,
@@ -83,25 +93,35 @@ class OcrParser {
 
   static Map<String, String?>? _extractReferenceAndSuffix(RecognizedText text) {
     final allText = text.text;
-    debugPrint('[_extractReferenceAndSuffix] Starting extraction from ${text.blocks.length} blocks');
-    
+    debugPrint(
+      '[_extractReferenceAndSuffix] Starting extraction from ${text.blocks.length} blocks',
+    );
+
     // First try FT pattern: FT + digits + suffix (optional)
-    final ftMatch = RegExp(r'(FT[0-9A-Z]+)\s*\/?\s*([0-9]{5,8})?', caseSensitive: false).firstMatch(allText);
+    final ftMatch = RegExp(
+      r'(FT[0-9A-Z]+)\s*\/?\s*([0-9]{5,8})?',
+      caseSensitive: false,
+    ).firstMatch(allText);
     if (ftMatch != null) {
       final ref = ftMatch.group(1)?.toUpperCase();
       final suffix = ftMatch.group(2);
       if (ref != null) {
-        debugPrint('[_extractReferenceAndSuffix] Found FT reference: $ref, suffix: $suffix');
+        debugPrint(
+          '[_extractReferenceAndSuffix] Found FT reference: $ref, suffix: $suffix',
+        );
         return {'referenceId': ref, 'suffix': suffix};
       }
     }
-    
+
     // Common reference patterns (alphanumeric, may contain dots/hyphens —
     // Telebirr references like "TB251115.1234.A123456" use dot separators)
     final patterns = [
       RegExp(r'TRX[-\s]?[0-9A-Fa-f]{8,32}'),
       RegExp(r'Ref(?:erence)?[#:\s]+([A-Za-z0-9.\-]+)', caseSensitive: false),
-      RegExp(r'Transaction\s*(?:No\.?|ID|#|Number)?[#:\s]+([A-Za-z0-9.\-]+)', caseSensitive: false),
+      RegExp(
+        r'Transaction\s*(?:No\.?|ID|#|Number)?[#:\s]+([A-Za-z0-9.\-]+)',
+        caseSensitive: false,
+      ),
       RegExp(r'ID[#:\s]+([A-Za-z0-9.\-]+)', caseSensitive: false),
       RegExp(r'([0-9A-Fa-f]{8,20})'),
     ];
@@ -109,7 +129,9 @@ class OcrParser {
     for (final pattern in patterns) {
       final match = pattern.firstMatch(allText);
       if (match != null) {
-        final ref = match.groupCount > 0 ? (match.group(1) ?? match.group(0)!) : match.group(0)!;
+        final ref = match.groupCount > 0
+            ? (match.group(1) ?? match.group(0)!)
+            : match.group(0)!;
         final cleanRef = ref
             .replaceAll(RegExp(r'[^A-Za-z0-9.\-]'), '')
             .replaceAll(RegExp(r'[.\-]+$'), '')
@@ -125,7 +147,9 @@ class OcrParser {
     // with amount/currency/QR tokens in between.
     final labeled = extractLabeledReference(allText);
     if (labeled != null) {
-      debugPrint('[_extractReferenceAndSuffix] Labeled token scan found: ${maskReference(labeled)}');
+      debugPrint(
+        '[_extractReferenceAndSuffix] Labeled token scan found: ${maskReference(labeled)}',
+      );
       return {'referenceId': labeled, 'suffix': null};
     }
 
@@ -152,11 +176,15 @@ class OcrParser {
     final tokens = allText.split(RegExp(r'\s+'));
     final labelWords = {'no', 'number', 'id', 'ref', 'reference'};
     for (var i = 0; i < tokens.length; i++) {
-      final sanitized = tokens[i].toLowerCase().replaceAll(RegExp(r'[^a-z#]'), '');
+      final sanitized = tokens[i].toLowerCase().replaceAll(
+        RegExp(r'[^a-z#]'),
+        '',
+      );
       final prev = i > 0
           ? tokens[i - 1].toLowerCase().replaceAll(RegExp(r'[^a-z]'), '')
           : '';
-      final isLabel = (labelWords.contains(sanitized) && prev == 'transaction') ||
+      final isLabel =
+          (labelWords.contains(sanitized) && prev == 'transaction') ||
           sanitized == 'transactionnumber' ||
           sanitized == 'transactionno' ||
           sanitized == 'transactionid' ||
@@ -167,93 +195,159 @@ class OcrParser {
         final candidate = tokens[j]
             .replaceAll(RegExp(r'^[^A-Za-z0-9.\-]+|[^A-Za-z0-9.\-]+$'), '')
             .replaceAll(RegExp(r'[.\-]+$'), '');
-        if (candidate.length < 6 || candidate.length > 20) continue;
-        if (!RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(candidate)) continue;
-        if (!candidate.contains(RegExp(r'[A-Za-z]'))) continue;
-        if (!candidate.contains(RegExp(r'[0-9]'))) continue;
+        if (!_isLikelyReference(candidate)) continue;
         return candidate;
       }
     }
     return null;
   }
 
-  static Map<String, String?>? _extractReferenceAndSuffixV2(RecognizedText text) {
+  /// Returns true if [candidate] looks like a transaction reference rather
+  /// than a date, time, amount, or plain word.
+  ///
+  /// References must contain both letters and digits (e.g. FT25115A1234,
+  /// TB251115.1234.A123456, DJV9JIVHMR). Purely numeric dates, times, and
+  /// decimal amounts are rejected.
+  static bool _isLikelyReference(String candidate) {
+    if (candidate.length < 6 || candidate.length > 20) return false;
+    if (!RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(candidate)) return false;
+    if (!candidate.contains(RegExp(r'[A-Za-z]'))) return false;
+    if (!candidate.contains(RegExp(r'[0-9]'))) return false;
+
+    // Reject date-like tokens: DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD, etc.
+    if (RegExp(
+      r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$',
+    ).hasMatch(candidate)) {
+      return false;
+    }
+
+    // Reject time-like tokens: HH:mm, HH:mm:ss
+    if (RegExp(r'^\d{1,2}:\d{2}(:\d{2})?$').hasMatch(candidate)) {
+      return false;
+    }
+
+    // Reject decimal amounts like 500.00 or 1,200.00 (no letters, but the
+    // letter check above already excludes these; kept for clarity).
+    if (RegExp(r'^\d{1,3}(,\d{3})*(\.\d{1,2})?$').hasMatch(candidate)) {
+      return false;
+    }
+    if (RegExp(r'^\d+(\.\d{1,2})$').hasMatch(candidate)) return false;
+
+    return true;
+  }
+
+  static Map<String, String?>? _extractReferenceAndSuffixV2(
+    RecognizedText text,
+  ) {
     final allText = text.text;
-    
+
     // Collect all lines with their block context
     final allLines = <(TextBlock, TextLine)>[];
     for (final block in text.blocks) {
-      debugPrint('[_extractReferenceAndSuffixV2] Block with ${block.lines.length} lines');
+      debugPrint(
+        '[_extractReferenceAndSuffixV2] Block with ${block.lines.length} lines',
+      );
       for (final line in block.lines) {
         allLines.add((block, line));
       }
     }
-    
+
     // Step 1: Try FT pattern with multi-line suffix search
     for (int i = 0; i < allLines.length; i++) {
       final (block, line) = allLines[i];
       final lineText = line.text;
-      
+
       // Check for FT reference on this line
-      final ftMatch = RegExp(r'(FT[0-9A-Z]+)', caseSensitive: false).firstMatch(lineText);
+      final ftMatch = RegExp(
+        r'(FT[0-9A-Z]+)',
+        caseSensitive: false,
+      ).firstMatch(lineText);
       if (ftMatch != null) {
         final ref = ftMatch.group(1)?.toUpperCase();
-        debugPrint('[_extractReferenceAndSuffixV2] Found FT reference on line $i: $ref');
-        
+        debugPrint(
+          '[_extractReferenceAndSuffixV2] Found FT reference on line $i: $ref',
+        );
+
         // Step 1a: Check same line for suffix (with separator)
-        final sameLineSuffix = RegExp(r'(?:FT[0-9A-Z]+)\s*[\/\-:]?\s*([0-9]{5,8})', caseSensitive: false).firstMatch(lineText);
+        final sameLineSuffix = RegExp(
+          r'(?:FT[0-9A-Z]+)\s*[\/\-:]?\s*([0-9]{5,8})',
+          caseSensitive: false,
+        ).firstMatch(lineText);
         if (sameLineSuffix != null) {
           final suffix = sameLineSuffix.group(1);
-          debugPrint('[_extractReferenceAndSuffixV2] ✓ Found suffix on same line: $suffix');
+          debugPrint(
+            '[_extractReferenceAndSuffixV2] ✓ Found suffix on same line: $suffix',
+          );
           return {'referenceId': ref, 'suffix': suffix};
         }
-        
+
         // Step 1b: Check next 2 lines for suffix
         for (int j = i + 1; j < Math.min(i + 3, allLines.length); j++) {
           final nextLineText = allLines[j].$2.text;
-          debugPrint('[_extractReferenceAndSuffixV2] Checking line $j: $nextLineText');
-          
+          debugPrint(
+            '[_extractReferenceAndSuffixV2] Checking line $j: $nextLineText',
+          );
+
           // Check for labeled suffix
-          final labeledSuffix = RegExp(r'^(?:Suffix|Sfx|Code|Ref)?[\s\/\-:\|]*([0-9]{5,8})$').firstMatch(nextLineText.trim());
+          final labeledSuffix = RegExp(
+            r'^(?:Suffix|Sfx|Code|Ref)?[\s\/\-:\|]*([0-9]{5,8})$',
+          ).firstMatch(nextLineText.trim());
           if (labeledSuffix != null) {
             final suffix = labeledSuffix.group(1);
-            debugPrint('[_extractReferenceAndSuffixV2] ✓ Found labeled suffix on line $j: $suffix');
+            debugPrint(
+              '[_extractReferenceAndSuffixV2] ✓ Found labeled suffix on line $j: $suffix',
+            );
             return {'referenceId': ref, 'suffix': suffix};
           }
-          
+
           // Check for standalone 5-8 digit number
-          final standaloneSuffix = RegExp(r'^\s*([0-9]{5,8})\s*$').firstMatch(nextLineText);
+          final standaloneSuffix = RegExp(
+            r'^\s*([0-9]{5,8})\s*$',
+          ).firstMatch(nextLineText);
           if (standaloneSuffix != null) {
             final suffix = standaloneSuffix.group(1);
-            debugPrint('[_extractReferenceAndSuffixV2] ✓ Found standalone suffix on line $j: $suffix');
+            debugPrint(
+              '[_extractReferenceAndSuffixV2] ✓ Found standalone suffix on line $j: $suffix',
+            );
             return {'referenceId': ref, 'suffix': suffix};
           }
         }
-        
+
         // Step 1c: Global fallback - scan all lines for any 5-8 digit number
-        debugPrint('[_extractReferenceAndSuffixV2] No suffix found nearby, scanning entire document...');
+        debugPrint(
+          '[_extractReferenceAndSuffixV2] No suffix found nearby, scanning entire document...',
+        );
         for (int k = 0; k < allLines.length; k++) {
           if (k == i) continue; // Skip the line with FT reference
           final globalLineText = allLines[k].$2.text;
-          final globalSuffix = RegExp(r'\b([0-9]{5,8})\b').firstMatch(globalLineText);
+          final globalSuffix = RegExp(
+            r'\b([0-9]{5,8})\b',
+          ).firstMatch(globalLineText);
           if (globalSuffix != null) {
             final suffix = globalSuffix.group(1);
-            debugPrint('[_extractReferenceAndSuffixV2] ✓ Found global fallback suffix on line $k: $suffix');
+            debugPrint(
+              '[_extractReferenceAndSuffixV2] ✓ Found global fallback suffix on line $k: $suffix',
+            );
             return {'referenceId': ref, 'suffix': suffix};
           }
         }
-        
+
         // Found FT reference but no suffix
-        debugPrint('[_extractReferenceAndSuffixV2] Found FT reference but no suffix anywhere');
+        debugPrint(
+          '[_extractReferenceAndSuffixV2] Found FT reference but no suffix anywhere',
+        );
         return {'referenceId': ref, 'suffix': null};
       }
     }
-    
+
     // Step 2: Try other reference patterns (same as before)
     final patterns = [
       RegExp(r'TRX[-\s]?[0-9A-Fa-f]{8,32}'),
       RegExp(r'Ref(?:erence)?[#:\s]+([A-Za-z0-9.\-]+)', caseSensitive: false),
-      RegExp(r'Transaction\s*(?:No\.?|ID|#|Number)?[#:\s]+([A-Za-z0-9.\-]+)', caseSensitive: false),
+      RegExp(
+        r'Transaction\s*(?:No\.?|ID|#|Number)?[#:\s]+([A-Za-z0-9.\-]+)',
+        caseSensitive: false,
+      ),
       RegExp(r'ID[#:\s]+([A-Za-z0-9.\-]+)', caseSensitive: false),
       RegExp(r'([0-9A-Fa-f]{8,20})'),
     ];
@@ -261,7 +355,9 @@ class OcrParser {
     for (final pattern in patterns) {
       final match = pattern.firstMatch(allText);
       if (match != null) {
-        final ref = match.groupCount > 0 ? (match.group(1) ?? match.group(0)!) : match.group(0)!;
+        final ref = match.groupCount > 0
+            ? (match.group(1) ?? match.group(0)!)
+            : match.group(0)!;
         final cleanRef = ref
             .replaceAll(RegExp(r'[^A-Za-z0-9.\-]'), '')
             .replaceAll(RegExp(r'[.\-]+$'), '')
@@ -355,7 +451,8 @@ class OcrParser {
                 if (amount != null && amount > 0) {
                   // Ignore numbers that are too long (likely phone numbers/ids)
                   if (amountStr.replaceAll(RegExp(r'[,.]'), '').length <= 8) {
-                    if (maxFallbackAmount == null || amount > maxFallbackAmount) {
+                    if (maxFallbackAmount == null ||
+                        amount > maxFallbackAmount) {
                       maxFallbackAmount = amount;
                     }
                   }
@@ -378,7 +475,9 @@ class OcrParser {
       if (amountStr.contains(',') && amountStr.contains('.')) {
         // If both are present: the last one is decimal
         final lastSeparator = amountStr.lastIndexOf(RegExp(r'[,.]'));
-        final before = amountStr.substring(0, lastSeparator).replaceAll(RegExp(r'[,.]'), '');
+        final before = amountStr
+            .substring(0, lastSeparator)
+            .replaceAll(RegExp(r'[,.]'), '');
         final after = amountStr.substring(lastSeparator + 1);
         normalized = '$before.$after';
       } else if (amountStr.contains(',')) {
@@ -402,14 +501,17 @@ class OcrParser {
 
   static String? _extractProvider(RecognizedText text) {
     final textLower = text.text.toLowerCase();
-    
+
     if (textLower.contains('telebirr')) return 'Telebirr';
-    if (textLower.contains('cbebirr') || textLower.contains('cbe birr')) return 'CBEBirr';
-    if (textLower.contains('commercial bank') || textLower.contains(' cbe ')) return 'CBE';
+    if (textLower.contains('cbebirr') || textLower.contains('cbe birr'))
+      return 'CBEBirr';
+    if (textLower.contains('commercial bank') || textLower.contains(' cbe '))
+      return 'CBE';
     if (textLower.contains('dashen')) return 'Dashen';
     if (textLower.contains('abyssinia')) return 'Abyssinia';
-    if (textLower.contains('m-pesa') || textLower.contains('mpesa')) return 'M-Pesa';
-    
+    if (textLower.contains('m-pesa') || textLower.contains('mpesa'))
+      return 'M-Pesa';
+
     return null;
   }
 
@@ -427,7 +529,7 @@ class OcrParser {
           // Try to parse, handle different orderings
           final groups = match.groups([1, 2, 3, 4, 5]);
           int? year, month, day, hour, minute;
-          
+
           // Check if first group is 4-digit year
           if (groups[2] != null && groups[2]!.length == 4) {
             year = int.tryParse(groups[2]!);
@@ -443,17 +545,21 @@ class OcrParser {
             month = int.tryParse(groups[1]!);
             year = int.tryParse(groups[2]!);
           }
-          
+
           hour = int.tryParse(groups[3]!);
           minute = int.tryParse(groups[4]!);
-          
-          if (year != null && month != null && day != null && hour != null && minute != null) {
+
+          if (year != null &&
+              month != null &&
+              day != null &&
+              hour != null &&
+              minute != null) {
             return DateTime(year, month, day, hour, minute);
           }
         } catch (_) {}
       }
     }
-    
+
     return null;
   }
 }

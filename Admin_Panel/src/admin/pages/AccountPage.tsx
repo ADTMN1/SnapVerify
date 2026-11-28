@@ -4,6 +4,17 @@ import { FormInput } from '../components/ui/Overlays';
 import { adminAuthApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
+type MsgState = { ok: boolean; text: string } | null;
+
+function Msg({ msg }: { msg: MsgState }) {
+  if (!msg) return null;
+  return (
+    <p className={`text-xs p-2 rounded-lg ${msg.ok ? 'text-[#B8FF3B] bg-[#B8FF3B]/10' : 'text-red-400 bg-red-500/10'}`}>
+      {msg.text}
+    </p>
+  );
+}
+
 export default function AccountPage() {
   const { user } = useAuth();
 
@@ -54,15 +65,6 @@ export default function AccountPage() {
     } catch (err: any) {
       setPwMsg({ ok: false, text: err?.response?.data?.message ?? 'Failed to change password' });
     } finally { setPwLoading(false); }
-  }
-
-  function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
-    if (!msg) return null;
-    return (
-      <p className={`text-xs p-2 rounded-lg ${msg.ok ? 'text-[#B8FF3B] bg-[#B8FF3B]/10' : 'text-red-400 bg-red-500/10'}`}>
-        {msg.text}
-      </p>
-    );
   }
 
   return (

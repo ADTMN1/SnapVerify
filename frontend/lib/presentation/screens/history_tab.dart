@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_tokens.dart';
-import '../../ui/app_header_pattern_painter.dart';
-import '../../ui/app_logo_painter.dart';
+import '../../ui/ui.dart';
 import '../providers/auth_provider.dart';
 import '../providers/payment_provider.dart';
-import '../widgets/sv_loader.dart';
-import '../widgets/sv_status_badge.dart';
 
 class HistoryTab extends ConsumerStatefulWidget {
   const HistoryTab({super.key});
@@ -67,28 +64,10 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
 
   @override
   Widget build(BuildContext context) {
-    final topInset = MediaQuery.paddingOf(context).top;
-    final headerHeight = AppTokens.headerVisibleHeight + topInset;
-
-    return Stack(
-      fit: StackFit.expand,
+    return Column(
       children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: headerHeight + AppTokens.sheetTopRadius,
-          child: _HistoryHeader(
-            topInset: topInset,
-            loading: _loading,
-            onRefresh: _load,
-          ),
-        ),
-        Positioned(
-          top: headerHeight - AppTokens.sheetOverlap,
-          left: 0,
-          right: 0,
-          bottom: 0,
+        _HistoryHeader(loading: _loading, onRefresh: _load),
+        Expanded(
           child: _HistorySheet(
             loading: _loading,
             error: _error,
@@ -102,108 +81,23 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
 }
 
 class _HistoryHeader extends StatelessWidget {
-  final double topInset;
   final bool loading;
   final VoidCallback onRefresh;
 
-  const _HistoryHeader({
-    required this.topInset,
-    required this.loading,
-    required this.onRefresh,
-  });
+  const _HistoryHeader({required this.loading, required this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
-    final logoTop = topInset + AppTokens.logoTopGap;
-    final headerHeight =
-        AppTokens.headerVisibleHeight + topInset + AppTokens.sheetTopRadius;
-
-    return SizedBox(
-      width: double.infinity,
-      height: headerHeight,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: ExcludeSemantics(
-                child: CustomPaint(
-                  painter: const AppHeaderPatternPainter(),
-                  child: const SizedBox.expand(),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: logoTop,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Semantics(
-                label: 'App logo',
-                child: Container(
-                  width: AppTokens.logoTileSize,
-                  height: AppTokens.logoTileSize,
-                  decoration: BoxDecoration(
-                    color: AppTokens.white,
-                    borderRadius: BorderRadius.circular(
-                      AppTokens.logoTileRadius,
-                    ),
-                  ),
-                  child: Center(
-                    child: SizedBox(
-                      width: AppTokens.logoIconSize,
-                      height: AppTokens.logoIconSize,
-                      child: const CustomPaint(painter: AppLogoPainter()),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: AppTokens.spaceLg,
-            right: AppTokens.spaceLg,
-            bottom: AppTokens.sheetOverlap + AppTokens.space2xl,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Verification History',
-                        style: AppTokens.manrope(
-                          size: AppTokens.textSubtitle,
-                          weight: FontWeight.w700,
-                          color: AppTokens.white,
-                        ),
-                      ),
-                      const SizedBox(height: AppTokens.spaceXs),
-                      Text(
-                        'Recent payment verification activity',
-                        style: AppTokens.dmSans(
-                          size: AppTokens.textCaption,
-                          weight: FontWeight.w400,
-                          color: AppTokens.ice400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: loading ? null : onRefresh,
-                  icon: Icon(
-                    Icons.refresh_rounded,
-                    color: loading ? AppTokens.inkMuted : AppTokens.accent,
-                  ),
-                  tooltip: 'Refresh',
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return SvDashboardHeader(
+      title: 'Verification History',
+      actions: [
+        SvDashboardHeaderButton(
+          icon: Icons.refresh_rounded,
+          tooltip: 'Refresh',
+          enabled: !loading,
+          onTap: onRefresh,
+        ),
+      ],
     );
   }
 }
@@ -224,16 +118,10 @@ class _HistorySheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppTokens.ice50,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(AppTokens.sheetTopRadius),
-        ),
-      ),
+      color: AppTokens.ice50,
       child: RefreshIndicator(
         onRefresh: onRefresh,
-        color: AppTokens.accent,
+        color: AppTokens.inkMuted,
         backgroundColor: AppTokens.white,
         child: _buildBody(),
       ),
@@ -246,7 +134,7 @@ class _HistorySheet extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: AppTokens.loaderLargeSize),
-          Center(child: SvLoader.page()),
+          Center(child: SvLoader.page(color: AppTokens.inkMuted)),
         ],
       );
     }
@@ -259,7 +147,7 @@ class _HistorySheet extends StatelessWidget {
           const SizedBox(height: AppTokens.loaderLargeSize),
           _StateCard(
             icon: Icons.error_outline_rounded,
-            iconColor: AppTokens.error,
+            iconColor: AppTokens.ink,
             title: 'Could not load history',
             message: error!,
             actionLabel: 'Try again',
@@ -277,7 +165,7 @@ class _HistorySheet extends StatelessWidget {
           SizedBox(height: AppTokens.loaderLargeSize),
           _StateCard(
             icon: Icons.receipt_long_rounded,
-            iconColor: AppTokens.accent,
+            iconColor: AppTokens.ink,
             title: 'No verifications yet',
             message:
                 'Verified and failed payment checks will appear here once you start verifying transactions.',
@@ -296,14 +184,20 @@ class _HistorySheet extends StatelessWidget {
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
+        AppTokens.sheetHorizontalPadding,
         AppTokens.spaceLg,
-        AppTokens.spaceLg,
-        AppTokens.spaceLg,
-        AppTokens.space2xl,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetBottomPadding,
       ),
-      itemCount: items.length + 1,
+      itemCount: items.length + 2,
       itemBuilder: (context, index) {
         if (index == 0) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: AppTokens.spaceMd),
+            child: SvSectionLabel('Verification summary'),
+          );
+        }
+        if (index == 1) {
           return Padding(
             padding: const EdgeInsets.only(bottom: AppTokens.spaceLg),
             child: _SummaryRow(
@@ -315,7 +209,7 @@ class _HistorySheet extends StatelessWidget {
             ),
           );
         }
-        return _HistoryTile(item: items[index - 1]);
+        return _HistoryTile(item: items[index - 2]);
       },
     );
   }
@@ -346,7 +240,7 @@ class _SummaryRow extends StatelessWidget {
             label: 'Verified',
             value: '$verified',
             icon: Icons.check_circle_rounded,
-            color: AppTokens.accent,
+            color: AppTokens.inkMuted,
           ),
         ),
         const SizedBox(width: AppTokens.badgeSmallPaddingH),
@@ -355,7 +249,7 @@ class _SummaryRow extends StatelessWidget {
             label: 'Failed',
             value: '$failed',
             icon: Icons.cancel_rounded,
-            color: AppTokens.error,
+            color: AppTokens.inkMuted,
           ),
         ),
         const SizedBox(width: AppTokens.badgeSmallPaddingH),
@@ -364,7 +258,7 @@ class _SummaryRow extends StatelessWidget {
             label: 'Confirmed',
             value: '$currency $amountText',
             icon: Icons.payments_rounded,
-            color: AppTokens.primary,
+            color: AppTokens.inkMuted,
             compactValue: true,
           ),
         ),
@@ -393,10 +287,12 @@ class _MetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppTokens.spaceMd),
       decoration: BoxDecoration(
-        color: AppTokens.white,
-        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-        border: Border.all(color: AppTokens.border),
-        boxShadow: const [AppTokens.cardShadow],
+        color: AppTokens.transparent,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,9 +305,10 @@ class _MetricCard extends StatelessWidget {
                 child: Text(
                   label,
                   style: AppTokens.dmSans(
-                    size: AppTokens.textCaption,
-                    weight: FontWeight.w400,
-                    color: AppTokens.textSecondary,
+                    size: AppTokens.textOverline,
+                    weight: FontWeight.w700,
+                    color: AppTokens.inkMuted,
+                    letterSpacing: AppTokens.trackingNormal,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -423,12 +320,13 @@ class _MetricCard extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTokens.manrope(
+            style: AppTokens.poppins(
               size: compactValue
                   ? AppTokens.textBodySmall
                   : AppTokens.textSubtitle,
-              weight: FontWeight.w700,
-              color: AppTokens.text,
+              weight: FontWeight.w800,
+              color: AppTokens.ink,
+              letterSpacing: AppTokens.trackingTight,
             ),
           ),
         ],
@@ -448,30 +346,22 @@ class _HistoryTile extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppTokens.spaceMd),
-      padding: const EdgeInsets.all(AppTokens.badgePaddingH),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       decoration: BoxDecoration(
-        color: AppTokens.white,
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(color: AppTokens.border),
-        boxShadow: const [AppTokens.cardShadow],
+        color: AppTokens.transparent,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: AppTokens.backButtonSize,
-            height: AppTokens.backButtonSize,
-            decoration: BoxDecoration(
-              color: item.isVerified
-                  ? AppTokens.accent.withValues(alpha: AppTokens.alphaLow)
-                  : AppTokens.error.withValues(alpha: AppTokens.alphaLow),
-              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            ),
-            child: Icon(
-              item.isVerified ? Icons.verified_rounded : Icons.error_rounded,
-              color: item.isVerified ? AppTokens.accent : AppTokens.error,
-              size: AppTokens.formPrefixIconSize,
-            ),
+          Icon(
+            item.isVerified ? Icons.verified_rounded : Icons.error_rounded,
+            color: AppTokens.ink,
+            size: AppTokens.componentIconLg,
           ),
           const SizedBox(width: AppTokens.spaceMd),
           Expanded(
@@ -487,18 +377,17 @@ class _HistoryTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: AppTokens.manrope(
                           size: AppTokens.textBodySmall,
-                          weight: FontWeight.w600,
-                          color: AppTokens.text,
+                          weight: FontWeight.w800,
+                          color: AppTokens.ink,
+                          letterSpacing: AppTokens.trackingTight,
                         ),
                       ),
                     ),
                     const SizedBox(width: AppTokens.spaceSm),
-                    SVStatusBadge(
-                      text: item.statusLabel,
-                      type: item.isVerified
-                          ? BadgeType.success
-                          : BadgeType.error,
-                      isSmall: true,
+                    SvStatusPill(
+                      item.statusLabel,
+                      tone: SvTone.neutral,
+                      small: true,
                     ),
                   ],
                 ),
@@ -507,8 +396,8 @@ class _HistoryTile extends StatelessWidget {
                   '${item.currency} $amountFmt  ·  $methodLabel',
                   style: AppTokens.manrope(
                     size: AppTokens.textLabel,
-                    weight: FontWeight.w600,
-                    color: AppTokens.primary,
+                    weight: FontWeight.w700,
+                    color: AppTokens.ink,
                   ),
                 ),
                 const SizedBox(height: AppTokens.statTitleGap),
@@ -521,7 +410,7 @@ class _HistoryTile extends StatelessWidget {
                   style: AppTokens.dmSans(
                     size: AppTokens.textCaption,
                     weight: FontWeight.w400,
-                    color: AppTokens.textSecondary,
+                    color: AppTokens.inkMuted,
                   ),
                 ),
                 if (item.subtitle != null) ...[
@@ -533,7 +422,7 @@ class _HistoryTile extends StatelessWidget {
                     style: AppTokens.dmSans(
                       size: AppTokens.textCaption,
                       weight: FontWeight.w400,
-                      color: AppTokens.textSecondary,
+                      color: AppTokens.inkMuted,
                     ),
                   ),
                 ],
@@ -543,7 +432,7 @@ class _HistoryTile extends StatelessWidget {
                     const Icon(
                       Icons.schedule_rounded,
                       size: AppTokens.componentIconSm,
-                      color: AppTokens.textSecondary,
+                      color: AppTokens.inkMuted,
                     ),
                     const SizedBox(width: AppTokens.spaceXs),
                     Expanded(
@@ -552,7 +441,7 @@ class _HistoryTile extends StatelessWidget {
                         style: AppTokens.dmSans(
                           size: AppTokens.textCaption,
                           weight: FontWeight.w400,
-                          color: AppTokens.textSecondary,
+                          color: AppTokens.inkMuted,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -565,7 +454,7 @@ class _HistoryTile extends StatelessWidget {
                           style: AppTokens.dmSans(
                             size: AppTokens.textCaption,
                             weight: FontWeight.w400,
-                            color: AppTokens.textSecondary,
+                            color: AppTokens.inkMuted,
                           ),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
@@ -605,17 +494,19 @@ class _StateCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppTokens.space2xl),
       decoration: BoxDecoration(
-        color: AppTokens.white,
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(color: AppTokens.border),
-        boxShadow: const [AppTokens.cardShadow],
+        color: AppTokens.transparent,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: AppTokens.ice200,
+          width: AppTokens.componentBorderWidth,
+        ),
       ),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(AppTokens.spaceLg),
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: AppTokens.alphaLow),
+              color: AppTokens.ice100,
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: iconColor, size: AppTokens.optionIconSize),
@@ -626,8 +517,9 @@ class _StateCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AppTokens.manrope(
               size: AppTokens.textBodyLarge,
-              weight: FontWeight.w700,
-              color: AppTokens.text,
+              weight: FontWeight.w800,
+              color: AppTokens.ink,
+              letterSpacing: AppTokens.trackingTight,
             ),
           ),
           const SizedBox(height: AppTokens.spaceSm),
@@ -637,34 +529,16 @@ class _StateCard extends StatelessWidget {
             style: AppTokens.dmSans(
               size: AppTokens.textBodySmall,
               weight: FontWeight.w400,
-              color: AppTokens.textSecondary,
+              color: AppTokens.inkMuted,
               height: AppTokens.lineHeightRelaxed,
             ),
           ),
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: AppTokens.statGap),
-            ElevatedButton(
+            SvActionButton(
+              label: actionLabel!,
+              tone: SvTone.neutral,
               onPressed: onAction,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTokens.accent,
-                foregroundColor: AppTokens.obsidian900,
-                elevation: AppTokens.cardElevation,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTokens.statCardPadding,
-                  vertical: AppTokens.spaceMd,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                ),
-              ),
-              child: Text(
-                actionLabel!,
-                style: AppTokens.manrope(
-                  size: AppTokens.textLabel,
-                  weight: FontWeight.w700,
-                  color: AppTokens.obsidian900,
-                ),
-              ),
             ),
           ],
         ],

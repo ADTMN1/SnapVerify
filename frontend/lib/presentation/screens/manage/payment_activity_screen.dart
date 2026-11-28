@@ -1,14 +1,14 @@
-import 'package:flutter/foundation.dart';
-import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+
 import '../../../theme/app_text.dart';
 import '../../../theme/app_tokens.dart';
+import '../../../ui/ui.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/payment_provider.dart';
+import '../../widgets/sv_app_shell.dart';
 import '../../widgets/sv_loader.dart';
-import '../../widgets/sv_status_badge.dart';
 
 class PaymentActivityScreen extends ConsumerStatefulWidget {
   const PaymentActivityScreen({super.key});
@@ -54,14 +54,37 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         _items = data;
         _loading = false;
       });
-    } catch (e, st) {
+    } catch (e) {
       debugPrint('[PaymentActivityScreen] load error: $e');
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = _userFriendlyErrorMessage(e);
       });
     }
+  }
+
+  /// Converts technical exceptions into user-friendly messages. Debug
+  /// details are still logged via `debugPrint` above.
+  String _userFriendlyErrorMessage(Object error) {
+    final message = error.toString();
+    if (message.contains('session has expired') ||
+        message.contains('401') ||
+        message.contains('Unauthorized')) {
+      return 'Your session has expired. Please log in again.';
+    }
+    if (message.contains('connection') ||
+        message.contains('network') ||
+        message.contains('SocketException')) {
+      return 'Unable to connect. Check your internet and try again.';
+    }
+    if (message.contains('timeout')) {
+      return 'The request timed out. Please try again.';
+    }
+    if (message.contains('404') || message.contains('not found')) {
+      return 'The requested item was not found.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   @override
@@ -84,88 +107,16 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         : 'ETB';
 
     return Scaffold(
-      backgroundColor: AppTokens.headerBase,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _load,
-                color: AppTokens.accent,
-                backgroundColor: AppTokens.obsidian900,
-                child: _buildBody(verifiedCount, totalAmount, currency),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceLg,
-      ),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: AppTokens.obsidian800,
-            width: AppTokens.componentBorderWidth,
-          ),
-        ),
-      ),
-      child: Row(
+      backgroundColor: AppTokens.ice50,
+      body: Column(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: AppTokens.backButtonSize,
-              height: AppTokens.backButtonSize,
-              decoration: BoxDecoration(
-                color: AppTokens.obsidian900,
-                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                border: Border.all(
-                  color: AppTokens.obsidian700,
-                  width: AppTokens.componentBorderWidth,
-                ),
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: AppTokens.white,
-                size: AppTokens.backButtonIconSize,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppTokens.spaceLg),
+          _PaymentActivityHeader(loading: _loading, onRefresh: _load),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Payment Activity',
-                  style: AppTokens.manrope(
-                    size: AppTokens.textSubtitle,
-                    weight: FontWeight.w600,
-                    color: AppTokens.white,
-                  ),
-                ),
-                const SizedBox(height: AppTokens.spaceXs),
-                Text(
-                  'Verification results and totals',
-                  style: AppText.caption.copyWith(color: AppTokens.ice400),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _loading ? null : _load,
-            icon: Icon(
-              Icons.refresh_rounded,
-              color: _loading ? AppTokens.inkMuted : AppTokens.accent,
+            child: RefreshIndicator(
+              onRefresh: _load,
+              color: AppTokens.inkMuted,
+              backgroundColor: AppTokens.white,
+              child: _buildBody(verifiedCount, totalAmount, currency),
             ),
           ),
         ],
@@ -178,22 +129,61 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
-          SizedBox(height: AppTokens.authTopBarHeight),
-          Center(child: SvLoader.page()),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: AppTokens.space3xl),
+            child: Center(child: SvLoader.page(color: AppTokens.inkMuted)),
+          ),
         ],
       );
     }
     if (_error != null && _items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppTokens.space2xl),
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.spaceLg,
+          AppTokens.spaceXl,
+          AppTokens.spaceLg,
+          AppTokens.space3xl,
+        ),
         children: [
-          const SizedBox(height: AppTokens.loaderLargeSize),
-          _emptyState(
-            icon: Icons.error_outline_rounded,
-            color: AppTokens.error,
-            title: 'Failed to load activity',
-            subtitle: _error!,
+          SvSurfaceCard(
+            color: AppTokens.dangerBg,
+            borderColor: AppTokens.danger,
+            padding: const EdgeInsets.all(AppTokens.errorPadding),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: AppTokens.ink,
+                  size: AppTokens.componentIconMd,
+                ),
+                const SizedBox(width: AppTokens.spaceMd),
+                Expanded(
+                  child: Text(
+                    _error!,
+                    style: AppText.bodySmall.copyWith(color: AppTokens.danger),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _load,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTokens.errorStrong,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTokens.spaceSm,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: AppText.labelLarge,
+                  ),
+                  child: Text(
+                    'Retry',
+                    style: AppText.labelLarge.copyWith(
+                      color: AppTokens.errorStrong,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       );
@@ -201,25 +191,25 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceLg,
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.spaceLg,
+        AppTokens.sheetHorizontalPadding,
+        AppTokens.sheetBottomPadding,
       ),
       children: [
         _buildStatistics(verifiedCount, totalAmount, currency),
         const SizedBox(height: AppTokens.spaceXl),
-        Text(
-          'Recent Payments',
-          style: AppText.titleSmall.copyWith(color: AppTokens.white),
-        ),
+        const SvSectionLabel('Recent Payments'),
         const SizedBox(height: AppTokens.spaceMd),
         if (_items.isEmpty)
-          _emptyState(
-            icon: Icons.receipt_long_rounded,
-            color: AppTokens.accent,
-            title: 'No payment activity yet',
-            subtitle:
-                'Completed verification attempts for this business will appear here.',
+          const SvSurfaceCard(
+            child: SvEmptyState(
+              icon: Icons.receipt_long_rounded,
+              title: 'No payment activity yet',
+              subtitle:
+                  'Completed verification attempts for this business will appear here.',
+            ),
           )
         else
           ..._items.map(_buildItem),
@@ -235,25 +225,19 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
     final amountText = NumberFormat.decimalPattern().format(totalAmount);
     return Row(
       children: [
-        Expanded(
-          child: _statCard(
-            icon: Icons.check_circle_outline_rounded,
-            iconColor: AppTokens.accent,
-            label: 'Verified',
-            value: '$verifiedCount',
-            valueColor: AppTokens.white,
-          ),
+        _statCard(
+          icon: Icons.check_circle_outline_rounded,
+          label: 'Verified',
+          value: '$verifiedCount',
+          valueColor: AppTokens.accent,
         ),
-        const SizedBox(width: AppTokens.badgeSmallPaddingH),
-        Expanded(
-          child: _statCard(
-            icon: Icons.attach_money_rounded,
-            iconColor: AppTokens.primary,
-            label: 'Confirmed Amount',
-            value: '$currency $amountText',
-            valueColor: AppTokens.accent,
-            compact: true,
-          ),
+        const SizedBox(width: AppTokens.spaceMd),
+        _statCard(
+          icon: Icons.attach_money_rounded,
+          label: 'Confirmed Amount',
+          value: '$currency $amountText',
+          valueColor: AppTokens.ink,
+          compact: true,
         ),
       ],
     );
@@ -261,69 +245,39 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
 
   Widget _statCard({
     required IconData icon,
-    required Color iconColor,
     required String label,
     required String value,
     required Color valueColor,
     bool compact = false,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.heroStatusPaddingH,
-        vertical: AppTokens.spaceMd,
-      ),
-      decoration: BoxDecoration(
-        color: AppTokens.obsidian950,
-        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-        border: Border.all(
-          color: AppTokens.obsidian700,
-          width: AppTokens.componentBorderWidth,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: AppTokens.loaderPageSize,
-                height: AppTokens.loaderPageSize,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: AppTokens.alphaMedium),
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: AppTokens.checkIconSize,
-                ),
-              ),
-              const SizedBox(width: AppTokens.spaceSm),
-              Expanded(
-                child: Text(
-                  label,
-                  style: AppText.labelSmall.copyWith(
-                    color: AppTokens.white.withValues(
-                      alpha: AppTokens.alphaPrimaryMuted,
-                    ),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppTokens.spaceSm),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTokens.manrope(
-              size: compact ? AppTokens.textBodyLarge : AppTokens.textSubtitle,
-              weight: FontWeight.w700,
-              color: valueColor,
+    return Expanded(
+      child: SvSurfaceCard(
+        padding: const EdgeInsets.all(AppTokens.spaceMd),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              icon,
+              color: AppTokens.inkMuted,
+              size: AppTokens.componentIconMd,
             ),
-          ),
-        ],
+            const SizedBox(height: AppTokens.spaceSm),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(color: AppTokens.inkMuted),
+            ),
+            const SizedBox(height: AppTokens.spaceXs),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: (compact ? AppText.titleSmall : AppText.titleMedium)
+                  .copyWith(color: valueColor),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -365,132 +319,99 @@ class _PaymentActivityScreenState extends ConsumerState<PaymentActivityScreen> {
         ? sender
         : 'Payment verification';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppTokens.spaceMd),
-      padding: const EdgeInsets.all(AppTokens.heroStatusPaddingH),
-      decoration: BoxDecoration(
-        color: AppTokens.obsidian950,
-        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-        border: Border.all(
-          color: AppTokens.obsidian700,
-          width: AppTokens.componentBorderWidth,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: AppTokens.backButtonSize,
-            height: AppTokens.backButtonSize,
-            decoration: BoxDecoration(
-              color: (isVerified ? AppTokens.accent : AppTokens.error)
-                  .withValues(alpha: AppTokens.alphaLow),
-              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            ),
-            child: Icon(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+      child: SvSurfaceCard(
+        padding: const EdgeInsets.all(AppTokens.spaceMd),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
               isVerified ? Icons.verified_rounded : Icons.error_outline_rounded,
-              color: isVerified ? AppTokens.accent : AppTokens.error,
+              color: AppTokens.inkMuted,
               size: AppTokens.componentIconMd,
             ),
-          ),
-          const SizedBox(width: AppTokens.spaceMd),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTokens.manrope(
-                          size: AppTokens.textBody,
-                          weight: FontWeight.w600,
-                          color: AppTokens.white,
+            const SizedBox(width: AppTokens.spaceMd),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.labelLarge.copyWith(
+                            color: AppTokens.ink,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: AppTokens.spaceSm),
-                    SVStatusBadge(
-                      text: isVerified
-                          ? 'Verified'
-                          : (status.isEmpty ? 'Failed' : status),
-                      type: isVerified ? BadgeType.success : BadgeType.error,
-                      isSmall: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppTokens.spaceXs),
-                Text(
-                  '$currency $amountText  ·  $methodLabel',
-                  style: AppText.labelMedium.copyWith(color: AppTokens.accent),
-                ),
-                if (tx.isNotEmpty) ...[
+                      const SizedBox(width: AppTokens.spaceSm),
+                      SvStatusPill(
+                        isVerified
+                            ? 'Verified'
+                            : (status.isEmpty ? 'Failed' : status),
+                        tone: isVerified ? SvTone.success : SvTone.error,
+                        small: true,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: AppTokens.spaceXs),
                   Text(
-                    tx,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.caption.copyWith(color: AppTokens.ice400),
+                    '$currency $amountText  ·  $methodLabel',
+                    style: AppText.labelMedium.copyWith(color: AppTokens.ink),
+                  ),
+                  if (tx.isNotEmpty) ...[
+                    const SizedBox(height: AppTokens.spaceXs),
+                    Text(
+                      tx,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption.copyWith(
+                        color: AppTokens.inkMuted,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: AppTokens.spaceXs),
+                  Text(
+                    byName != null ? '$timeLabel  ·  by $byName' : timeLabel,
+                    style: AppText.caption.copyWith(color: AppTokens.ink),
                   ),
                 ],
-                const SizedBox(height: AppTokens.spaceXs),
-                Text(
-                  byName != null ? '$timeLabel  ·  by $byName' : timeLabel,
-                  style: AppText.caption.copyWith(
-                    color: AppTokens.textSecondary,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _emptyState({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppTokens.space3xl),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppTokens.spaceLg),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: AppTokens.alphaLow),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: AppTokens.heroIndicatorActiveWidth,
-            ),
-          ),
-          const SizedBox(height: AppTokens.badgePaddingH),
-          Text(
-            title,
-            style: AppText.titleSmall.copyWith(color: AppTokens.white),
-          ),
-          const SizedBox(height: AppTokens.statTitleGap),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: AppTokens.dmSans(
-              size: AppTokens.textLabel,
-              weight: FontWeight.w400,
-              color: AppTokens.ice400,
-              height: AppTokens.lineHeightRelaxed,
-            ),
-          ),
-        ],
-      ),
+class _PaymentActivityHeader extends StatelessWidget {
+  final bool loading;
+  final Future<void> Function() onRefresh;
+
+  const _PaymentActivityHeader({
+    required this.loading,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SvDashboardHeader(
+      title: 'Payment Activity',
+      titleSize: AppTokens.textSubtitle,
+      onBack: () => Navigator.of(context).pop(),
+      actions: [
+        SvDashboardHeaderButton(
+          icon: Icons.refresh_rounded,
+          tooltip: 'Refresh',
+          enabled: !loading,
+          onTap: onRefresh,
+        ),
+      ],
     );
   }
 }

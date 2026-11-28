@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './admin/hooks/useAuth';
 import { AdminLayout } from './admin/components/layout/AdminLayout';
 import { PageLoader } from './admin/components/ui/LoadingSkeleton';
+import type { AdminRole } from './admin/types';
 
 import LoginPage           from './admin/pages/LoginPage';
 import ForgotPasswordPage  from './admin/pages/ForgotPasswordPage';
@@ -40,10 +41,11 @@ function DashboardRoute() {
   return role === 'SUPER_ADMIN' ? <PlatformOverviewPage /> : <DashboardPage />;
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: AdminRole[] }) {
+  const { isAuthenticated, isLoading, role } = useAuth();
   if (isLoading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (allowedRoles && (!role || !allowedRoles.includes(role))) return <Navigate to="/admin" replace />;
   return <AdminLayout>{children}</AdminLayout>;
 }
 
@@ -83,13 +85,12 @@ function AppRoutes() {
       <Route path="/admin/settings"       element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
       <Route path="/admin/account"        element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
 
-      {/* Platform super-admin routes */}
-      <Route path="/admin/organizations"  element={<ProtectedRoute><PlatformOrganizationsPage /></ProtectedRoute>} />
-      <Route path="/admin/users"          element={<ProtectedRoute><PlatformUsersPage /></ProtectedRoute>} />
-      <Route path="/admin/platform/transactions"   element={<ProtectedRoute><PlatformTransactionsPage /></ProtectedRoute>} />
-      <Route path="/admin/platform/subscriptions"  element={<ProtectedRoute><PlatformSubscriptionsPage /></ProtectedRoute>} />
-      <Route path="/admin/platform/plans"          element={<ProtectedRoute><PlatformPlansPage /></ProtectedRoute>} />
-      <Route path="/admin/platform/activity"       element={<ProtectedRoute><PlatformActivityPage /></ProtectedRoute>} />
+      <Route path="/admin/organizations"  element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><PlatformOrganizationsPage /></ProtectedRoute>} />
+      <Route path="/admin/users"          element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><PlatformUsersPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/transactions"   element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><PlatformTransactionsPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/subscriptions"  element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><PlatformSubscriptionsPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/plans"          element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><PlatformPlansPage /></ProtectedRoute>} />
+      <Route path="/admin/platform/activity"       element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><PlatformActivityPage /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/admin" replace />} />
       <Route path="*" element={<Navigate to="/admin" replace />} />

@@ -2,112 +2,69 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils/toast_service.dart';
+import '../../theme/app_text.dart';
 import '../../theme/app_tokens.dart';
 import '../../domain/entities/notification_item.dart';
 import '../providers/auth_provider.dart';
 import '../providers/notifications_provider.dart';
-import 'manage/payment_activity_screen.dart';
+import '../widgets/sv_app_shell.dart';
 import '../widgets/sv_loader.dart';
+import 'manage/payment_activity_screen.dart';
 import 'manage/staff_management_screen.dart';
 
-/// Professional notification feed backed by real activity.
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncData = ref.watch(notificationsProvider);
+    final unread = asyncData.valueOrNull?.unreadCount ?? 0;
 
     return Scaffold(
-      backgroundColor: AppTokens.headerBase,
+      backgroundColor: AppTokens.ice50,
       body: SafeArea(
+        top: true,
+        bottom: false,
+        left: false,
+        right: false,
         child: Column(
           children: [
-            _buildHeader(context, ref, asyncData),
+            SvDashboardHeader(
+              title: 'Notifications',
+              onBack: () => Navigator.of(context).pop(),
+              actions: [
+                if (unread > 0)
+                  TextButton(
+                    onPressed: () => _markAllRead(context, ref),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTokens.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTokens.spaceSm,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: AppText.labelMedium.copyWith(
+                        color: AppTokens.white,
+                      ),
+                    ),
+                    child: const Text('Mark all read'),
+                  ),
+              ],
+            ),
             Expanded(
-              child: asyncData.when(
-                data: (data) => _buildList(context, ref, data),
-                loading: () => const Center(child: SvLoader.page()),
-                error: (e, _) => _buildError(context, ref, e),
+              child: Container(
+                color: AppTokens.ice50,
+                child: asyncData.when(
+                  data: (data) => _buildList(context, ref, data),
+                  loading: () => const Center(
+                    child: SvLoader.page(color: AppTokens.inkMuted),
+                  ),
+                  error: (e, _) => _buildError(context, ref, e),
+                ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<NotificationsData> asyncData,
-  ) {
-    final unread = asyncData.valueOrNull?.unreadCount ?? 0;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceLg,
-      ),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: AppTokens.obsidian900,
-            width: AppTokens.componentBorderWidth,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          _HeaderIconButton(
-            icon: Icons.arrow_back_ios_new_rounded,
-            onTap: () => Navigator.of(context).pop(),
-          ),
-          const SizedBox(width: AppTokens.spaceLg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Notifications',
-                  style: AppTokens.manrope(
-                    size: AppTokens.textSubtitle,
-                    weight: FontWeight.w700,
-                    color: AppTokens.white,
-                  ),
-                ),
-                const SizedBox(height: AppTokens.spaceXs),
-                Text(
-                  'Updates from your business',
-                  style: AppTokens.dmSans(
-                    size: AppTokens.textCaption,
-                    weight: FontWeight.w400,
-                    color: AppTokens.ice400,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (unread > 0)
-            TextButton(
-              onPressed: () => _markAllRead(context, ref),
-              style: TextButton.styleFrom(
-                foregroundColor: AppTokens.accent,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTokens.spaceSm,
-                ),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: AppTokens.manrope(
-                  size: AppTokens.textLabel,
-                  weight: FontWeight.w700,
-                  color: AppTokens.accent,
-                ),
-              ),
-              child: const Text('Mark all read'),
-            ),
-        ],
       ),
     );
   }
@@ -120,15 +77,20 @@ class NotificationsScreen extends ConsumerWidget {
     if (data.notifications.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppTokens.space2xl),
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.spaceLg,
+          AppTokens.spaceXl,
+          AppTokens.spaceLg,
+          AppTokens.space3xl,
+        ),
         children: [
-          const SizedBox(height: AppTokens.loaderLargeSize),
-          _EmptyState(
-            icon: Icons.notifications_none_rounded,
-            color: AppTokens.accent,
-            title: "You're all caught up",
-            subtitle:
-                'New payment and staff updates will appear here as they happen.',
+          const SvSurfaceCard(
+            child: SvEmptyState(
+              icon: Icons.notifications_none_rounded,
+              title: "You're all caught up",
+              subtitle:
+                  'New payment and staff updates will appear here as they happen.',
+            ),
           ),
         ],
       );
@@ -139,19 +101,17 @@ class NotificationsScreen extends ConsumerWidget {
         ref.invalidate(notificationsProvider);
         try {
           await ref.read(notificationsProvider.future);
-        } catch (_) {
-          // Surfaced by the error state below.
-        }
+        } catch (_) {}
       },
-      color: AppTokens.accent,
-      backgroundColor: AppTokens.obsidian900,
+      color: AppTokens.inkMuted,
+      backgroundColor: AppTokens.white,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
           AppTokens.spaceLg,
+          AppTokens.spaceXl,
           AppTokens.spaceLg,
-          AppTokens.spaceLg,
-          AppTokens.space2xl,
+          AppTokens.space3xl,
         ),
         itemCount: data.notifications.length,
         itemBuilder: (context, index) {
@@ -168,19 +128,77 @@ class NotificationsScreen extends ConsumerWidget {
   Widget _buildError(BuildContext context, WidgetRef ref, Object error) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(AppTokens.space2xl),
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.spaceLg,
+        AppTokens.spaceXl,
+        AppTokens.spaceLg,
+        AppTokens.space3xl,
+      ),
       children: [
-        const SizedBox(height: AppTokens.loaderLargeSize),
-        _EmptyState(
-          icon: Icons.error_outline_rounded,
-          color: AppTokens.error,
-          title: 'Could not load notifications',
-          subtitle: error.toString().replaceFirst('Exception: ', ''),
-          actionLabel: 'Try again',
-          onAction: () => ref.invalidate(notificationsProvider),
+        SvSurfaceCard(
+          color: AppTokens.dangerBg,
+          borderColor: AppTokens.danger,
+          padding: const EdgeInsets.all(AppTokens.errorPadding),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                color: AppTokens.ink,
+                size: AppTokens.componentIconMd,
+              ),
+              const SizedBox(width: AppTokens.spaceMd),
+              Expanded(
+                child: Text(
+                  _userFriendlyErrorMessage(error),
+                  style: AppText.bodySmall.copyWith(color: AppTokens.danger),
+                ),
+              ),
+              TextButton(
+                onPressed: () => ref.invalidate(notificationsProvider),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTokens.errorStrong,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.spaceSm,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: AppText.labelLarge,
+                ),
+                child: Text(
+                  'Try again',
+                  style: AppText.labelLarge.copyWith(
+                    color: AppTokens.errorStrong,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
+  }
+
+  /// Converts technical exceptions into user-friendly messages. Debug
+  /// details are still logged by the caller via `debugPrint` if needed.
+  String _userFriendlyErrorMessage(Object error) {
+    final message = error.toString();
+    if (message.contains('session has expired') ||
+        message.contains('401') ||
+        message.contains('Unauthorized')) {
+      return 'Your session has expired. Please log in again.';
+    }
+    if (message.contains('connection') ||
+        message.contains('network') ||
+        message.contains('SocketException')) {
+      return 'Unable to connect. Check your internet and try again.';
+    }
+    if (message.contains('timeout')) {
+      return 'The request timed out. Please try again.';
+    }
+    if (message.contains('404') || message.contains('not found')) {
+      return 'The requested item was not found.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   void _open(BuildContext context, NotificationItem item) {
@@ -208,7 +226,7 @@ class NotificationsScreen extends ConsumerWidget {
       ref.invalidate(notificationsProvider);
       ToastService.showSuccess('All notifications marked as read');
     } catch (e) {
-      ToastService.showError('Failed to mark as read: $e');
+      ToastService.showError(_userFriendlyErrorMessage(e));
     }
   }
 }
@@ -221,38 +239,19 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _colorFor(item.type);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppTokens.badgeSmallPaddingH),
-        padding: const EdgeInsets.all(AppTokens.badgePaddingH),
-        decoration: BoxDecoration(
-          color: AppTokens.obsidian950,
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-          border: Border.all(
-            color: item.isUnread
-                ? AppTokens.accent.withValues(alpha: AppTokens.alphaStrong)
-                : AppTokens.obsidian700,
-            width: AppTokens.componentBorderWidth,
-          ),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+      child: SvSurfaceCard(
+        onTap: onTap,
+        borderColor: AppTokens.ice200,
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: AppTokens.backButtonSize,
-              height: AppTokens.backButtonSize,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: AppTokens.alphaLow),
-                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-              ),
-              child: Icon(
-                _iconFor(item.type),
-                color: color,
-                size: AppTokens.formPrefixIconSize,
-              ),
+            Icon(
+              _iconFor(item.type),
+              color: AppTokens.inkMuted,
+              size: AppTokens.componentIconMd,
             ),
             const SizedBox(width: AppTokens.spaceMd),
             Expanded(
@@ -266,22 +265,17 @@ class _NotificationTile extends StatelessWidget {
                           item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTokens.manrope(
-                            size: AppTokens.textBodySmall,
-                            weight: FontWeight.w600,
-                            color: AppTokens.white,
+                          style: AppText.labelLarge.copyWith(
+                            color: AppTokens.ink,
                           ),
                         ),
                       ),
                       if (item.isUnread) ...[
                         const SizedBox(width: AppTokens.spaceSm),
-                        Container(
-                          width: AppTokens.spaceSm,
-                          height: AppTokens.spaceSm,
-                          decoration: const BoxDecoration(
-                            color: AppTokens.accent,
-                            shape: BoxShape.circle,
-                          ),
+                        const SvStatusPill(
+                          'New',
+                          tone: SvTone.neutral,
+                          small: true,
                         ),
                       ],
                     ],
@@ -291,29 +285,23 @@ class _NotificationTile extends StatelessWidget {
                     item.body,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTokens.dmSans(
-                      size: AppTokens.textLabel,
-                      weight: FontWeight.w400,
-                      color: AppTokens.white.withValues(
-                        alpha: AppTokens.alphaTertiary,
-                      ),
+                    style: AppText.bodySmall.copyWith(
+                      color: AppTokens.inkMuted,
                     ),
                   ),
-                  const SizedBox(height: AppTokens.statTitleGap),
+                  const SizedBox(height: AppTokens.spaceSm),
                   Row(
                     children: [
                       const Icon(
                         Icons.schedule_rounded,
-                        size: AppTokens.textCaption,
-                        color: AppTokens.textSecondary,
+                        size: AppTokens.componentIconSm,
+                        color: AppTokens.inkMuted,
                       ),
                       const SizedBox(width: AppTokens.spaceXs),
                       Text(
                         item.timeLabel,
-                        style: AppTokens.dmSans(
-                          size: AppTokens.textOverline,
-                          weight: FontWeight.w400,
-                          color: AppTokens.textSecondary,
+                        style: AppText.caption.copyWith(
+                          color: AppTokens.inkMuted,
                         ),
                       ),
                     ],
@@ -344,148 +332,5 @@ class _NotificationTile extends StatelessWidget {
       default:
         return Icons.notifications_none_rounded;
     }
-  }
-
-  Color _colorFor(String type) {
-    switch (type) {
-      case 'payment_verified':
-        return AppTokens.accent;
-      case 'payment_failed':
-        return AppTokens.error;
-      case 'payment_rejected':
-        return AppTokens.warning;
-      case 'payment_pending':
-        return AppTokens.ice400;
-      case 'invitation_created':
-        return AppTokens.primary;
-      case 'invitation_revoked':
-        return AppTokens.error;
-      default:
-        return AppTokens.primary;
-    }
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _HeaderIconButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: AppTokens.backButtonSize,
-        height: AppTokens.backButtonSize,
-        decoration: BoxDecoration(
-          color: AppTokens.obsidian900,
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-          border: Border.all(
-            color: AppTokens.obsidian700,
-            width: AppTokens.componentBorderWidth,
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: AppTokens.white,
-          size: AppTokens.checkIconSize,
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  const _EmptyState({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppTokens.space2xl),
-      decoration: BoxDecoration(
-        color: AppTokens.obsidian950,
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(color: AppTokens.obsidian700),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppTokens.spaceLg),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: AppTokens.alphaLow),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: AppTokens.heroIndicatorActiveWidth,
-            ),
-          ),
-          const SizedBox(height: AppTokens.badgePaddingH),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: AppTokens.manrope(
-              size: AppTokens.textBodyLarge,
-              weight: FontWeight.w600,
-              color: AppTokens.white,
-            ),
-          ),
-          const SizedBox(height: AppTokens.statTitleGap),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: AppTokens.dmSans(
-              size: AppTokens.textLabel,
-              weight: FontWeight.w400,
-              color: AppTokens.ice400,
-              height: AppTokens.lineHeightRelaxed,
-            ),
-          ),
-          if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: AppTokens.spaceLg),
-            ElevatedButton(
-              onPressed: onAction,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTokens.accent,
-                foregroundColor: AppTokens.obsidian900,
-                elevation: AppTokens.cardElevation,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTokens.statCardPadding,
-                  vertical: AppTokens.spaceMd,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                ),
-              ),
-              child: Text(
-                actionLabel!,
-                style: AppTokens.manrope(
-                  size: AppTokens.textLabel,
-                  weight: FontWeight.w700,
-                  color: AppTokens.obsidian900,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }

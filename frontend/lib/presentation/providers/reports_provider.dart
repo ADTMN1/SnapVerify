@@ -8,29 +8,20 @@ final reportsDatasourceProvider = Provider<ReportsRemoteDatasource>((ref) {
   return ReportsRemoteDatasource(client: ref.watch(httpClientProvider));
 });
 
-/// Real report summary for a date range, authenticated with a fresh token.
-///
-/// Watches the current access token so a cached "not authenticated" error is
-/// discarded as soon as a session is restored or the user logs in again.
 final reportSummaryProvider =
-    FutureProvider.family<ReportSummary, ({String from, String to})>(
-  (ref, range) async {
-    ref.watch(
-      authNotifierProvider.select((state) => state.tokens?.accessToken),
-    );
+    FutureProvider.family<ReportSummary, ({String from, String to})>((
+      ref,
+      range,
+    ) async {
+      final token = await ref
+          .read(authNotifierProvider.notifier)
+          .ensureFreshAccessToken();
 
-    final token = await ref
-        .read(authNotifierProvider.notifier)
-        .ensureFreshAccessToken();
+      if (token == null) {
+        throw const ReportsException('Not authenticated. Please log in again.');
+      }
 
-    if (token == null) {
-      throw Exception('Not authenticated. Please log in again.');
-    }
-
-    return ref.read(reportsDatasourceProvider).getSummary(
-          accessToken: token,
-          from: range.from,
-          to: range.to,
-        );
-  },
-);
+      return ref
+          .read(reportsDatasourceProvider)
+          .getSummary(accessToken: token, from: range.from, to: range.to);
+    });

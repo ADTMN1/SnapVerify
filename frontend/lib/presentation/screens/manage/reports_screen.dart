@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/tailwind.dart';
 import '../../../core/utils/toast_service.dart';
 import '../../../domain/entities/report_summary.dart';
+import '../../../theme/app_text.dart';
+import '../../../theme/app_tokens.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/reports_provider.dart';
+import '../../widgets/sv_app_shell.dart';
 import '../../widgets/sv_loader.dart';
 
 enum _ReportType { payments, staff, verification, fraud }
@@ -74,70 +76,75 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final asyncSummary = ref.watch(
       reportSummaryProvider((from: _fromStr, to: _toStr)),
     );
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
-      backgroundColor: TwColors.primaryBg,
+      backgroundColor: AppTokens.ice50,
       body: SafeArea(
+        top: true,
+        bottom: false,
+        left: false,
+        right: false,
         child: Column(
           children: [
-            _buildHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
+            SvDashboardHeader(
+              title: 'Reports & Export',
+              titleSize: AppTokens.textSubtitle,
+              onBack: () => Navigator.of(context).pop(),
+              actions: [
+                SvDashboardHeaderButton(
+                  icon: Icons.refresh_rounded,
+                  tooltip: 'Refresh',
+                  onTap: _refresh,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildQuickRanges(),
-                    const SizedBox(height: 16),
-                    _buildDateRange(),
-                    const SizedBox(height: 16),
-                    asyncSummary.when(
-                      data: (data) => _buildData(context, data),
-                      loading: () => const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 48),
-                        child: Center(child: SvLoader.page()),
+              ],
+            ),
+            Expanded(
+              child: Container(
+                color: AppTokens.ice50,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    AppTokens.sheetHorizontalPadding,
+                    AppTokens.spaceLg,
+                    AppTokens.sheetHorizontalPadding,
+                    AppTokens.space3xl + bottomInset,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: AppTokens.formMaxWidth,
                       ),
-                      error: (e, _) => _buildError(context, e),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SvSectionLabel('Date range'),
+                          const SizedBox(height: AppTokens.spaceMd),
+                          _buildQuickRanges(),
+                          const SizedBox(height: AppTokens.spaceLg),
+                          _buildDateRange(),
+                          const SizedBox(height: AppTokens.spaceXl),
+                          asyncSummary.when(
+                            data: (data) => _buildData(context, data),
+                            loading: () => const Padding(
+                              padding: EdgeInsets.symmetric(
+                                vertical: AppTokens.space3xl,
+                              ),
+                              child: Center(
+                                child: SvLoader.page(color: AppTokens.inkMuted),
+                              ),
+                            ),
+                            error: (e, _) => _buildError(context, e),
+                          ),
+                          const SizedBox(height: AppTokens.space2xl),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: TwColors.slate800, width: 1)),
-      ),
-      child: Row(
-        children: [
-          _HeaderIconButton(
-            icon: Icons.arrow_back_ios_new_rounded,
-            onTap: () => Navigator.of(context).pop(),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Text(
-              'Reports & Export',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          _HeaderIconButton(icon: Icons.refresh_rounded, onTap: _refresh),
-        ],
       ),
     );
   }
@@ -161,8 +168,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     ];
 
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: AppTokens.spaceSm,
+      runSpacing: AppTokens.spaceSm,
       children: ranges.map((r) {
         return _RangeChip(
           label: r.label,
@@ -174,16 +181,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Widget _buildDateRange() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: _cardDecoration(),
+    return SvSurfaceCard(
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       child: Row(
         children: [
           Expanded(
             child: _DateField(label: 'From', value: _from, onTap: _pickFrom),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: AppTokens.spaceMd),
           Expanded(
             child: _DateField(label: 'To', value: _to, onTap: _pickTo),
           ),
@@ -196,22 +201,44 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final canExport = ref.watch(authNotifierProvider).role.canExportReports;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSummaryGrid(data),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.spaceXl),
+        const SvSectionLabel('Report type'),
+        const SizedBox(height: AppTokens.spaceMd),
         _buildTypeSelector(),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTokens.spaceLg),
         _buildBreakdown(data),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.spaceXl),
         if (canExport)
-          _ExportButton(onTap: () => _exportCsv(data))
+          SvActionButton(
+            label: 'Export CSV',
+            icon: Icons.download_rounded,
+            onPressed: () => _exportCsv(data),
+          )
         else
-          Text(
-            'You do not have permission to export reports.',
-            style: TextStyle(
-              color: TwColors.white.withValues(alpha: 0.5),
-              fontSize: 13,
+          SvSurfaceCard(
+            color: AppTokens.surfaceLight,
+            borderColor: AppTokens.surfaceLight,
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.lock_outline_rounded,
+                  color: AppTokens.inkMuted,
+                  size: AppTokens.componentIconMd,
+                ),
+                const SizedBox(width: AppTokens.spaceMd),
+                Expanded(
+                  child: Text(
+                    'You do not have permission to export reports.',
+                    style: AppText.bodySmall.copyWith(
+                      color: AppTokens.inkMuted,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
       ],
@@ -228,32 +255,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               title: 'Total',
               value: '${s.total}',
               icon: Icons.receipt_long_rounded,
-              color: TwColors.sky500,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.spaceMd),
             _SummaryCard(
               title: 'Verified',
               value: '${s.verified}',
               icon: Icons.verified_rounded,
-              color: TwColors.brightGreen,
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppTokens.spaceMd),
         Row(
           children: [
             _SummaryCard(
               title: 'Verified Amount',
               value: '${s.currency} ${s.verifiedAmount.toStringAsFixed(2)}',
               icon: Icons.payments_rounded,
-              color: TwColors.lime400,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.spaceMd),
             _SummaryCard(
               title: 'Average',
               value: '${s.currency} ${s.averageAmount.toStringAsFixed(2)}',
               icon: Icons.trending_up_rounded,
-              color: TwColors.violet400,
             ),
           ],
         ),
@@ -272,7 +295,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               selected: _selected == _ReportType.payments,
               onTap: () => setState(() => _selected = _ReportType.payments),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.spaceMd),
             _TypeCard(
               label: 'Staff',
               icon: Icons.people_rounded,
@@ -281,7 +304,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppTokens.spaceMd),
         Row(
           children: [
             _TypeCard(
@@ -290,7 +313,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               selected: _selected == _ReportType.verification,
               onTap: () => setState(() => _selected = _ReportType.verification),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppTokens.spaceMd),
             _TypeCard(
               label: 'Fraud',
               icon: Icons.warning_amber_rounded,
@@ -316,7 +339,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   label: r.status,
                   count: r.count,
                   amount: r.amount,
-                  color: _statusColor(r.status),
+                  color: AppTokens.ink,
+                  tone: _statusTone(r.status),
                 ),
               )
               .toList(),
@@ -331,7 +355,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   label: r.name,
                   count: r.count,
                   amount: r.amount,
-                  color: TwColors.sky500,
+                  color: AppTokens.ink,
                 ),
               )
               .toList(),
@@ -343,27 +367,31 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             label: 'Verified',
             count: s.verified,
             amount: s.verifiedAmount,
-            color: TwColors.brightGreen,
+            color: AppTokens.ink,
+            tone: SvTone.success,
           ),
           _BreakdownItem(
             label: 'Failed',
             count: s.failed,
             amount: 0,
-            color: TwColors.red500,
+            color: AppTokens.ink,
+            tone: SvTone.error,
           ),
           _BreakdownItem(
             label: 'Rejected',
             count: s.rejected,
             amount: 0,
-            color: TwColors.amber500,
+            color: AppTokens.ink,
+            tone: SvTone.warning,
           ),
           _BreakdownItem(
             label: 'Pending',
             count: s.pending,
             amount: 0,
-            color: TwColors.slate400,
+            color: AppTokens.ink,
+            tone: SvTone.neutral,
           ),
-        ]);
+        ], plainLabels: true);
       case _ReportType.fraud:
         final s = data.summary;
         final items = <_BreakdownItem>[
@@ -371,13 +399,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             label: 'High-risk payments',
             count: s.highRisk,
             amount: s.highRiskAmount,
-            color: TwColors.red500,
+            color: AppTokens.ink,
+            tone: SvTone.error,
           ),
           ...data.highRiskPayments.map(
             (p) => _BreakdownItem(
               label: p.transactionId ?? p.id,
               amount: p.amount,
-              color: TwColors.amber500,
+              color: AppTokens.ink,
+              tone: SvTone.warning,
             ),
           ),
         ];
@@ -388,31 +418,19 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Widget _buildBreakdownSection(
     String title,
     String currency,
-    List<_BreakdownItem> items,
-  ) {
+    List<_BreakdownItem> items, {
+    bool plainLabels = true,
+  }) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: TwColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
+        Text(title, style: AppText.titleSmall.copyWith(color: AppTokens.ink)),
+        const SizedBox(height: AppTokens.spaceMd),
         if (items.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
-            child: Text(
-              'No data for this range.',
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.5),
-                fontSize: 13,
-              ),
+          const SvSurfaceCard(
+            child: SvEmptyState(
+              icon: Icons.bar_chart_rounded,
+              title: 'No data for this range.',
             ),
           )
         else
@@ -420,8 +438,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             (item) => _BreakdownRow(
               label: item.label,
               count: item.count == null ? null : '${item.count}',
-              amount: '${currency} ${item.amount.toStringAsFixed(2)}',
+              amount: '$currency ${item.amount.toStringAsFixed(2)}',
               color: item.color,
+              tone: item.tone,
+              plainLabel: plainLabels,
             ),
           ),
       ],
@@ -429,55 +449,57 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Widget _buildError(BuildContext context, Object error) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: TwColors.red500.withValues(alpha: 0.5)),
-      ),
+    return SvSurfaceCard(
+      color: AppTokens.dangerBg,
+      borderColor: AppTokens.danger,
+      padding: const EdgeInsets.all(AppTokens.errorPadding),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded, color: TwColors.red500),
-          const SizedBox(width: 12),
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppTokens.ink,
+            size: AppTokens.componentIconMd,
+          ),
+          const SizedBox(width: AppTokens.spaceMd),
           Expanded(
             child: Text(
               error.toString().replaceFirst('Exception: ', ''),
-              style: const TextStyle(color: TwColors.white, fontSize: 13),
+              style: AppText.bodySmall.copyWith(color: AppTokens.danger),
             ),
           ),
           TextButton(
             onPressed: _refresh,
             style: TextButton.styleFrom(
-              foregroundColor: TwColors.brightGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              foregroundColor: AppTokens.errorStrong,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTokens.spaceSm,
+              ),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+              textStyle: AppText.labelLarge,
             ),
-            child: const Text('Retry'),
+            child: Text(
+              'Retry',
+              style: AppText.labelLarge.copyWith(color: AppTokens.errorStrong),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Color _statusColor(String status) {
+  SvTone _statusTone(String status) {
     switch (status.toUpperCase()) {
       case 'VERIFIED':
-        return TwColors.brightGreen;
+        return SvTone.success;
       case 'FAILED':
-        return TwColors.red500;
+        return SvTone.error;
       case 'REJECTED':
-        return TwColors.amber500;
+        return SvTone.warning;
       case 'PENDING':
-        return TwColors.slate400;
+        return SvTone.neutral;
       default:
-        return TwColors.sky500;
+        return SvTone.info;
     }
   }
 
@@ -538,35 +560,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ToastService.showError('Export failed: $e');
     }
   }
-
-  BoxDecoration _cardDecoration() => BoxDecoration(
-    color: Colors.black,
-    borderRadius: BorderRadius.circular(14),
-    border: Border.all(color: TwColors.slate700, width: 1),
-  );
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _HeaderIconButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: TwColors.slate800,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: TwColors.slate700, width: 1),
-        ),
-        child: Icon(icon, color: TwColors.white, size: 18),
-      ),
-    );
-  }
 }
 
 class _RangeChip extends StatelessWidget {
@@ -581,26 +574,26 @@ class _RangeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTokens.radiusPill),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceLg,
+          vertical: AppTokens.spaceSm,
+        ),
         decoration: BoxDecoration(
-          color: selected
-              ? TwColors.brightGreen.withValues(alpha: 0.15)
-              : Colors.black,
-          borderRadius: BorderRadius.circular(20),
+          color: selected ? AppTokens.ice100 : AppTokens.white,
+          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
           border: Border.all(
-            color: selected ? TwColors.brightGreen : TwColors.slate700,
-            width: 1,
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
           ),
         ),
         child: Text(
           label,
-          style: TextStyle(
-            color: selected ? TwColors.brightGreen : TwColors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+          style: AppText.labelMedium.copyWith(
+            color: selected ? AppTokens.ink : AppTokens.inkMuted,
           ),
         ),
       ),
@@ -620,33 +613,33 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceLg,
+          vertical: AppTokens.spaceMd,
+        ),
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: TwColors.slate700, width: 1),
+          color: AppTokens.surfaceLight,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(
+            color: AppTokens.ice200,
+            width: AppTokens.componentBorderWidth,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               label,
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.6),
-                fontSize: 12,
-              ),
+              style: AppText.caption.copyWith(color: AppTokens.inkMuted),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppTokens.spaceXs),
             Text(
               DateFormat('MMM d, yyyy').format(value),
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: AppText.labelLarge.copyWith(color: AppTokens.ink),
             ),
           ],
         ),
@@ -659,47 +652,36 @@ class _SummaryCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
-  final Color color;
   const _SummaryCard({
     required this.title,
     required this.value,
     required this.icon,
-    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: TwColors.slate700, width: 1),
-        ),
+      child: SvSurfaceCard(
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 12),
+            Icon(
+              icon,
+              color: AppTokens.inkMuted,
+              size: AppTokens.componentIconMd,
+            ),
+            const SizedBox(height: AppTokens.spaceMd),
             Text(
               title,
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.6),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppText.labelSmall.copyWith(color: AppTokens.inkMuted),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppTokens.spaceXs),
             Text(
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
+              style: AppText.titleMedium.copyWith(color: AppTokens.ink),
             ),
           ],
         ),
@@ -723,129 +705,109 @@ class _TypeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
+      child: SvSurfaceCard(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-          decoration: BoxDecoration(
-            color: selected
-                ? TwColors.brightGreen.withValues(alpha: 0.12)
-                : Colors.black,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected ? TwColors.brightGreen : TwColors.slate700,
-              width: 1,
+        color: selected ? AppTokens.ice100 : AppTokens.white,
+        borderColor: AppTokens.ice200,
+        padding: const EdgeInsets.symmetric(
+          vertical: AppTokens.spaceLg,
+          horizontal: AppTokens.spaceMd,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: selected ? AppTokens.ink : AppTokens.inkMuted,
+              size: AppTokens.componentIconLg,
             ),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                color: selected ? TwColors.brightGreen : TwColors.slate400,
-                size: 22,
+            const SizedBox(height: AppTokens.spaceSm),
+            Text(
+              label,
+              style: AppText.labelMedium.copyWith(
+                color: selected ? AppTokens.ink : AppTokens.inkMuted,
               ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? TwColors.brightGreen : TwColors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+Color _breakdownToneColor(SvTone tone) => switch (tone) {
+  SvTone.success => AppTokens.successStrong,
+  SvTone.warning => AppTokens.warningStrong,
+  SvTone.error => AppTokens.errorStrong,
+  SvTone.info => AppTokens.infoStrong,
+  SvTone.neutral => AppTokens.inkMuted,
+};
+
 class _BreakdownRow extends StatelessWidget {
   final String label;
   final String? count;
   final String amount;
   final Color color;
+  final SvTone? tone;
+  final bool plainLabel;
   const _BreakdownRow({
     required this.label,
     required this.count,
     required this.amount,
     required this.color,
+    this.tone,
+    this.plainLabel = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: TwColors.slate700, width: 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: TwColors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.spaceSm),
+      child: SvSurfaceCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceLg,
+          vertical: AppTokens.spaceMd,
+        ),
+        child: Row(
+          children: [
+            if (tone != null && !plainLabel)
+              Expanded(child: SvStatusPill(label, tone: tone!, small: true))
+            else if (tone != null)
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(
+                    color: _breakdownToneColor(tone!),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            else ...[
+              Container(
+                width: AppTokens.heroDotSize,
+                height: AppTokens.heroDotSize,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
-            ),
-          ),
-          if (count != null && count!.isNotEmpty) ...[
-            Text(
-              count!,
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.6),
-                fontSize: 13,
+              const SizedBox(width: AppTokens.spaceMd),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.labelMedium.copyWith(color: AppTokens.ink),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
+            ],
+            if (count != null && count!.isNotEmpty) ...[
+              Text(
+                count!,
+                style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
+              ),
+              const SizedBox(width: AppTokens.spaceMd),
+            ],
+            Text(amount, style: AppText.labelMedium.copyWith(color: color)),
           ],
-          Text(
-            amount,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExportButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _ExportButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: const Icon(Icons.download_rounded, size: 20),
-        label: const Text('Export CSV'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: TwColors.brightGreen,
-          foregroundColor: TwColors.slate900,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
         ),
       ),
     );
@@ -857,10 +819,12 @@ class _BreakdownItem {
   final int? count;
   final double amount;
   final Color color;
+  final SvTone? tone;
   const _BreakdownItem({
     required this.label,
     this.count,
     required this.amount,
     required this.color,
+    this.tone,
   });
 }

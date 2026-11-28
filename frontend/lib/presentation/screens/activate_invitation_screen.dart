@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import '../../../core/tailwind.dart';
 import '../../../core/utils/toast_service.dart';
+import '../../../theme/app_text.dart';
+import '../../../theme/app_tokens.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/sv_app_shell.dart';
 import '../widgets/sv_loader.dart';
 
 /// Staff activation — QR invitation flow.
@@ -149,31 +151,38 @@ class _ActivateInvitationScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: TwColors.primaryBg,
-      appBar: AppBar(
-        backgroundColor: TwColors.primaryBg,
-        foregroundColor: TwColors.white,
-        elevation: 0,
-        title: const Text('Activate Account'),
-      ),
-      body: _buildBody(),
+    return SvAppShell(
+      title: 'Activate Account',
+      subtitle: _stepSubtitle,
+      scrollable: false,
+      padding: EdgeInsets.zero,
+      child: _buildBody(),
     );
+  }
+
+  String get _stepSubtitle {
+    switch (_step) {
+      case 0:
+        return 'Scan invitation code';
+      case 1:
+        return 'Review invitation details';
+      default:
+        return 'Set your password';
+    }
   }
 
   Widget _buildBody() {
     if (_checking) {
-      return const Center(child: SvLoader.page());
+      return Center(child: SvLoader.page(color: AppTokens.inkMuted));
     }
     if (_step == 0) return _buildScanStep();
     if (_step == 1) return _buildDetailsStep();
     return _buildPasswordStep();
   }
 
-  // ── Step 0: scan QR ───────────────────────────────────────────────────────
-
   Widget _buildScanStep() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
           child: Stack(
@@ -187,14 +196,16 @@ class _ActivateInvitationScreenState
                   }
                 },
               ),
-              // Scan window overlay hint
               Center(
                 child: Container(
-                  width: 240,
-                  height: 240,
+                  width: AppTokens.statTileSize * 5,
+                  height: AppTokens.statTileSize * 5,
                   decoration: BoxDecoration(
-                    border: Border.all(color: TwColors.brightGreen, width: 3),
-                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: AppTokens.cameraActionBackground,
+                      width: AppTokens.componentBorderWidthStrong * 2,
+                    ),
+                    borderRadius: BorderRadius.circular(AppTokens.radius2xl),
                   ),
                 ),
               ),
@@ -202,32 +213,37 @@ class _ActivateInvitationScreenState
           ),
         ),
         Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppTokens.space2xl),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Scan the QR code your manager showed you',
-                style: TextStyle(
-                  color: TwColors.white.withValues(alpha: 0.8),
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              if (_error != null)
-                Text(
-                  _error!,
-                  style: const TextStyle(color: TwColors.red500, fontSize: 13),
+              SvSurfaceCard(
+                padding: const EdgeInsets.all(AppTokens.spaceLg),
+                child: Text(
+                  'Scan the QR code your manager showed you',
+                  style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
                   textAlign: TextAlign.center,
                 ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: AppTokens.spaceMd),
+                SvSurfaceCard(
+                  color: AppTokens.dangerBg,
+                  borderColor: AppTokens.danger,
+                  padding: const EdgeInsets.all(AppTokens.errorPadding),
+                  child: Text(
+                    _error!,
+                    style: AppText.bodySmall.copyWith(color: AppTokens.danger),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ],
     );
   }
-
-  // ── Step 1: confirm staff details ─────────────────────────────────────────
 
   String _roleLabel(String? role) {
     if (role == null || role.isEmpty) return 'Staff';
@@ -239,26 +255,37 @@ class _ActivateInvitationScreenState
     final org = inv['organization'] as Map<String, dynamic>?;
     final branch = inv['branch'] as Map<String, dynamic>?;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.space2xl,
+        AppTokens.spaceLg,
+        AppTokens.space2xl,
+        AppTokens.space3xl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(
-            Icons.badge_outlined,
-            color: TwColors.brightGreen,
-            size: 56,
+          Center(
+            child: Container(
+              width: AppTokens.statTileSize * 2,
+              height: AppTokens.statTileSize * 2,
+              decoration: const BoxDecoration(
+                color: AppTokens.ice100,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.badge_outlined,
+                color: AppTokens.ink,
+                size: AppTokens.statTileSize,
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceLg),
           Text(
             'You have been invited to join ${org?['name'] ?? 'the business'}',
-            style: const TextStyle(
-              color: TwColors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
+            style: AppText.titleMedium.copyWith(color: AppTokens.ink),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppTokens.space2xl),
           _detailCard('Staff Details', [
             ('Name', inv['fullName'] ?? '—'),
             ('Username', inv['username'] ?? '—'),
@@ -266,103 +293,129 @@ class _ActivateInvitationScreenState
             if (branch != null) ('Branch', branch['name'] ?? '—'),
             ('Business', org?['name'] ?? '—'),
           ]),
-          const SizedBox(height: 24),
-          _PrimaryButton(
+          const SizedBox(height: AppTokens.spaceXl),
+          SvActionButton(
             label: 'Continue',
+            icon: Icons.arrow_forward_rounded,
+            tone: SvTone.neutral,
             onPressed: () => setState(() => _step = 2),
           ),
-          const SizedBox(height: 12),
-          _SecondaryButton(
-            label: 'Scan a different code',
+          const SizedBox(height: AppTokens.spaceSm),
+          TextButton(
             onPressed: () => setState(() {
               _step = 0;
               _invitation = null;
               _token = null;
               _error = null;
             }),
+            child: Text(
+              'Scan a different code',
+              style: AppText.labelLarge.copyWith(color: AppTokens.ink),
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ── Step 2: create password ───────────────────────────────────────────────
-
   Widget _buildPasswordStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.space2xl,
+        AppTokens.spaceLg,
+        AppTokens.space2xl,
+        AppTokens.space3xl,
+      ),
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(
-              Icons.lock_outline_rounded,
-              color: TwColors.brightGreen,
-              size: 48,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Create your password',
-              style: TextStyle(
-                color: TwColors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+            Center(
+              child: Container(
+                width: AppTokens.statTileSize * 2,
+                height: AppTokens.statTileSize * 2,
+                decoration: const BoxDecoration(
+                  color: AppTokens.ice100,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.lock_outline_rounded,
+                  color: AppTokens.ink,
+                  size: AppTokens.statTileSize,
+                ),
               ),
+            ),
+            const SizedBox(height: AppTokens.spaceLg),
+            Text(
+              'Create your password',
+              style: AppText.titleMedium.copyWith(color: AppTokens.ink),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppTokens.spaceSm),
             Text(
               'Use it with your username to log in.',
-              style: TextStyle(
-                color: TwColors.white.withValues(alpha: 0.6),
-                fontSize: 13,
-              ),
+              style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            _passwordField(
-              _passwordCtrl,
-              'Password',
-              _obscurePassword,
-              () {
-                setState(() => _obscurePassword = !_obscurePassword);
-              },
-              (v) {
+            const SizedBox(height: AppTokens.space2xl),
+            SvFormField(
+              controller: _passwordCtrl,
+              label: 'Password',
+              prefixIcon: Icons.lock_outline_rounded,
+              obscureText: _obscurePassword,
+              suffixIcon: _EyeToggle(
+                show: _obscurePassword,
+                onTap: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+              ),
+              validator: (v) {
                 if (v == null || v.isEmpty) return 'Password is required.';
-                if (v.length < 8)
+                if (v.length < 8) {
                   return 'Password must be at least 8 characters.';
+                }
                 return null;
               },
             ),
-            const SizedBox(height: 16),
-            _passwordField(
-              _confirmCtrl,
-              'Confirm password',
-              _obscureConfirm,
-              () {
-                setState(() => _obscureConfirm = !_obscureConfirm);
-              },
-              (v) {
-                if (v == null || v.isEmpty)
+            const SizedBox(height: AppTokens.spaceLg),
+            SvFormField(
+              controller: _confirmCtrl,
+              label: 'Confirm password',
+              prefixIcon: Icons.lock_outline_rounded,
+              obscureText: _obscureConfirm,
+              suffixIcon: _EyeToggle(
+                show: _obscureConfirm,
+                onTap: () {
+                  setState(() => _obscureConfirm = !_obscureConfirm);
+                },
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) {
                   return 'Please confirm your password.';
+                }
                 if (v != _passwordCtrl.text) return 'Passwords do not match.';
                 return null;
               },
             ),
             if (_error != null) ...[
-              const SizedBox(height: 14),
-              Text(
-                _error!,
-                style: const TextStyle(color: TwColors.red500, fontSize: 13),
-                textAlign: TextAlign.center,
+              const SizedBox(height: AppTokens.spaceLg),
+              SvSurfaceCard(
+                color: AppTokens.dangerBg,
+                borderColor: AppTokens.danger,
+                padding: const EdgeInsets.all(AppTokens.errorPadding),
+                child: Text(
+                  _error!,
+                  style: AppText.bodySmall.copyWith(color: AppTokens.danger),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
-            const SizedBox(height: 24),
-            _PrimaryButton(
+            const SizedBox(height: AppTokens.space2xl),
+            SvActionButton(
               label: 'Activate Account',
-              loading: _activating,
               onPressed: _activate,
+              loading: _activating,
             ),
           ],
         ),
@@ -371,53 +424,19 @@ class _ActivateInvitationScreenState
   }
 
   Widget _detailCard(String title, List<(String, String)> rows) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: TwColors.slate700),
-      ),
+    return SvSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: TwColors.white.withValues(alpha: 0.55),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 10),
+          SvSectionLabel(title),
+          const SizedBox(height: AppTokens.spaceMd),
           ...rows.map(
             (row) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 92,
-                    child: Text(
-                      row.$1,
-                      style: TextStyle(
-                        color: TwColors.white.withValues(alpha: 0.55),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      row.$2,
-                      style: const TextStyle(
-                        color: TwColors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
+              padding: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+              child: SvInfoRow(
+                icon: _detailIcon(row.$1),
+                label: row.$1,
+                value: row.$2,
               ),
             ),
           ),
@@ -426,108 +445,40 @@ class _ActivateInvitationScreenState
     );
   }
 
-  Widget _passwordField(
-    TextEditingController controller,
-    String label,
-    bool obscure,
-    VoidCallback toggle,
-    String? Function(String?) validator,
-  ) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscure,
-      validator: validator,
-      style: const TextStyle(color: TwColors.white, fontSize: 14),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: TwColors.white.withValues(alpha: 0.6)),
-        filled: true,
-        fillColor: Colors.black,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: TwColors.slate700),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: TwColors.slate700),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: TwColors.brightGreen, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: TwColors.red500),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: TwColors.red500, width: 1.5),
-        ),
-        errorStyle: const TextStyle(color: TwColors.red500, fontSize: 11),
-        suffixIcon: IconButton(
-          icon: Icon(
-            obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-            color: TwColors.white.withValues(alpha: 0.5),
-            size: 20,
-          ),
-          onPressed: toggle,
-        ),
-      ),
-    );
+  IconData _detailIcon(String label) {
+    switch (label) {
+      case 'Name':
+        return Icons.person_outline_rounded;
+      case 'Username':
+        return Icons.alternate_email_rounded;
+      case 'Role':
+        return Icons.badge_outlined;
+      case 'Branch':
+        return Icons.location_city_outlined;
+      case 'Business':
+        return Icons.storefront_rounded;
+      default:
+        return Icons.info_outline_rounded;
+    }
   }
 }
 
-class _PrimaryButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-  final bool loading;
+class _EyeToggle extends StatelessWidget {
+  final bool show;
+  final VoidCallback onTap;
 
-  const _PrimaryButton({
-    required this.label,
-    required this.onPressed,
-    this.loading = false,
-  });
+  const _EyeToggle({required this.show, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: loading ? null : onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: TwColors.brightGreen,
-        foregroundColor: TwColors.primaryBg,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        elevation: 0,
-      ),
-      child: loading
-          ? const SvLoader.button()
-          : Text(
-              label,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-            ),
-    );
-  }
-}
-
-class _SecondaryButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-
-  const _SecondaryButton({required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      child: Text(
-        label,
-        style: TextStyle(
-          color: TwColors.white.withValues(alpha: 0.6),
-          fontSize: 13,
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(right: AppTokens.spaceLg),
+        child: Icon(
+          show ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+          color: AppTokens.inkMuted,
+          size: AppTokens.componentIconMd,
         ),
       ),
     );

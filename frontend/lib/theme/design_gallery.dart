@@ -80,7 +80,10 @@ class DesignGallery extends StatelessWidget {
                 textStyle: AppText.authButton,
                 foregroundColor: AppTokens.ink,
                 backgroundColor: AppTokens.accent,
-                minimumSize: const Size(double.infinity, AppTokens.buttonHeight),
+                minimumSize: const Size(
+                  double.infinity,
+                  AppTokens.buttonHeight,
+                ),
                 shape: const RoundedRectangleBorder(
                   borderRadius: AppTokens.buttonBorderRadius,
                 ),
@@ -106,7 +109,8 @@ class DesignGallery extends StatelessWidget {
   }
 
   Widget _swatch(String label, Color color) {
-    final onColor = ThemeData.estimateBrightnessForColor(color) == Brightness.light
+    final onColor =
+        ThemeData.estimateBrightnessForColor(color) == Brightness.light
         ? AppTokens.ink
         : AppTokens.white;
     return SizedBox(
@@ -139,10 +143,7 @@ class DesignGallery extends StatelessWidget {
           border: Border.all(color: AppTokens.obsidian700),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: AppText.onDark(AppText.labelSmall),
-          ),
+          child: Text(label, style: AppText.onDark(AppText.labelSmall)),
         ),
       ),
     );

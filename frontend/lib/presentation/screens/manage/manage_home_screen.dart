@@ -6,7 +6,10 @@ import '../../../presentation/providers/auth_provider.dart';
 import '../../../theme/app_text.dart';
 import '../../../theme/app_tokens.dart';
 import '../../../ui/ui.dart';
+import '../../providers/notifications_provider.dart';
 import '../../providers/reports_provider.dart';
+import '../notifications_screen.dart';
+import '../profile_screen.dart';
 import 'branch_management_screen.dart';
 import 'staff_management_screen.dart';
 import 'payment_activity_screen.dart';
@@ -93,116 +96,72 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     final todaySummary = ref.watch(
       reportSummaryProvider((from: today, to: today)),
     );
-    final headerHeight = AppTokens.headerVisibleHeight;
+    final unread = ref.watch(unreadNotificationCountProvider);
 
-    return Stack(
-      fit: StackFit.expand,
+    return Column(
       children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: headerHeight + AppTokens.sheetTopRadius,
-          child: _buildHeader(),
+        _buildHeader(unread),
+        Expanded(child: _buildSheet(role, todaySummary)),
+      ],
+    );
+  }
+
+  Widget _buildHeader(int unread) {
+    return SvDashboardHeader(
+      title: 'Manage',
+      actions: [
+        SvDashboardHeaderButton(
+          icon: Icons.notifications_none_rounded,
+          badgeCount: unread,
+          tooltip: 'Notifications',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+          ),
         ),
-        Positioned(
-          top: headerHeight - AppTokens.sheetOverlap,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _buildSheet(role, todaySummary),
+        SvDashboardHeaderButton(
+          icon: Icons.person_outline_rounded,
+          tooltip: 'Profile',
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
         ),
       ],
     );
   }
 
-  Widget _buildHeader() {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(
-        bottom: Radius.circular(AppTokens.radius2xl),
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        height: AppTokens.headerVisibleHeight + AppTokens.sheetTopRadius,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: ExcludeSemantics(
-                  child: CustomPaint(
-                    painter: const AppHeaderPatternPainter(),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: AppTokens.logoTopGap,
-              left: 0,
-              right: 0,
-              child: Center(child: _buildLogo()),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLogo() {
-    return Semantics(
-      label: 'App logo',
-      child: Container(
-        width: AppTokens.logoTileSize,
-        height: AppTokens.logoTileSize,
-        decoration: BoxDecoration(
-          color: AppTokens.white,
-          borderRadius: BorderRadius.circular(AppTokens.logoTileRadius),
-        ),
-        child: Center(
-          child: SizedBox(
-            width: AppTokens.logoIconSize,
-            height: AppTokens.logoIconSize,
-            child: const CustomPaint(painter: AppLogoPainter()),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSheet(UserRole role, AsyncValue<ReportSummary> todaySummary) {
     return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppTokens.ice50,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(AppTokens.sheetTopRadius),
-        ),
-      ),
-      child: SingleChildScrollView(
-        physics: const ClampingScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          AppTokens.sheetHorizontalPadding,
-          AppTokens.sheetTopPadding + AppTokens.space3xl,
-          AppTokens.sheetHorizontalPadding,
-          AppTokens.sheetBottomPadding,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeading(),
-            const SizedBox(height: AppTokens.space2xl),
-            if (_loadError != null) ...[
-              _buildLoadError(),
-              const SizedBox(height: AppTokens.spaceXl),
-            ],
-            _buildStatisticsGrid(todaySummary),
-            const SizedBox(height: AppTokens.spaceXl),
-            _buildQuickActions(role),
-            const SizedBox(height: AppTokens.spaceXl),
-            _buildRecentActivity(todaySummary),
-            const SizedBox(height: AppTokens.spaceXl),
-            _buildLogoutButton(),
-          ],
+      color: AppTokens.ice50,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: AppTokens.formMaxWidth),
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.spaceLg,
+              AppTokens.sheetHorizontalPadding,
+              AppTokens.sheetBottomPadding,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeading(),
+                const SizedBox(height: AppTokens.space2xl),
+                if (_loadError != null) ...[
+                  _buildLoadError(),
+                  const SizedBox(height: AppTokens.spaceXl),
+                ],
+                _buildStatisticsGrid(todaySummary),
+                const SizedBox(height: AppTokens.spaceXl),
+                _buildQuickActions(role),
+                const SizedBox(height: AppTokens.spaceXl),
+                _buildRecentActivity(todaySummary),
+                const SizedBox(height: AppTokens.spaceXl),
+                _buildLogoutButton(),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -215,11 +174,19 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(businessName, style: AppText.authTitle),
+        Text(
+          businessName,
+          style: AppTokens.poppins(
+            size: AppTokens.textHeadline,
+            weight: FontWeight.w800,
+            color: AppTokens.ink,
+            letterSpacing: AppTokens.trackingTight,
+          ),
+        ),
         const SizedBox(height: AppTokens.spaceXs),
         Text(
           'Overview of your business performance',
-          style: AppText.authSubtitle,
+          style: AppText.caption.copyWith(color: AppTokens.inkMuted),
         ),
       ],
     );
@@ -267,13 +234,11 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               elevation: AppTokens.dialogElevation,
               title: Text(
                 'Logout',
-                style: AppText.titleMedium.copyWith(color: AppTokens.text),
+                style: AppText.titleMedium.copyWith(color: AppTokens.ink),
               ),
               content: Text(
                 'Are you sure you want to logout?',
-                style: AppText.bodySmall.copyWith(
-                  color: AppTokens.textSecondary,
-                ),
+                style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
               ),
               actions: [
                 TextButton(
@@ -281,7 +246,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                   child: Text(
                     'Cancel',
                     style: AppText.bodySmall.copyWith(
-                      color: AppTokens.textSecondary,
+                      color: AppTokens.inkMuted,
                     ),
                   ),
                 ),
@@ -308,14 +273,16 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             borderRadius: BorderRadius.circular(AppTokens.radiusCard),
           ),
           side: BorderSide(
-            color: AppTokens.border,
+            color: AppTokens.ice200,
             width: AppTokens.componentBorderWidth,
           ),
-          elevation: AppTokens.cardElevation,
-          shadowColor: AppTokens.shadow,
           textStyle: AppText.labelLarge,
         ),
-        icon: const Icon(Icons.logout_rounded, size: AppTokens.progressSize),
+        icon: const Icon(
+          Icons.logout_rounded,
+          color: AppTokens.ink,
+          size: AppTokens.progressSize,
+        ),
         label: const Text('Logout'),
       ),
     );
@@ -342,14 +309,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Total Branches',
               value: _isLoading ? '...' : _branches.length.toString(),
               icon: Icons.storefront_rounded,
-              color: AppTokens.accent,
+              color: AppTokens.ink,
             ),
             const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
               title: 'Total Staff',
               value: _isLoading ? '...' : _staff.length.toString(),
               icon: Icons.people_rounded,
-              color: AppTokens.primary,
+              color: AppTokens.ink,
             ),
           ],
         ),
@@ -360,14 +327,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
               title: 'Online Staff',
               value: _isLoading ? '...' : onlineStaff.toString(),
               icon: Icons.wifi_rounded,
-              color: AppTokens.teal,
+              color: AppTokens.ink,
             ),
             const SizedBox(width: AppTokens.statChangePaddingH),
             _StatItem(
               title: 'Offline Staff',
               value: _isLoading ? '...' : offlineStaff.toString(),
               icon: Icons.signal_wifi_off_rounded,
-              color: AppTokens.warning,
+              color: AppTokens.ink,
             ),
           ],
         ),
@@ -376,57 +343,66 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           backgroundColor: AppTokens.white,
           child: Row(
             children: [
-              Container(
-                width: AppTokens.tapTarget,
-                height: AppTokens.tapTarget,
-                decoration: BoxDecoration(
-                  color: AppTokens.accent.withValues(alpha: AppTokens.alphaLow),
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                ),
-                child: const Icon(
-                  Icons.payments_rounded,
-                  color: AppTokens.accent,
-                  size: AppTokens.componentIconLg,
-                ),
+              const Icon(
+                Icons.payments_rounded,
+                color: AppTokens.ink,
+                size: AppTokens.componentIconMd,
               ),
-              const SizedBox(width: AppTokens.heroStatusPaddingH),
+              const SizedBox(width: AppTokens.spaceSm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       "Today's Verified Payments",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: AppText.labelSmall.copyWith(
-                        color: AppTokens.textSecondary,
+                        color: AppTokens.inkMuted,
                       ),
                     ),
                     const SizedBox(height: AppTokens.statTitleGap),
                     Text(
                       '$verifiedCount payments',
-                      style: AppText.titleMedium.copyWith(
-                        color: AppTokens.text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.labelLarge.copyWith(
+                        color: AppTokens.ink,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: AppTokens.trackingTight,
                       ),
                     ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'Total Amount',
-                    style: AppText.overline.copyWith(
-                      color: AppTokens.textSecondary,
+              const SizedBox(width: AppTokens.spaceSm),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Total Amount',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.overline.copyWith(
+                        color: AppTokens.inkMuted,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: AppTokens.spaceXs),
-                  Text(
-                    verifiedAmount,
-                    style: AppText.titleMedium.copyWith(
-                      color: AppTokens.primary,
+                    const SizedBox(height: AppTokens.spaceXs),
+                    Text(
+                      verifiedAmount,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: AppText.labelLarge.copyWith(
+                        color: AppTokens.ink,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: AppTokens.trackingTight,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -443,7 +419,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.store_mall_directory_rounded,
           label: 'Branches',
-          color: AppTokens.accent,
+          color: AppTokens.ink,
           onTap: () => _navigateAndRefresh(const BranchManagementScreen()),
         ),
       );
@@ -454,7 +430,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.person_add_rounded,
           label: 'Staff',
-          color: AppTokens.primary,
+          color: AppTokens.ink,
           onTap: () => _navigateAndRefresh(const StaffManagementScreen()),
         ),
       );
@@ -465,7 +441,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.account_balance_rounded,
           label: 'Accounts',
-          color: AppTokens.primary,
+          color: AppTokens.ink,
           onTap: () =>
               _navigateAndRefresh(const PaymentAccountManagementScreen()),
         ),
@@ -477,7 +453,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
       _QuickAction(
         icon: Icons.payments_rounded,
         label: 'Payments',
-        color: AppTokens.primary,
+        color: AppTokens.ink,
         onTap: () => _navigateAndRefresh(const PaymentActivityScreen()),
       ),
     );
@@ -487,7 +463,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         _QuickAction(
           icon: Icons.bar_chart_rounded,
           label: 'Reports',
-          color: AppTokens.warning,
+          color: AppTokens.ink,
           onTap: () => _navigateAndRefresh(const ReportsScreen()),
         ),
       );
@@ -500,17 +476,15 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Quick Actions',
-          style: AppText.titleSmall.copyWith(color: AppTokens.text),
-        ),
+        const SvSectionLabel('Quick Actions'),
         const SizedBox(height: AppTokens.spaceMd),
         GridView.count(
-          crossAxisCount: 3,
+          crossAxisCount: 2,
+          mainAxisExtent: AppTokens.tapTarget + AppTokens.space2xl,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: AppTokens.statChangePaddingH,
-          crossAxisSpacing: AppTokens.statChangePaddingH,
+          mainAxisSpacing: AppTokens.spaceMd,
+          crossAxisSpacing: AppTokens.spaceMd,
           children: actions,
         ),
       ],
@@ -521,10 +495,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Recent Activity',
-          style: AppText.titleSmall.copyWith(color: AppTokens.text),
-        ),
+        const SvSectionLabel('Recent Activity'),
         const SizedBox(height: AppTokens.spaceMd),
         todaySummary.when(
           data: (data) {
@@ -533,7 +504,6 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             }
             return Column(
               children: data.recent.take(3).map((p) {
-                final statusColor = _statusColor(p.status);
                 final time = DateFormat('h:mm a').format(p.createdAt);
                 return _ManageCard(
                   margin: const EdgeInsets.only(bottom: AppTokens.spaceSm),
@@ -547,8 +517,8 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                       Container(
                         width: AppTokens.heroDotSize,
                         height: AppTokens.heroDotSize,
-                        decoration: BoxDecoration(
-                          color: statusColor,
+                        decoration: const BoxDecoration(
+                          color: AppTokens.inkMuted,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -564,14 +534,14 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: AppText.labelMedium.copyWith(
-                                color: AppTokens.text,
+                                color: AppTokens.ink,
                               ),
                             ),
                             const SizedBox(height: AppTokens.spaceXs),
                             Text(
                               '${p.status} · $time',
                               style: AppText.overline.copyWith(
-                                color: AppTokens.textSecondary,
+                                color: AppTokens.inkMuted,
                               ),
                             ),
                           ],
@@ -579,7 +549,9 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
                       ),
                       Text(
                         '${p.currency} ${p.amount.toStringAsFixed(2)}',
-                        style: AppText.labelMedium.copyWith(color: statusColor),
+                        style: AppText.labelMedium.copyWith(
+                          color: AppTokens.ink,
+                        ),
                       ),
                     ],
                   ),
@@ -590,7 +562,7 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
           loading: () => const Center(
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: AppTokens.space2xl),
-              child: SvLoader.page(color: AppTokens.primary),
+              child: SvLoader.page(color: AppTokens.inkMuted),
             ),
           ),
           error: (e, _) => _emptyActivity(
@@ -616,19 +588,19 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: AppText.bodySmall.copyWith(color: AppTokens.textSecondary),
+              style: AppText.bodySmall.copyWith(color: AppTokens.inkMuted),
             ),
             if (onRetry != null) ...[
               const SizedBox(height: AppTokens.spaceSm),
               TextButton(
                 onPressed: onRetry,
                 style: TextButton.styleFrom(
-                  foregroundColor: AppTokens.primary,
+                  foregroundColor: AppTokens.inkMuted,
                   textStyle: AppText.labelLarge,
                 ),
                 child: Text(
                   'Retry',
-                  style: AppText.labelLarge.copyWith(color: AppTokens.primary),
+                  style: AppText.labelLarge.copyWith(color: AppTokens.inkMuted),
                 ),
               ),
             ],
@@ -636,19 +608,6 @@ class _ManageHomeScreenState extends ConsumerState<ManageHomeScreen> {
         ),
       ),
     );
-  }
-
-  Color _statusColor(String status) {
-    switch (status.toUpperCase()) {
-      case 'VERIFIED':
-        return AppTokens.teal;
-      case 'FAILED':
-        return AppTokens.danger;
-      case 'REJECTED':
-        return AppTokens.warning;
-      default:
-        return AppTokens.textSecondary;
-    }
   }
 }
 
@@ -659,7 +618,7 @@ class _ManageCard extends StatelessWidget {
     this.margin,
     this.onTap,
     this.backgroundColor = AppTokens.white,
-    this.borderColor = AppTokens.border,
+    this.borderColor = AppTokens.ice200,
   });
 
   final Widget child;
@@ -671,22 +630,12 @@ class _ManageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget card = DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: borderColor,
-          width: AppTokens.componentBorderWidth,
-        ),
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-      ),
-      child: SVCard(
-        backgroundColor: backgroundColor,
-        borderRadius: AppTokens.radiusCard,
-        hasShadow: true,
-        onTap: onTap,
-        padding: padding,
-        child: child,
-      ),
+    Widget card = SvSurfaceCard(
+      color: backgroundColor,
+      borderColor: borderColor,
+      padding: padding,
+      onTap: onTap,
+      child: child,
     );
 
     final cardMargin = margin;
@@ -719,26 +668,35 @@ class _StatItem extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: AppTokens.statTileSize,
-              height: AppTokens.statTileSize,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: AppTokens.alphaLow),
-                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-              ),
-              child: Icon(icon, color: color, size: AppTokens.componentIconLg),
-            ),
-            const SizedBox(height: AppTokens.spaceMd),
-            Text(
-              title,
-              style: AppText.labelSmall.copyWith(
-                color: AppTokens.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppTokens.spaceXs),
             Text(
               value,
-              style: AppText.titleMedium.copyWith(color: AppTokens.text),
+              style: AppTokens.poppins(
+                size: AppTokens.textHeadline,
+                weight: FontWeight.w800,
+                color: color,
+                letterSpacing: AppTokens.trackingTight,
+              ),
+            ),
+            const SizedBox(height: AppTokens.focusBorderWidth),
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: AppTokens.componentIconSm,
+                  color: AppTokens.inkMuted,
+                ),
+                const SizedBox(width: AppTokens.spaceXs),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: AppText.overline.copyWith(
+                      color: AppTokens.inkMuted,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: AppTokens.trackingNormal,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -764,24 +722,35 @@ class _QuickAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ManageCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(AppTokens.spaceLg),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceMd,
+        vertical: AppTokens.spaceMd,
+      ),
+      child: Row(
         children: [
-          Container(
-            width: AppTokens.tapTarget,
-            height: AppTokens.tapTarget,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: AppTokens.alphaLow),
-              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            ),
-            child: Icon(icon, color: color, size: AppTokens.formPrefixIconSize),
+          Icon(
+            icon,
+            color: color,
+            size: AppTokens.componentIconSm + AppTokens.spaceXs,
           ),
-          const SizedBox(height: AppTokens.spaceMd),
-          Text(
-            label,
-            style: AppText.labelMedium.copyWith(color: AppTokens.text),
-            textAlign: TextAlign.center,
+          const SizedBox(width: AppTokens.spaceXs),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.labelLarge.copyWith(
+                color: AppTokens.ink,
+                fontWeight: FontWeight.w700,
+                letterSpacing: AppTokens.trackingTight,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppTokens.spaceXs),
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: AppTokens.inkMuted,
+            size: AppTokens.componentIconSm,
           ),
         ],
       ),

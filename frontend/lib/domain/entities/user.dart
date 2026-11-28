@@ -28,8 +28,12 @@ class User {
       email: json['email']?.toString(),
       emailVerified: json['emailVerified'] == true,
       status: json['status']?.toString() ?? "active",
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'].toString()) : DateTime.now(),
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'].toString()) : DateTime.now(),
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'].toString())
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'].toString())
+          : DateTime.now(),
     );
   }
 }

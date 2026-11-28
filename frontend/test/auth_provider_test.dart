@@ -101,6 +101,9 @@ class FakeAuthRepository implements AuthRepository {
   Map<String, dynamic>? challengeResult;
   Map<String, dynamic>? refreshResult;
   Object? selectError;
+  Object? changePasswordError;
+  String? lastCurrentPassword;
+  String? lastNewPassword;
 
   String? lastSelectionToken;
   String? lastOrganizationId;
@@ -165,6 +168,18 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<Map<String, dynamic>> changePassword(
+    String accessToken, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    lastCurrentPassword = currentPassword;
+    lastNewPassword = newPassword;
+    if (changePasswordError != null) throw changePasswordError!;
+    return {'message': 'Password changed successfully'};
+  }
+
+  @override
   Future<void> clearTokens() async {
     clearTokensCalls++;
   }
@@ -211,6 +226,20 @@ void main() {
     expect(state().status, AuthStatus.authenticated);
     expect(state().pendingSelectionToken, isNull);
     expect(state().organization?.id, 'org-1');
+  });
+
+  test('change password calls the authenticated endpoint', () async {
+    repo.loginResult = _authData('org-1');
+    await notifier().loginWithPassword('owner@example.com', 'pw', rememberMe: true);
+
+    await notifier().changePassword(
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+    );
+
+    expect(repo.lastCurrentPassword, 'old-password');
+    expect(repo.lastNewPassword, 'new-password');
+    expect(state().status, AuthStatus.authenticated);
   });
 
   test('multi-business login preserves the selection token and businesses', () async {

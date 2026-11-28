@@ -89,6 +89,8 @@ class _AuthTextFieldState extends State<AuthTextField> {
                         decoration: InputDecoration(
                           hintText: widget.hint,
                           hintStyle: AppText.authHint,
+                          filled: false,
+                          fillColor: AppTokens.transparent,
                           isDense: true,
                           contentPadding: EdgeInsets.zero,
                           counterText: '',
@@ -107,10 +109,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
           if (hasError)
             Padding(
               padding: const EdgeInsets.only(top: AppTokens.fieldErrorGap),
-              child: Text(
-                widget.error!,
-                style: AppText.authError,
-              ),
+              child: Text(widget.error!, style: AppText.authError),
             ),
         ],
       ),

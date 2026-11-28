@@ -50,18 +50,22 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
       duration: widget.imageDuration,
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: AppTokens.heroScaleEnd,
-    ).animate(
-      CurvedAnimation(parent: _scaleController, curve: AppTokens.curveEmphasized),
-    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: AppTokens.heroScaleEnd)
+        .animate(
+          CurvedAnimation(
+            parent: _scaleController,
+            curve: AppTokens.curveEmphasized,
+          ),
+        );
     _fadeController = AnimationController(
       duration: widget.transitionDuration,
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: AppTokens.curveEmphasized),
+      CurvedAnimation(
+        parent: _fadeController,
+        curve: AppTokens.curveEmphasized,
+      ),
     );
 
     _startAutoScroll();
@@ -129,7 +133,10 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
   Widget _buildMobileLayout() {
     return Column(
       children: [
-        SizedBox(height: AppTokens.heroMobileHeight, child: _buildImageSequence()),
+        SizedBox(
+          height: AppTokens.heroMobileHeight,
+          child: _buildImageSequence(),
+        ),
         _buildTextContent(),
       ],
     );
@@ -256,7 +263,10 @@ class _PremiumHeroSectionState extends State<PremiumHeroSection>
           gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: [AppTokens.heroImageOverlayStart, AppTokens.heroGradientEnd],
+            colors: [
+              AppTokens.heroImageOverlayStart,
+              AppTokens.heroGradientEnd,
+            ],
             stops: [0.0, 1.0],
           ),
         ),
